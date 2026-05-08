@@ -5,8 +5,8 @@
             "path": "packages/gaveta-de-bagunca"
         },
         {
-            "name": "memoria-auxiliar",
-            "path": "apps/memoria-auxiliar"
+            "name": "memoria_auxiliar",
+            "path": "apps/memoria_auxiliar"
         }
     ],
     "settings": {
