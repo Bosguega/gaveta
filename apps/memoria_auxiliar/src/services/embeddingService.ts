@@ -1,6 +1,6 @@
+import { sha256 } from '@bosguega/gaveta-de-bagunca';
 import { invoke } from '@tauri-apps/api/core';
 import { getCachedEmbedding, saveCachedEmbedding } from './databaseService';
-import { sha256 } from './hashService';
 
 export async function getEmbedding(text: string): Promise<number[]> {
   const normalized = text.trim();
