@@ -1,133 +1,109 @@
 /**
- * AI Configuration Storage
+ * AI Configuration
  *
- * Gerencia o armazenamento da API key e modelo selecionado.
- * Usa sessionStorage por padrão (limpa ao fechar a aba).
- * Permite opcionalmente persistir em localStorage entre sessões.
+ * Gerencia a API key e modelo selecionado.
+ * Usa um ConfigStore injetável — por padrão usa o browserStore
+ * (sessionStorage + localStorage), mas pode ser substituído para
+ * ambientes como Tauri, React Native, Node.js, etc.
  *
- * O modelo selecionado (sem dados sensíveis) é sempre salvo em localStorage.
- * Framework-agnostic — funciona em qualquer app (React, Vue, vanilla TS).
+ * Framework-agnostic — funciona em qualquer app.
  */
+
+import type { ConfigStore, Provider } from './types'
+import { browserStore } from './browserStore'
+
+export type { ConfigStore, Provider }
+export { browserStore }
+
+// ------ Store singleton ------
+
+let currentStore: ConfigStore = browserStore
 
 const STORAGE_KEY_KEY = 'ai_key'
 const STORAGE_KEY_MODEL = 'ai_model'
 const STORAGE_KEY_PERSIST = 'ai_key_persist'
+const DEFAULT_MODEL = 'gemini-2.0-flash'
 
-function getStorage(type: 'session' | 'local'): Storage | null {
-    if (typeof window === 'undefined') return null
-    return type === 'session' ? window.sessionStorage : window.localStorage
+/**
+ * Substitui o ConfigStore ativo.
+ * Permite injetar um store para Tauri, React Native, etc.
+ */
+export function setConfigStore(store: ConfigStore): void {
+    currentStore = store
+}
+
+/**
+ * Retorna o ConfigStore ativo.
+ */
+export function getConfigStore(): ConfigStore {
+    return currentStore
 }
 
 // ------ Persistência ------
 
-/**
- * Verifica se a persistência da chave está ativa.
- */
-export function isPersistenceEnabled(): boolean {
-    const local = getStorage('local')
-    return local?.getItem(STORAGE_KEY_PERSIST) === 'true'
+export async function isPersistenceEnabled(): Promise<boolean> {
+    const val = await currentStore.preferences.get(STORAGE_KEY_PERSIST)
+    return val === 'true'
 }
 
-/**
- * Ativa ou desativa a persistência da chave entre sessões.
- * Se desativar, remove a chave do localStorage.
- */
-export function setPersistenceEnabled(enabled: boolean): void {
-    const local = getStorage('local')
-    if (!local) return
-
+export async function setPersistenceEnabled(enabled: boolean): Promise<void> {
     if (enabled) {
-        local.setItem(STORAGE_KEY_PERSIST, 'true')
+        await currentStore.preferences.set(STORAGE_KEY_PERSIST, 'true')
     } else {
-        local.removeItem(STORAGE_KEY_PERSIST)
-        local.removeItem(STORAGE_KEY_KEY)
+        await currentStore.preferences.remove(STORAGE_KEY_PERSIST)
+        await currentStore.preferences.remove(STORAGE_KEY_KEY as string)
     }
 }
 
 // ------ API Key ------
 
-/**
- * Recupera a API Key do storage apropriado.
- * Se a persistência está ativa, busca no localStorage.
- * Caso contrário, busca no sessionStorage.
- */
-export function getApiKey(): string | null {
-    const persist = isPersistenceEnabled()
+export async function getApiKey(): Promise<string | null> {
+    const persist = await isPersistenceEnabled()
 
     if (persist) {
-        const local = getStorage('local')
-        return local?.getItem(STORAGE_KEY_KEY) ?? null
+        return currentStore.preferences.get(STORAGE_KEY_KEY)
     }
 
-    const session = getStorage('session')
-    return session?.getItem(STORAGE_KEY_KEY) ?? null
+    return currentStore.apiKey.get(STORAGE_KEY_KEY)
 }
 
-/**
- * Salva a API Key.
- * Se a persistência está ativa, salva no localStorage.
- * Sempre salva também no sessionStorage (redundância).
- */
-export function setApiKey(key: string | null | undefined): void {
+export async function setApiKey(key: string | null | undefined): Promise<void> {
     const trimmed = key?.trim() ?? ''
-    const persist = isPersistenceEnabled()
+    const persist = await isPersistenceEnabled()
 
     if (persist) {
-        const local = getStorage('local')
-        if (local) {
-            if (trimmed) {
-                local.setItem(STORAGE_KEY_KEY, trimmed)
-            } else {
-                local.removeItem(STORAGE_KEY_KEY)
-            }
+        if (trimmed) {
+            await currentStore.preferences.set(STORAGE_KEY_KEY, trimmed)
+        } else {
+            await currentStore.preferences.remove(STORAGE_KEY_KEY)
         }
     }
 
     // Sempre salva na sessão também
-    const session = getStorage('session')
-    if (session) {
-        if (trimmed) {
-            session.setItem(STORAGE_KEY_KEY, trimmed)
-        } else {
-            session.removeItem(STORAGE_KEY_KEY)
-        }
+    if (trimmed) {
+        await currentStore.apiKey.set(STORAGE_KEY_KEY, trimmed)
+    } else {
+        await currentStore.apiKey.remove(STORAGE_KEY_KEY)
     }
 }
 
-/**
- * Remove a API Key de ambos os storages.
- */
-export function clearApiKey(): void {
-    setApiKey(null)
+export async function clearApiKey(): Promise<void> {
+    await setApiKey(null)
 }
 
 // ------ Modelo ------
 
-const DEFAULT_MODEL = 'gemini-2.0-flash'
-
-/**
- * Recupera o modelo salvo (persiste entre sessões — não é dado sensível).
- */
-export function getApiModel(): string {
-    const local = getStorage('local')
-    return local?.getItem(STORAGE_KEY_MODEL) ?? DEFAULT_MODEL
+export async function getApiModel(): Promise<string> {
+    const val = await currentStore.preferences.get(STORAGE_KEY_MODEL)
+    return val ?? DEFAULT_MODEL
 }
 
-/**
- * Salva o modelo selecionado no localStorage.
- */
-export function setApiModel(model: string): void {
-    const local = getStorage('local')
-    local?.setItem(STORAGE_KEY_MODEL, model)
+export async function setApiModel(model: string): Promise<void> {
+    await currentStore.preferences.set(STORAGE_KEY_MODEL, model)
 }
 
 // ------ Detecção de provedor ------
 
-export type Provider = 'Google AI Studio' | 'OpenAI' | 'Nenhum' | 'Desconhecido'
-
-/**
- * Detecta o provedor de IA com base no prefixo da chave.
- */
 export function detectProvider(key: string | null | undefined): Provider {
     if (!key) return 'Nenhum'
     if (key.startsWith('AIza')) return 'Google AI Studio'
@@ -137,10 +113,7 @@ export function detectProvider(key: string | null | undefined): Provider {
 
 // ------ Helpers ------
 
-/**
- * Verifica se uma chave de API está configurada.
- */
-export function hasApiKey(): boolean {
-    const key = getApiKey()
+export async function hasApiKey(): Promise<boolean> {
+    const key = await getApiKey()
     return !!key && key.length > 0
 }

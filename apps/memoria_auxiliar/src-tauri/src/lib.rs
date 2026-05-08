@@ -2,6 +2,7 @@ use chrono::Utc;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -53,6 +54,65 @@ struct GeminiPart {
     text: Option<String>,
 }
 
+const CONFIG_FILE: &str = "memoria_auxiliar_config.json";
+
+fn config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Nao foi possivel localizar app_data_dir: {error}"))?;
+
+    fs::create_dir_all(&dir)
+        .map_err(|error| format!("Nao foi possivel criar diretorio de dados: {error}"))?;
+
+    Ok(dir.join(CONFIG_FILE))
+}
+
+fn load_config(app: &tauri::AppHandle) -> HashMap<String, String> {
+    let path = match config_path(app) {
+        Ok(p) => p,
+        Err(_) => return HashMap::new(),
+    };
+
+    if !path.exists() {
+        return HashMap::new();
+    }
+
+    fs::read_to_string(&path)
+        .ok()
+        .and_then(|content| serde_json::from_str(&content).ok())
+        .unwrap_or_default()
+}
+
+fn save_config(app: &tauri::AppHandle, config: &HashMap<String, String>) -> Result<(), String> {
+    let path = config_path(app)?;
+    let content = serde_json::to_string_pretty(config)
+        .map_err(|error| format!("Nao foi possivel serializar config: {error}"))?;
+    fs::write(&path, content)
+        .map_err(|error| format!("Nao foi possivel salvar config: {error}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_config(app: tauri::AppHandle, key: String) -> Result<Option<String>, String> {
+    let config = load_config(&app);
+    Ok(config.get(&key).cloned())
+}
+
+#[tauri::command]
+fn set_config(app: tauri::AppHandle, key: String, value: String) -> Result<(), String> {
+    let mut config = load_config(&app);
+    config.insert(key, value);
+    save_config(&app, &config)
+}
+
+#[tauri::command]
+fn remove_config(app: tauri::AppHandle, key: String) -> Result<(), String> {
+    let mut config = load_config(&app);
+    config.remove(&key);
+    save_config(&app, &config)
+}
+
 fn load_dotenv(app: &tauri::AppHandle) {
     let _ = dotenvy::dotenv();
 
@@ -68,19 +128,44 @@ fn load_dotenv(app: &tauri::AppHandle) {
     }
 }
 
-fn gemini_api_key() -> Result<String, String> {
+fn gemini_api_key(app: &tauri::AppHandle) -> Result<String, String> {
+    // Tenta config.json primeiro (configurado pelo usuário na UI)
+    let config = load_config(app);
+    if let Some(key) = config.get("ai_key") {
+        if !key.trim().is_empty() {
+            return Ok(key.clone());
+        }
+    }
+
+    // Fallback para .env (desenvolvimento)
     env::var("GEMINI_API_KEY")
-        .map_err(|_| "Configure GEMINI_API_KEY no arquivo .env.".to_string())
+        .map_err(|_| "Configure a chave da API nas Configurações.".to_string())
         .and_then(|key| {
             if key.trim().is_empty() || key == "coloque_sua_chave_aqui" {
-                Err("Configure GEMINI_API_KEY no arquivo .env.".to_string())
+                Err("Configure a chave da API nas Configurações.".to_string())
             } else {
                 Ok(key)
             }
         })
 }
 
-fn gemini_model(env_name: &str, fallback: &str) -> String {
+fn gemini_embedding_model() -> String {
+    // Modelo de embedding é fixo — não vem das configurações do usuário.
+    // Pode ser sobrescrito via .env para desenvolvimento.
+    env::var("GEMINI_EMBEDDING_MODEL")
+        .unwrap_or_else(|_| "gemini-embedding-001".to_string())
+}
+
+fn gemini_model(app: &tauri::AppHandle, config_key: &str, env_name: &str, fallback: &str) -> String {
+    // Tenta config.json primeiro (configurado pelo usuário na UI)
+    let config = load_config(app);
+    if let Some(model) = config.get(config_key) {
+        if !model.trim().is_empty() {
+            return model.clone();
+        }
+    }
+
+    // Fallback para .env (desenvolvimento)
     env::var(env_name).unwrap_or_else(|_| fallback.to_string())
 }
 
@@ -203,8 +288,8 @@ async fn generate_embedding(app: tauri::AppHandle, text: String) -> Result<Vec<f
     }
 
     load_dotenv(&app);
-    let api_key = gemini_api_key()?;
-    let model = gemini_model("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001");
+    let api_key = gemini_api_key(&app)?;
+    let model = gemini_embedding_model();
     let client = reqwest::Client::new();
     let url = format!(
         "https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent?key={api_key}"
@@ -257,8 +342,8 @@ async fn generate_embedding(app: tauri::AppHandle, text: String) -> Result<Vec<f
 
 async fn generate_text(app: tauri::AppHandle, prompt: String, empty_message: &str) -> Result<String, String> {
     load_dotenv(&app);
-    let api_key = gemini_api_key()?;
-    let model = gemini_model("GEMINI_LLM_MODEL", "gemini-2.5-flash-lite");
+    let api_key = gemini_api_key(&app)?;
+    let model = gemini_model(&app, "ai_model", "GEMINI_LLM_MODEL", "gemini-2.5-flash-lite");
     let client = reqwest::Client::new();
     let url = format!(
         "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
@@ -563,7 +648,10 @@ pub fn run() {
             save_cached_embedding,
             generate_embedding,
             summarize_notes,
-            generate_answer
+            generate_answer,
+            get_config,
+            set_config,
+            remove_config
         ])
         .run(tauri::generate_context!())
         .expect("erro ao executar o aplicativo Tauri");

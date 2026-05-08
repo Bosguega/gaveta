@@ -4,6 +4,7 @@ import ChatPanel from '../components/ChatPanel.vue';
 import NoteForm from '../components/NoteForm.vue';
 import ResultsList from '../components/ResultsList.vue';
 import SearchBox from '../components/SearchBox.vue';
+import SettingsView from '../views/SettingsView.vue';
 import { deleteNote, deleteAllNotes, listNotes, saveNote, updateNote } from '../services/databaseService';
 import { getEmbedding } from '../services/embeddingService';
 import { generateAnswer, summarizeResults } from '../services/llmService';
@@ -215,6 +216,12 @@ const topKeywords = computed(() => {
         >
           Insights
         </button>
+        <button
+          :class="{ active: notesStore.activeView === 'settings' }"
+          @click="notesStore.activeView = 'settings'"
+        >
+          ⚙️ Config
+        </button>
       </nav>
     </header>
 
@@ -258,6 +265,11 @@ const topKeywords = computed(() => {
         <p v-if="topKeywords.length">Palavras-chave mais usadas: {{ topKeywords.join(', ') }}</p>
         <button type="button" class="secondary" @click="clearAllNotes" style="margin-top: 20px;">Excluir Todas as Notas</button>
       </section>
+    </div>
+
+    <!-- TELA: CONFIGURAÇÕES -->
+    <div v-if="notesStore.activeView === 'settings'" class="view-container">
+      <SettingsView />
     </div>
 
     <!-- Modal de Confirmação -->

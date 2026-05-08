@@ -52,7 +52,7 @@ export const notesStore = reactive({
   loading: false,
   loadingMessage: '',
   error: '',
-  activeView: 'search' as 'search' | 'add' | 'chat' | 'insights',
+  activeView: 'search' as 'search' | 'add' | 'chat' | 'insights' | 'settings',
   confirmModal: {
     show: false,
     message: '',

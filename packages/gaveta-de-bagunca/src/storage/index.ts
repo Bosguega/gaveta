@@ -1,4 +1,6 @@
 export {
+    setConfigStore,
+    getConfigStore,
     isPersistenceEnabled,
     setPersistenceEnabled,
     getApiKey,
@@ -7,7 +9,8 @@ export {
     getApiModel,
     setApiModel,
     detectProvider,
-    hasApiKey
+    hasApiKey,
+    browserStore,
 } from './aiConfig'
 
-export type { Provider } from './aiConfig'
+export type { ConfigStore, KeyValueStore, Provider } from './types'
