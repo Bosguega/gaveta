@@ -1,0 +1,59 @@
+name: Code Audit
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'  # Toda segunda-feira à meia-noite
+  workflow_dispatch:
+
+jobs:
+  audit:
+    name: Code Quality Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Type Check
+        run: npm run typecheck
+        continue-on-error: true
+
+      - name: Run Lint
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Run Tests
+        run: npm run test:run
+        continue-on-error: true
+
+      - name: Build Production
+        run: npm run build
+        continue-on-error: true
+
+      - name: Analyze Bundle
+        run: npm run analyze
+        continue-on-error: true
+
+      - name: Generate Coverage Report
+        run: npm run test:run -- --coverage
+        continue-on-error: true
+        env:
+          CI: true
+
+      - name: Upload Audit Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-report
+          path: |
+            dist/
+            coverage/
+            *.json

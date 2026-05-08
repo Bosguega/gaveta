@@ -1,0 +1,16 @@
+{
+    "folders": [
+        {
+            "name": "core",
+            "path": "packages/gaveta-de-bagunca"
+        },
+        {
+            "name": "my-mercado",
+            "path": "apps/my_mercado"
+        }
+    ],
+    "settings": {
+        "typescript.enablePromptUseWorkspaceTsdk": true,
+        "typescript.tsdk": "packages/gaveta-de-bagunca/node_modules/typescript/lib"
+    }
+}

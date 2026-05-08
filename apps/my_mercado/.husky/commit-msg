@@ -1,0 +1,16 @@
+# Validate commit message format
+commit_msg=$(cat "$1")
+if ! echo "$commit_msg" | grep -qE "^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?: .+"; then
+  echo "❌ Commit message format invalid!"
+  echo ""
+  echo "Expected format: <type>(<scope>): <description>"
+  echo ""
+  echo "Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+  echo ""
+  echo "Examples:"
+  echo "  feat(scanner): add QR code upload support"
+  echo "  fix(history): resolve pagination bug"
+  echo "  docs(readme): update installation instructions"
+  echo ""
+  exit 1
+fi

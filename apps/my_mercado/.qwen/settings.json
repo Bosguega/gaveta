@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npm install)",
+      "Bash(del *)",
+      "Bash(select-object *)",
+      "Bash(mkdir *)",
+      "Bash(rm *)",
+      "Bash(rmdir *)",
+      "Bash(move *)",
+      "Bash(dir *)",
+      "Bash(npm uninstall *)"
+    ]
+  },
+  "$version": 3
+}

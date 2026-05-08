@@ -1,0 +1,32 @@
+{
+  "worktrees": {
+    "wt-1776375808734-1": {
+      "branch": "tender-step",
+      "path": "c:\\Trabalhos\\my_mercado\\.kilo\\worktrees\\tender-step",
+      "parentBranch": "main",
+      "createdAt": "2026-04-16T21:43:28.734Z",
+      "remote": "origin"
+    },
+    "wt-1776376168217-2": {
+      "branch": "careful-cheek",
+      "path": "c:\\Trabalhos\\my_mercado\\.kilo\\worktrees\\careful-cheek",
+      "parentBranch": "main",
+      "createdAt": "2026-04-16T21:49:28.217Z",
+      "remote": "origin"
+    }
+  },
+  "sessions": {
+    "ses_267c03bd9ffevBQ9sH2SZOcicN": {
+      "worktreeId": "wt-1776375808734-1",
+      "createdAt": "2026-04-16T21:43:29.635Z"
+    },
+    "ses_267babfacffe8MYjBx7RdCx7Av": {
+      "worktreeId": "wt-1776376168217-2",
+      "createdAt": "2026-04-16T21:49:29.118Z"
+    }
+  },
+  "worktreeOrder": [
+    "wt-1776375808734-1",
+    "wt-1776376168217-2"
+  ]
+}
