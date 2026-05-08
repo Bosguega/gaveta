@@ -1,0 +1,25 @@
+{
+  "worktrees": {
+    "wt-1778107207103-1": {
+      "branch": "worried-feeling",
+      "path": "c:\\Trabalhos\\memoria_auxiliar\\.kilo\\worktrees\\worried-feeling",
+      "parentBranch": "main",
+      "createdAt": "2026-05-06T22:40:07.103Z",
+      "remote": "origin"
+    }
+  },
+  "sessions": {
+    "ses_2008d30f3ffeFCVgWhCP3ilAcz": {
+      "worktreeId": "wt-1778107207103-1",
+      "createdAt": "2026-05-06T22:40:07.449Z"
+    }
+  },
+  "tabOrder": {
+    "local": [
+      "pending:1"
+    ]
+  },
+  "worktreeOrder": [
+    "wt-1778107207103-1"
+  ]
+}

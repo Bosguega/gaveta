@@ -1,0 +1,16 @@
+{
+    "folders": [
+        {
+            "name": "core",
+            "path": "packages/gaveta-de-bagunca"
+        },
+        {
+            "name": "memoria-auxiliar",
+            "path": "apps/memoria-auxiliar"
+        }
+    ],
+    "settings": {
+        "typescript.enablePromptUseWorkspaceTsdk": true,
+        "typescript.tsdk": "packages/gaveta-de-bagunca/node_modules/typescript/lib"
+    }
+}

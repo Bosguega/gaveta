@@ -1,0 +1,17 @@
+{
+    "name": "app-teste",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "tsc && vite build"
+    },
+    "dependencies": {
+        "@bosguega/gaveta-de-bagunca": "workspace:*"
+    },
+    "devDependencies": {
+        "typescript": "^5.7.0",
+        "vite": "^6.0.0"
+    }
+}
