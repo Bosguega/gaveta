@@ -3,5 +3,10 @@
     "private": true,
     "scripts": {
         "dev": "pnpm --filter @bosguega/gaveta-de-bagunca build && pnpm --filter app-teste dev"
+    },
+    "pnpm": {
+        "onlyBuiltDependencies": [
+            "esbuild"
+        ]
     }
 }
