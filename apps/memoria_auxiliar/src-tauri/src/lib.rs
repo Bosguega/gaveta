@@ -54,6 +54,96 @@ struct GeminiPart {
     text: Option<String>,
 }
 
+#[derive(Serialize)]
+struct ApiError {
+    code: String,
+    message: String,
+    status_code: Option<u16>,
+}
+
+fn api_error(code: &str, message: &str, status_code: Option<u16>) -> ApiError {
+    ApiError {
+        code: code.to_string(),
+        message: message.to_string(),
+        status_code,
+    }
+}
+
+fn parse_gemini_error(status: u16, body: &str) -> ApiError {
+    // Tenta extrair mensagem do corpo da resposta
+    let api_message = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|v| {
+            v.get("error")
+                .and_then(|e| e.get("message"))
+                .and_then(|m| m.as_str())
+                .map(|s| s.to_string())
+        });
+
+    let has_api_key_hint = api_message
+        .as_deref()
+        .map(|m| m.contains("API_KEY"))
+        .unwrap_or(false);
+
+    match (status, has_api_key_hint) {
+        (403, _) | (_, true) => api_error(
+            "INVALID_API_KEY",
+            "A chave de API informada não é válida. Gere uma nova em https://aistudio.google.com/apikey",
+            Some(status),
+        ),
+        429 => api_error(
+            "RATE_LIMIT_EXCEEDED",
+            "Muitas requisições em pouco tempo. Aguarde alguns segundos e tente novamente.",
+            Some(status),
+        ),
+        503 => api_error(
+            "SERVICE_UNAVAILABLE",
+            "O serviço de IA está temporariamente fora do ar. Tente novamente mais tarde.",
+            Some(status),
+        ),
+        0 | 504 => api_error(
+            "TIMEOUT",
+            "O servidor demorou muito para responder. Verifique sua conexão e tente novamente.",
+            Some(status),
+        ),
+        _ if status >= 500 => api_error(
+            "SERVER_ERROR",
+            "Ocorreu um erro interno no servidor de IA. Tente novamente em alguns minutos.",
+            Some(status),
+        ),
+        _ => {
+            let detail = api_message.unwrap_or_default();
+            api_error(
+                "UNKNOWN_ERROR",
+                &format!("Erro inesperado da API (HTTP {}): {}", status, detail),
+                Some(status),
+            )
+        }
+    }
+}
+
+fn reqwest_error_to_api_error(err: &reqwest::Error) -> ApiError {
+    if err.is_timeout() {
+        api_error(
+            "TIMEOUT",
+            "O servidor demorou muito para responder. Verifique sua conexão e tente novamente.",
+            None,
+        )
+    } else if err.is_connect() {
+        api_error(
+            "NETWORK_ERROR",
+            "Não foi possível conectar ao servidor. Verifique sua conexão de internet.",
+            None,
+        )
+    } else {
+        api_error(
+            "NETWORK_ERROR",
+            &format!("Falha de rede: {}", err),
+            None,
+        )
+    }
+}
+
 const CONFIG_FILE: &str = "memoria_auxiliar_config.json";
 
 fn config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -219,10 +309,10 @@ fn sanitize_prompt_input(text: &str, max_length: usize) -> String {
     }
 }
 
-async fn retry_with_backoff<F, Fut, T>(mut attempt: F, max_retries: u32) -> Result<T, String>
+async fn retry_with_backoff<F, Fut, T>(mut attempt: F, max_retries: u32) -> Result<T, ApiError>
 where
     F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = Result<T, String>>,
+    Fut: std::future::Future<Output = Result<T, ApiError>>,
 {
     let mut delay = Duration::from_millis(500);
     for attempt_num in 0..=max_retries {
@@ -281,14 +371,23 @@ fn open_database(app: &tauri::AppHandle) -> Result<Connection, String> {
 }
 
 #[tauri::command]
-async fn generate_embedding(app: tauri::AppHandle, text: String) -> Result<Vec<f64>, String> {
+async fn generate_embedding(app: tauri::AppHandle, text: String) -> Result<Vec<f64>, ApiError> {
     let normalized = text.trim();
     if normalized.is_empty() {
-        return Err("Texto vazio nao pode gerar embedding.".to_string());
+        return Err(api_error(
+            "INVALID_RESPONSE",
+            "Texto vazio não pode gerar embedding.",
+            None,
+        ));
     }
 
     load_dotenv(&app);
-    let api_key = gemini_api_key(&app)?;
+    let api_key = match gemini_api_key(&app) {
+        Ok(key) => key,
+        Err(msg) => {
+            return Err(api_error("INVALID_API_KEY", &msg, None));
+        }
+    };
     let model = gemini_embedding_model();
     let client = reqwest::Client::new();
     let url = format!(
@@ -307,21 +406,24 @@ async fn generate_embedding(app: tauri::AppHandle, text: String) -> Result<Vec<f
                 }))
                 .send()
                 .await
-                .map_err(|error| format!("Falha ao chamar Gemini Embedding: {error}"))?;
+                .map_err(|error| reqwest_error_to_api_error(&error))?;
 
             if !response.status().is_success() {
-                let status = response.status();
+                let status = response.status().as_u16();
                 let details = response.text().await.unwrap_or_default();
-                return Err(format!(
-                    "Falha ao gerar embedding: {status} {}",
-                    compact_error_details(details)
-                ));
+                return Err(parse_gemini_error(status, &details));
             }
 
             let data = response
                 .json::<GeminiEmbeddingResponse>()
                 .await
-                .map_err(|error| format!("Resposta de embedding invalida: {error}"))?;
+                .map_err(|error| {
+                    api_error(
+                        "INVALID_RESPONSE",
+                        &format!("Resposta de embedding inválida: {}", error),
+                        None,
+                    )
+                })?;
 
             let embedding = data
                 .embedding
@@ -332,7 +434,13 @@ async fn generate_embedding(app: tauri::AppHandle, text: String) -> Result<Vec<f
                         .and_then(|embedding| embedding.values)
                 })
                 .filter(|values| !values.is_empty())
-                .ok_or_else(|| "A API nao retornou um embedding valido.".to_string())?;
+                .ok_or_else(|| {
+                    api_error(
+                        "INVALID_RESPONSE",
+                        "A API não retornou um embedding válido.",
+                        None,
+                    )
+                })?;
 
             Ok(embedding)
         },
@@ -340,9 +448,12 @@ async fn generate_embedding(app: tauri::AppHandle, text: String) -> Result<Vec<f
     ).await
 }
 
-async fn generate_text(app: tauri::AppHandle, prompt: String, empty_message: &str) -> Result<String, String> {
+async fn generate_text(app: tauri::AppHandle, prompt: String, empty_message: &str) -> Result<String, ApiError> {
     load_dotenv(&app);
-    let api_key = gemini_api_key(&app)?;
+    let api_key = match gemini_api_key(&app) {
+        Ok(key) => key,
+        Err(msg) => return Err(api_error("INVALID_API_KEY", &msg, None)),
+    };
     let model = gemini_model(&app, "ai_model", "GEMINI_LLM_MODEL", "gemini-2.5-flash-lite");
     let client = reqwest::Client::new();
     let url = format!(
@@ -360,21 +471,24 @@ async fn generate_text(app: tauri::AppHandle, prompt: String, empty_message: &st
                 }))
                 .send()
                 .await
-                .map_err(|error| format!("Falha ao chamar Gemini: {error}"))?;
+                .map_err(|error| reqwest_error_to_api_error(&error))?;
 
             if !response.status().is_success() {
-                let status = response.status();
+                let status = response.status().as_u16();
                 let details = response.text().await.unwrap_or_default();
-                return Err(format!(
-                    "Falha ao gerar texto: {status} {}",
-                    compact_error_details(details)
-                ));
+                return Err(parse_gemini_error(status, &details));
             }
 
             let data = response
                 .json::<GeminiGenerateResponse>()
                 .await
-                .map_err(|error| format!("Resposta de texto invalida: {error}"))?;
+                .map_err(|error| {
+                    api_error(
+                        "INVALID_RESPONSE",
+                        &format!("Resposta de texto inválida: {}", error),
+                        None,
+                    )
+                })?;
 
             let text = data
                 .candidates
@@ -389,7 +503,7 @@ async fn generate_text(app: tauri::AppHandle, prompt: String, empty_message: &st
                 .to_string();
 
             if text.is_empty() {
-                Err(empty_message.to_string())
+                Err(api_error("INVALID_RESPONSE", empty_message, None))
             } else {
                 Ok(text)
             }
@@ -399,9 +513,13 @@ async fn generate_text(app: tauri::AppHandle, prompt: String, empty_message: &st
 }
 
 #[tauri::command]
-async fn summarize_notes(app: tauri::AppHandle, notes: Vec<String>) -> Result<String, String> {
+async fn summarize_notes(app: tauri::AppHandle, notes: Vec<String>) -> Result<String, ApiError> {
     if notes.is_empty() {
-        return Err("Nao ha resultados para resumir.".to_string());
+        return Err(api_error(
+            "INVALID_RESPONSE",
+            "Não há resultados para resumir.",
+            None,
+        ));
     }
 
     const MAX_NOTE_LENGTH: usize = 5000;
@@ -417,7 +535,7 @@ async fn summarize_notes(app: tauri::AppHandle, notes: Vec<String>) -> Result<St
         "Resuma ou organize as informacoes abaixo de forma clara. Use apenas os dados fornecidos.\n\n{notes}"
     );
 
-    generate_text(app, prompt, "A API nao retornou resumo.").await
+    generate_text(app, prompt, "A API não retornou resumo.").await
 }
 
 #[tauri::command]
@@ -425,9 +543,13 @@ async fn generate_answer(
     app: tauri::AppHandle,
     question: String,
     context_notes: Vec<String>,
-) -> Result<GenerateAnswerResponse, String> {
+) -> Result<GenerateAnswerResponse, ApiError> {
     if question.trim().is_empty() {
-        return Err("Pergunta vazia nao pode gerar resposta.".to_string());
+        return Err(api_error(
+            "INVALID_RESPONSE",
+            "Pergunta vazia não pode gerar resposta.",
+            None,
+        ));
     }
 
     const MAX_QUESTION_LENGTH: usize = 2000;

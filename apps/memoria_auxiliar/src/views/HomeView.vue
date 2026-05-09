@@ -9,6 +9,7 @@ import { deleteNote, deleteAllNotes, listNotes, saveNote, updateNote } from '../
 import { getEmbedding } from '../services/embeddingService';
 import { generateAnswer, summarizeResults } from '../services/llmService';
 import { searchBySimilarity } from '../services/similarityService';
+import type { ApiErrorLike } from '@bosguega/gaveta-de-bagunca';
 import { notesStore, updateStreak } from '../store/notesStore';
 import type { Note } from '../types';
 
@@ -128,12 +129,19 @@ async function askAI(question: string) {
 async function runAction(action: () => Promise<void>, message = 'Processando...') {
   notesStore.loading = true;
   notesStore.loadingMessage = message;
-  notesStore.error = '';
+  notesStore.error = null;
 
   try {
     await action();
   } catch (error) {
-    notesStore.error = error instanceof Error ? error.message : 'Erro inesperado.';
+    // Erros do Tauri vêm como objeto com code, message, status_code
+    if (typeof error === 'object' && error !== null && 'code' in error && 'message' in error) {
+      notesStore.error = error as ApiErrorLike;
+    } else if (error instanceof Error) {
+      notesStore.error = { code: 'UNKNOWN_ERROR' as const, message: error.message };
+    } else {
+      notesStore.error = { code: 'UNKNOWN_ERROR' as const, message: 'Erro inesperado.' };
+    }
   } finally {
     notesStore.loading = false;
     notesStore.loadingMessage = '';
@@ -230,7 +238,25 @@ const topKeywords = computed(() => {
       <span>{{ notesStore.loadingMessage || 'Processando...' }}</span>
     </div>
     
-    <div v-if="notesStore.error" class="error-banner">{{ notesStore.error }}</div>
+    <div v-if="notesStore.error" :class="['error-banner', `error-${(notesStore.error.code || 'unknown').toLowerCase()}`]">
+      <div class="error-content">
+        <span class="error-icon">
+          {{ notesStore.error.code === 'INVALID_API_KEY' ? '🔑' : 
+             notesStore.error.code === 'RATE_LIMIT_EXCEEDED' ? '⏳' : 
+             notesStore.error.code === 'NETWORK_ERROR' || notesStore.error.code === 'TIMEOUT' ? '🌐' : 
+             notesStore.error.code === 'SERVICE_UNAVAILABLE' || notesStore.error.code === 'SERVER_ERROR' ? '🔧' : 
+             '⚠️' }}
+        </span>
+        <p>{{ notesStore.error.message }}</p>
+      </div>
+      <button
+        v-if="notesStore.error.code === 'INVALID_API_KEY'"
+        class="error-action"
+        @click="notesStore.activeView = 'settings'"
+      >
+        Ir para Configurações
+      </button>
+    </div>
 
     <!-- TELA: PESQUISAR -->
     <div v-if="notesStore.activeView === 'search'" class="view-container">
@@ -285,3 +311,51 @@ const topKeywords = computed(() => {
     </div>
   </main>
 </template>
+
+<style scoped>
+.error-banner {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.error-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.error-icon {
+  font-size: 1.2rem;
+}
+
+.error-content p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #ef4444;
+}
+
+.error-action {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  padding: 6px 14px;
+  color: #ef4444;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.error-action:hover {
+  background: rgba(239, 68, 68, 0.15);
+}
+</style>

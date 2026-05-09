@@ -1,4 +1,5 @@
 import { reactive } from 'vue';
+import type { ApiErrorLike } from '@bosguega/gaveta-de-bagunca';
 import type { ChatMessage, Note, SearchResult, Stats } from '../types';
 
 function getTodayString() {
@@ -51,7 +52,7 @@ export const notesStore = reactive({
   summary: '',
   loading: false,
   loadingMessage: '',
-  error: '',
+  error: null as ApiErrorLike | null,
   activeView: 'search' as 'search' | 'add' | 'chat' | 'insights' | 'settings',
   confirmModal: {
     show: false,
