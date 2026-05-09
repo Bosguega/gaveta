@@ -47,6 +47,7 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs: quality
+    environment: github-pages
     
     steps:
       - name: Checkout code
