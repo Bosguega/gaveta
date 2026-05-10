@@ -60,6 +60,9 @@ importers:
       '@bosguega/ai-core':
         specifier: workspace:*
         version: link:../../packages/ai-core
+      '@bosguega/supabase':
+        specifier: workspace:*
+        version: link:../../packages/supabase
       '@supabase/supabase-js':
         specifier: ^2.99.3
         version: 2.105.3

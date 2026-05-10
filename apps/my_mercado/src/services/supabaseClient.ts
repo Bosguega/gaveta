@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createSupabaseClient } from '@bosguega/supabase';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -15,7 +15,7 @@ if (!isConfigured) {
 export const supabase = (() => {
   if (!isConfigured) return null;
   try {
-    return createClient(supabaseUrl, supabaseAnonKey);
+    return createSupabaseClient({ url: supabaseUrl, anonKey: supabaseAnonKey });
   } catch (err) {
     console.warn(
       '⚠️ Erro ao inicializar Supabase client. Verifique VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.',
