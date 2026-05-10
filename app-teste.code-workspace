@@ -2,7 +2,7 @@
     "folders": [
         {
             "name": "core",
-            "path": "packages/gaveta-de-bagunca"
+            "path": "packages/ai-core"
         },
         {
             "name": "app-teste",
@@ -11,6 +11,6 @@
     ],
     "settings": {
         "typescript.enablePromptUseWorkspaceTsdk": true,
-        "typescript.tsdk": "packages/gaveta-de-bagunca/node_modules/typescript/lib"
+        "typescript.tsdk": "packages/ai-core/node_modules/typescript/lib"
     }
 }

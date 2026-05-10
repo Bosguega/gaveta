@@ -9,7 +9,7 @@ import { deleteNote, deleteAllNotes, listNotes, saveNote, updateNote } from '../
 import { getEmbedding } from '../services/embeddingService';
 import { generateAnswer, summarizeResults } from '../services/llmService';
 import { searchBySimilarity } from '../services/similarityService';
-import type { ApiErrorLike } from '@bosguega/gaveta-de-bagunca';
+import type { ApiErrorLike } from '@bosguega/ai-core';
 import { notesStore, updateStreak } from '../store/notesStore';
 import type { Note } from '../types';
 

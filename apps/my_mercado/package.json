@@ -23,7 +23,7 @@
     "prepare": ""
   },
   "dependencies": {
-    "@bosguega/gaveta-de-bagunca": "workspace:*",
+    "@bosguega/ai-core": "workspace:*",
     "@supabase/supabase-js": "^2.99.3",
     "@tanstack/react-query": "^5.95.2",
     "currency.js": "^2.0.4",

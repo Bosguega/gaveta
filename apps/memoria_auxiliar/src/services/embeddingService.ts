@@ -1,4 +1,4 @@
-import { sha256 } from '@bosguega/gaveta-de-bagunca';
+import { sha256 } from '@bosguega/ai-core';
 import { invoke } from '@tauri-apps/api/core';
 import { getCachedEmbedding, saveCachedEmbedding } from './databaseService';
 

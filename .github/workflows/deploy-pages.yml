@@ -36,8 +36,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build shared package (gaveta-de-bagunca)
-        run: pnpm --filter @bosguega/gaveta-de-bagunca build
+      - name: Build shared package (ai-core)
+        run: pnpm --filter @bosguega/ai-core build
 
       - name: Build app (my_mercado)
         run: pnpm --filter my_mercado build

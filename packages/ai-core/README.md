@@ -1,8 +1,8 @@
-# 🧠 ai-core
+# 🧰 Gaveta de Bagunça
 
-> **Infraestrutura compartilhada de IA para seus apps.**
+> **Compartilhe lógica entre apps sem reinventar a roda.**
 
-Um monorepo que centraliza funcionalidades reutilizáveis de IA (Gemini, embeddings, storage) e utilitários — para não reescrever a mesma coisa em cada projeto novo.
+Um monorepo que centraliza infraestrutura reutilizável — começando com integração com IA (Gemini) — para evitar reescrever a mesma coisa em cada projeto novo.
 
 ---
 
@@ -19,9 +19,9 @@ gaveta/
 │   └── memoria-auxiliar.code-workspace
 │
 ├── packages/
-│   └── ai-core/                    ← @bosguega/ai-core (core)
+│   └── gaveta-de-bagunca/          ← @bosguega/gaveta-de-bagunca (core)
 │       ├── src/
-│       │   ├── index.ts            ← exporta gemini/ + storage/ + hash/ + similarity/
+│       │   ├── index.ts            ← exporta gemini/ + storage/ + similarity/ + hash/
 │       │   │
 │       │   ├── gemini/             ← integração com Google Gemini
 │       │   │   ├── generateText.ts  ← chamada fetch à API
@@ -31,18 +31,16 @@ gaveta/
 │       │   │   ├── errors.ts        ← AiApiError + mensagens amigáveis
 │       │   │   └── index.ts         ← barrel
 │       │   │
-│       │   ├── hash/               ← utilitários de hash
-│       │   │   ├── sha256.ts        ← sha256 para cache de embeddings
+│       │   ├── storage/            ← gerenciamento de chave/modelo
+│       │   │   ├── aiConfig.ts      ← getApiKey, detectProvider, etc.
 │       │   │   └── index.ts         ← barrel
 │       │   │
-│       │   ├── similarity/         ← busca por similaridade vetorial
-│       │   │   ├── cosineSimilarity.ts ← similaridade entre vetores
+│       │   ├── similarity/         ← busca vetorial por similaridade
+│       │   │   ├── cosineSimilarity.ts ← cosineSimilarity, parseEmbedding, searchBySimilarity
 │       │   │   └── index.ts         ← barrel
 │       │   │
-│       │   └── storage/            ← gerenciamento de chave/modelo
-│       │       ├── aiConfig.ts      ← getApiKey, detectProvider, etc.
-│       │       ├── browserStore.ts  ← implementação browser (localStorage/sessionStorage)
-│       │       ├── types.ts         ← tipos do storage
+│       │   └── hash/               ← utilitários de hash
+│       │       ├── sha256.ts        ← sha256 (Web Crypto API)
 │       │       └── index.ts         ← barrel
 │       │
 │       ├── tsconfig.json
@@ -92,7 +90,7 @@ Acesse `http://localhost:XXXX` — o app testa as funções do core e mostra o r
 
 ---
 
-## 📚 API — `@bosguega/ai-core`
+## 📚 API — `@bosguega/gaveta-de-bagunca`
 
 ### Gemini
 
@@ -101,7 +99,7 @@ Acesse `http://localhost:XXXX` — o app testa as funções do core e mostra o r
 Envia um prompt para o Gemini e retorna o texto gerado.
 
 ```ts
-import { generateText } from '@bosguega/ai-core'
+import { generateText } from '@bosguega/gaveta-de-bagunca'
 
 const result = await generateText(
   'Resuma o que é TypeScript em uma frase.',
@@ -127,7 +125,7 @@ console.log(result.text)
 Lista os modelos disponíveis que suportam `generateContent`.
 
 ```ts
-import { listModels } from '@bosguega/ai-core'
+import { listModels } from '@bosguega/gaveta-de-bagunca'
 
 const models = await listModels('AIza...')
 // [{ id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' }, ...]
@@ -138,7 +136,7 @@ const models = await listModels('AIza...')
 Testa se a API key + modelo funcionam enviando um prompt mínimo.
 
 ```ts
-import { testConnection } from '@bosguega/ai-core'
+import { testConnection } from '@bosguega/gaveta-de-bagunca'
 
 const result = await testConnection('AIza...', 'gemini-2.0-flash')
 // { success: true } ou { success: false, error: '...' }
@@ -149,7 +147,7 @@ const result = await testConnection('AIza...', 'gemini-2.0-flash')
 Analisa o erro HTTP retornado pela API e retorna um `AiApiError` com mensagem amigável.
 
 ```ts
-import { parseGeminiError } from '@bosguega/ai-core'
+import { parseGeminiError } from '@bosguega/gaveta-de-bagunca'
 
 const err = parseGeminiError(403, '{"error":{"message":"API_KEY_INVALID"}}')
 // AiApiError { message: 'A chave de API informada não é válida...', code: 'INVALID_API_KEY' }
@@ -160,7 +158,7 @@ const err = parseGeminiError(403, '{"error":{"message":"API_KEY_INVALID"}}')
 Todas as funções que chamam a API disparam `AiApiError`. Você pode capturar e identificar o tipo de erro:
 
 ```ts
-import { generateText, AiApiError } from '@bosguega/ai-core'
+import { generateText, AiApiError } from '@bosguega/gaveta-de-bagunca'
 
 try {
   await generateText('...', 'AIza...', 'gemini-2.0-flash')
@@ -201,7 +199,7 @@ import {
   getApiModel, setApiModel,
   detectProvider,
   isPersistenceEnabled, setPersistenceEnabled
-} from '@bosguega/ai-core'
+} from '@bosguega/gaveta-de-bagunca'
 ```
 
 #### `getApiKey()` / `setApiKey(key)` / `clearApiKey()`
@@ -253,36 +251,84 @@ setPersistenceEnabled(true)   // chave fica salva mesmo fechando o navegador
 setPersistenceEnabled(false)  // chave some ao fechar a aba
 ```
 
-### Hash
+### Similarity
 
-#### `sha256(input: string): Promise<string>`
-
-Calcula o hash SHA-256 de uma string usando a Web Crypto API.
+Funções para busca vetorial por similaridade de cosseno. Úteis para sistemas de busca semântica e RAG (Retrieval-Augmented Generation).
 
 ```ts
-import { sha256 } from '@bosguega/ai-core'
-
-const hash = await sha256('hello world')
-// "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+import {
+  cosineSimilarity,
+  parseEmbedding,
+  searchBySimilarity
+} from '@bosguega/gaveta-de-bagunca'
 ```
 
-### Similaridade
+#### `cosineSimilarity(a, b)`
 
-Funções para busca por similaridade vetorial.
+Calcula a similaridade do cosseno entre dois vetores numéricos. Retorna um valor entre `-1` (opostos) e `1` (idênticos).
 
 ```ts
-import { cosineSimilarity, searchBySimilarity } from '@bosguega/ai-core'
+cosineSimilarity([1, 0], [1, 0])  // 1 (idênticos)
+cosineSimilarity([1, 0], [-1, 0]) // -1 (opostos)
+cosineSimilarity([1, 0], [0, 1])  // 0 (ortogonais)
+cosineSimilarity([], [])          // 0 (vetores vazios)
+```
 
-// Similaridade entre dois vetores (0 a 1)
-const similarity = cosineSimilarity([1, 0, 0], [0.8, 0.1, 0.1])
+#### `parseEmbedding(value)`
 
-// Busca os itens mais similares a um vetor de consulta
-const results = searchBySimilarity(items, queryEmbedding, 5, 0.5)
+Faz o parsing seguro de uma string JSON para `number[]`. Retorna `null` se o valor não for um array de números válido.
+
+```ts
+parseEmbedding('[1, 2, 3]')   // [1, 2, 3]
+parseEmbedding('invalido')    // null
+```
+
+#### `searchBySimilarity(notes, queryEmbedding, limit?, baseThreshold?, queryLength?)`
+
+Busca notas por similaridade vetorial com threshold dinâmico.
+
+- `notes` — array de objetos com `{ id, content, embedding, created_at }`
+- `queryEmbedding` — vetor de embedding da consulta
+- `limit` — máximo de resultados (padrão: `5`)
+- `baseThreshold` — similaridade mínima (padrão: `0.5`)
+- `queryLength` — usado para reduzir o threshold em consultas longas
+
+O threshold é ajustado dinamicamente: consultas mais longas têm um limiar mais baixo para permitir mais resultados.
+
+```ts
+const results = searchBySimilarity(
+  notes,
+  queryEmbedding,
+  5,     // limit
+  0.5,   // base threshold
+  10,    // query length
+)
+
+// results: [{ note: { id, content, embedding, created_at }, score: 0.85 }, ...]
+```
+
+### Hash
+
+Utilitários de hash usando a Web Crypto API.
+
+```ts
+import { sha256 } from '@bosguega/gaveta-de-bagunca'
+```
+
+#### `sha256(text)`
+
+Gera o hash SHA-256 de um texto. Funciona em browsers e ambientes que implementam `crypto.subtle`.
+
+```ts
+const hash = await sha256('Hello, World!')
+// "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
 ```
 
 ---
 
 ## 🏗️ Filosofia
+
+Esse projeto é uma **gaveta de bagunça útil**.
 
 - **Nada de overengineering.** Cada função só existe porque tem uso real.
 - **Evolução incremental.** Começamos com Gemini puro. OpenAI, Claude, etc. entram quando houver demanda.
@@ -297,6 +343,7 @@ const results = searchBySimilarity(items, queryEmbedding, 5, 0.5)
 | App | Descrição |
 |-----|-----------|
 | `app-teste` | Interface simples que testa as funções do core (input de API key, listar modelos, enviar prompt) |
+| `memoria-auxiliar` | App Tauri + Vue que usa busca vetorial e hash do core para um sistema de memória auxiliar com IA |
 
 ---
 
@@ -304,7 +351,7 @@ const results = searchBySimilarity(items, queryEmbedding, 5, 0.5)
 
 Na raiz do projeto existem arquivos `.code-workspace` que funcionam como atalhos para abrir **apenas as pastas necessárias** no Antigravity / VS Code, sem carregar o monorepo inteiro.
 
-Cada workspace inclui o **core** (`packages/ai-core`) + **um app específico**.
+Cada workspace inclui o **core** (`packages/gaveta-de-bagunca`) + **um app específico**.
 
 ### Como usar
 
@@ -331,7 +378,7 @@ Para criar um workspace novo, copie um existente e troque o nome da pasta em `fo
 mkdir apps/meu-app
 cd apps/meu-app
 pnpm init
-pnpm add @bosguega/ai-core
+pnpm add @bosguega/gaveta-de-bagunca
 ```
 
 O `pnpm-workspace.yaml` já inclui `apps/*`.
@@ -345,7 +392,7 @@ pnpm install
 ### Build do core
 
 ```bash
-pnpm --filter @bosguega/ai-core build
+pnpm --filter @bosguega/gaveta-de-bagunca build
 ```
 
 ### Script principal

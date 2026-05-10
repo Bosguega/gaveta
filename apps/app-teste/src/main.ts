@@ -1,4 +1,4 @@
-import { generateText, listModels, testConnection, AiApiError } from '@bosguega/gaveta-de-bagunca'
+import { generateText, listModels, testConnection, AiApiError } from '@bosguega/ai-core'
 
 // DOM refs
 const $ = (id: string) => document.getElementById(id)!

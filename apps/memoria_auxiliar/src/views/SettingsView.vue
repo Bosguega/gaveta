@@ -8,8 +8,8 @@ import {
   detectProvider,
   hasApiKey,
   listModels,
-} from '@bosguega/gaveta-de-bagunca';
-import type { ModelInfo } from '@bosguega/gaveta-de-bagunca';
+} from '@bosguega/ai-core';
+import type { ModelInfo } from '@bosguega/ai-core';
 
 const apiKey = ref('');
 const model = ref('');

@@ -2,7 +2,7 @@
     "name": "gaveta-workspace",
     "private": true,
     "scripts": {
-        "dev": "pnpm --filter @bosguega/gaveta-de-bagunca build && pnpm --filter app-teste dev"
+        "dev": "pnpm --filter @bosguega/ai-core build && pnpm --filter app-teste dev"
     },
     "pnpm": {
         "onlyBuiltDependencies": [

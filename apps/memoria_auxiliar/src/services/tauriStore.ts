@@ -1,4 +1,4 @@
-import type { ConfigStore } from '@bosguega/gaveta-de-bagunca';
+import type { ConfigStore } from '@bosguega/ai-core';
 import { invoke } from '@tauri-apps/api/core';
 
 export const tauriStore: ConfigStore = {

@@ -1,5 +1,5 @@
 import { reactive } from 'vue';
-import type { ApiErrorLike } from '@bosguega/gaveta-de-bagunca';
+import type { ApiErrorLike } from '@bosguega/ai-core';
 import type { ChatMessage, Note, SearchResult, Stats } from '../types';
 
 function getTodayString() {

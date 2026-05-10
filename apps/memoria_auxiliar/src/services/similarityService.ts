@@ -1,4 +1,4 @@
-import { cosineSimilarity, searchBySimilarity as searchBySimilarityPackage } from '@bosguega/gaveta-de-bagunca';
+import { cosineSimilarity, searchBySimilarity as searchBySimilarityPackage } from '@bosguega/ai-core';
 import type { Note, SearchResult } from '../types';
 
 export { cosineSimilarity };

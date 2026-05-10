@@ -10,9 +10,9 @@ importers:
 
   apps/app-teste:
     dependencies:
-      '@bosguega/gaveta-de-bagunca':
+      '@bosguega/ai-core':
         specifier: workspace:*
-        version: link:../../packages/gaveta-de-bagunca
+        version: link:../../packages/ai-core
     devDependencies:
       typescript:
         specifier: ^5.7.0
@@ -23,9 +23,9 @@ importers:
 
   apps/memoria_auxiliar:
     dependencies:
-      '@bosguega/gaveta-de-bagunca':
+      '@bosguega/ai-core':
         specifier: workspace:*
-        version: link:../../packages/gaveta-de-bagunca
+        version: link:../../packages/ai-core
       '@tauri-apps/api':
         specifier: ^2.0.0
         version: 2.11.0
@@ -57,9 +57,9 @@ importers:
 
   apps/my_mercado:
     dependencies:
-      '@bosguega/gaveta-de-bagunca':
+      '@bosguega/ai-core':
         specifier: workspace:*
-        version: link:../../packages/gaveta-de-bagunca
+        version: link:../../packages/ai-core
       '@supabase/supabase-js':
         specifier: ^2.99.3
         version: 2.105.3
@@ -178,6 +178,12 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@25.6.2)(@vitest/ui@3.2.4)(jiti@1.21.7)(jsdom@29.1.1)(terser@5.47.1)
+
+  packages/ai-core:
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
 
   packages/gaveta-de-bagunca:
     devDependencies:

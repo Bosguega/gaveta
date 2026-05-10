@@ -1,5 +1,5 @@
 import { createApp } from 'vue';
-import { setConfigStore } from '@bosguega/gaveta-de-bagunca';
+import { setConfigStore } from '@bosguega/ai-core';
 import { tauriStore } from './services/tauriStore';
 import App from './App.vue';
 import './styles.css';
