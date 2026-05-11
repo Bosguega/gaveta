@@ -9,18 +9,23 @@ import { useScannerStore } from '../stores/useScannerStore';
  * Hook para controle da câmera no scanner de NFC-e
  * Usa BarcodeDetector API nativa quando disponível (mais rápido e preciso),
  * com fallback para html5-qrcode em navegadores sem suporte.
+ *
+ * Fornece um videoRef que deve ser passado ao elemento <video> no JSX
+ * para exibir o stream da câmera quando o scanner nativo estiver ativo.
  */
 export function useCameraScanner() {
   const html5QrcodeRef = useRef<Html5Qrcode | null>(null);
   const torchTrackRef = useRef<MediaStreamTrack | null>(null);
 
+  // Ref compartilhada para o elemento <video> no DOM
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
   const {
-    videoRef: nativeVideoRef,
     isNativeSupported,
     startCamera: nativeStartCamera,
     stopCamera: nativeStopCamera,
     applyTorch: nativeApplyTorch,
-  } = useNativeBarcodeScanner();
+  } = useNativeBarcodeScanner(videoRef);
 
   const scanning = useScannerStore((state) => state.scanning);
   const setScanning = useScannerStore((state) => state.setScanning);
@@ -153,7 +158,7 @@ export function useCameraScanner() {
   const applyTorch = useCallback(
     async (on: boolean) => {
       // Se o scanner nativo estiver ativo, usar o applyTorch dele
-      if (isNativeSupported && nativeVideoRef.current) {
+      if (isNativeSupported && videoRef.current) {
         await nativeApplyTorch(on);
         return;
       }
@@ -202,12 +207,12 @@ export function useCameraScanner() {
         console.warn('Torch error:', err);
       }
     },
-    [setTorch, isNativeSupported, nativeVideoRef, nativeApplyTorch],
+    [setTorch, isNativeSupported, videoRef, nativeApplyTorch],
   );
 
   return {
     html5QrcodeRef,
-    nativeVideoRef,
+    videoRef,
     isNativeSupported,
     processingRef,
     scanning,

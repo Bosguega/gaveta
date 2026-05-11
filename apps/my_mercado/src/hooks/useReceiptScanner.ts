@@ -39,7 +39,7 @@ export function useReceiptScanner({
 
   const {
     html5QrcodeRef,
-    nativeVideoRef,
+    videoRef: nativeVideoRef,
     isNativeSupported,
     processingRef,
     torch,

@@ -9,9 +9,11 @@ import { useScannerStore } from '../stores/useScannerStore';
  *
  * Fallback: Se BarcodeDetector não estiver disponível, retorna isSupported=false
  * para que o componente pai possa usar html5-qrcode como alternativa.
+ *
+ * OBS: O elemento <video> deve ser renderizado no DOM pelo componente que usa este hook.
+ * O hook usará videoRef.current (já montado) para exibir o stream da câmera.
  */
-export function useNativeBarcodeScanner() {
-    const videoRef = useRef<HTMLVideoElement | null>(null);
+export function useNativeBarcodeScanner(videoRef: React.RefObject<HTMLVideoElement | null>) {
     const streamRef = useRef<MediaStream | null>(null);
     const detectorRef = useRef<BarcodeDetector | null>(null);
     const animationFrameRef = useRef<number | null>(null);
@@ -46,7 +48,15 @@ export function useNativeBarcodeScanner() {
         checkSupport();
     }, []);
 
-    const stopCamera = useCallback(() => {
+    // Cleanup na desmontagem
+    useEffect(() => {
+        return () => {
+            stopAllTracks();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    function stopAllTracks() {
         // Parar o loop de detecção
         if (animationFrameRef.current !== null) {
             cancelAnimationFrame(animationFrameRef.current);
@@ -65,23 +75,26 @@ export function useNativeBarcodeScanner() {
             streamRef.current = null;
         }
 
-        // Limpar referência do vídeo
+        // Limpar srcObject do vídeo no DOM
         if (videoRef.current) {
             videoRef.current.srcObject = null;
-            videoRef.current = null;
         }
 
         detectorRef.current = null;
+    }
+
+    const stopCamera = useCallback(() => {
+        stopAllTracks();
         setScanning(false);
         setTorch(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [setScanning, setTorch]);
 
     const detectBarcode = useCallback(async () => {
-        if (!videoRef.current || !detectorRef.current || !streamRef.current) return;
+        const video = videoRef.current;
+        if (!video || !detectorRef.current || !streamRef.current) return;
 
         try {
-            const video = videoRef.current;
-
             // Verificar se o vídeo tem dimensões válidas
             if (video.videoWidth === 0 || video.videoHeight === 0) {
                 animationFrameRef.current = requestAnimationFrame(detectBarcode);
@@ -112,7 +125,7 @@ export function useNativeBarcodeScanner() {
         }
 
         return null;
-    }, [stopCamera]);
+    }, [stopCamera, videoRef]);
 
     const startCamera = useCallback(
         async (
@@ -143,18 +156,33 @@ export function useNativeBarcodeScanner() {
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 streamRef.current = stream;
 
-                // Criar elemento de vídeo
-                const video = document.createElement('video');
-                video.setAttribute('playsinline', '');
-                video.setAttribute('autoplay', '');
-                video.setAttribute('muted', '');
-                video.srcObject = stream;
-                videoRef.current = video;
+                // Ativar scanning PRIMEIRO para que o React renderize o elemento <video> no DOM
+                setScanning(true);
+
+                // Aguardar o próximo ciclo de render para o <video> estar disponível no DOM
+                await new Promise<void>((resolve) => {
+                    requestAnimationFrame(() => {
+                        resolve();
+                    });
+                });
+
+                // Agora o <video> deve estar no DOM, atribuir o stream
+                const videoEl = videoRef.current;
+                if (!videoEl) {
+                    logger.error('NativeScanner', 'Elemento video não encontrado no DOM após render');
+                    stream.getTracks().forEach((t) => t.stop());
+                    streamRef.current = null;
+                    setScanning(false);
+                    return false;
+                }
+
+                videoEl.srcObject = stream;
+                videoEl.setAttribute('playsinline', '');
+                videoEl.setAttribute('autoplay', '');
+                videoEl.setAttribute('muted', '');
 
                 // Aguardar o vídeo estar pronto
-                await video.play();
-
-                setScanning(true);
+                await videoEl.play();
 
                 // Verificar suporte a torch
                 const track = stream.getVideoTracks()[0];
@@ -184,7 +212,7 @@ export function useNativeBarcodeScanner() {
                 return false;
             }
         },
-        [isSupported, setScanning, setTorchSupported, detectBarcode],
+        [isSupported, setScanning, setTorchSupported, detectBarcode, videoRef],
     );
 
     const applyTorch = useCallback(
@@ -221,7 +249,6 @@ export function useNativeBarcodeScanner() {
     );
 
     return {
-        videoRef,
         isNativeSupported: isSupported,
         scanning,
         torch,
