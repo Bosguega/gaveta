@@ -103,6 +103,8 @@ export interface ScannerViewProps {
   torchSupported: boolean;
   torch: boolean;
   applyTorch: (value: boolean) => void;
+  isNative?: boolean;
+  nativeVideoRef?: React.RefObject<HTMLVideoElement | null>;
 }
 
 /**
@@ -138,6 +140,8 @@ export interface ScanningScreenProps {
   torch: boolean;
   torchSupported: boolean;
   applyTorch: (on: boolean) => void;
+  isNative?: boolean;
+  nativeVideoRef?: React.RefObject<HTMLVideoElement | null>;
 }
 
 // =========================

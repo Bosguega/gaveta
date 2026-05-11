@@ -1,16 +1,26 @@
 import { useCallback, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
+import { useNativeBarcodeScanner } from './useNativeBarcodeScanner';
 import { notify } from '../utils/notifications';
 import { logger } from '../utils/logger';
 import { useScannerStore } from '../stores/useScannerStore';
 
 /**
  * Hook para controle da câmera no scanner de NFC-e
- * Gerencia inicialização, parada e controles (torch/zoom)
+ * Usa BarcodeDetector API nativa quando disponível (mais rápido e preciso),
+ * com fallback para html5-qrcode em navegadores sem suporte.
  */
 export function useCameraScanner() {
   const html5QrcodeRef = useRef<Html5Qrcode | null>(null);
   const torchTrackRef = useRef<MediaStreamTrack | null>(null);
+
+  const {
+    videoRef: nativeVideoRef,
+    isNativeSupported,
+    startCamera: nativeStartCamera,
+    stopCamera: nativeStopCamera,
+    applyTorch: nativeApplyTorch,
+  } = useNativeBarcodeScanner();
 
   const scanning = useScannerStore((state) => state.scanning);
   const setScanning = useScannerStore((state) => state.setScanning);
@@ -33,6 +43,10 @@ export function useCameraScanner() {
       torchTrackRef.current = null;
     }
 
+    // Tentar parar o scanner nativo primeiro
+    nativeStopCamera();
+
+    // Se o html5-qrcode estiver ativo, parar também
     if (html5QrcodeRef.current) {
       html5QrcodeRef.current
         .stop()
@@ -49,7 +63,7 @@ export function useCameraScanner() {
     setZoom(1);
     setZoomSupported(false);
     setTorch(false);
-  }, [setScanning, setTorch, setZoom, setZoomSupported]);
+  }, [setScanning, setTorch, setZoom, setZoomSupported, nativeStopCamera]);
 
   const startCamera = useCallback(
     async (
@@ -57,6 +71,21 @@ export function useCameraScanner() {
       handleScanSuccess: (decodedText: string) => Promise<void>,
     ) => {
       try {
+        // Tentar usar o scanner nativo primeiro (BarcodeDetector API)
+        if (isNativeSupported) {
+          logger.info('CameraScanner', 'Usando scanner nativo BarcodeDetector');
+          const nativeStarted = await nativeStartCamera(cameraId, handleScanSuccess);
+          if (nativeStarted) {
+            // Scanner nativo iniciou com sucesso
+            // Zoom não é suportado nativamente
+            setZoomSupported(false);
+            return;
+          }
+          logger.warn('CameraScanner', 'Scanner nativo falhou, tentando fallback html5-qrcode');
+        }
+
+        // Fallback: usar html5-qrcode
+        logger.info('CameraScanner', 'Usando fallback html5-qrcode');
         const html5QrCode = new Html5Qrcode('reader');
         html5QrcodeRef.current = html5QrCode;
 
@@ -118,11 +147,18 @@ export function useCameraScanner() {
         logger.error('CameraScanner', 'Camera fail', err);
       }
     },
-    [setScanning, setTorchSupported, setZoomSupported, stopCamera],
+    [setScanning, setTorchSupported, setZoomSupported, stopCamera, isNativeSupported, nativeStartCamera],
   );
 
   const applyTorch = useCallback(
     async (on: boolean) => {
+      // Se o scanner nativo estiver ativo, usar o applyTorch dele
+      if (isNativeSupported && nativeVideoRef.current) {
+        await nativeApplyTorch(on);
+        return;
+      }
+
+      // Fallback: html5-qrcode
       if (!html5QrcodeRef.current) return;
 
       try {
@@ -166,11 +202,13 @@ export function useCameraScanner() {
         console.warn('Torch error:', err);
       }
     },
-    [setTorch],
+    [setTorch, isNativeSupported, nativeVideoRef, nativeApplyTorch],
   );
 
   return {
     html5QrcodeRef,
+    nativeVideoRef,
+    isNativeSupported,
     processingRef,
     scanning,
     zoom,

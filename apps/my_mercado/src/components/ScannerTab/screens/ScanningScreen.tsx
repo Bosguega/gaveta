@@ -7,6 +7,8 @@ export function ScanningScreen({
   torch,
   torchSupported,
   applyTorch,
+  isNative,
+  nativeVideoRef,
 }: ScanningScreenProps) {
   return (
     <>
@@ -24,6 +26,8 @@ export function ScanningScreen({
         torchSupported={torchSupported}
         torch={torch}
         applyTorch={applyTorch}
+        isNative={isNative}
+        nativeVideoRef={nativeVideoRef}
       />
     </>
   );

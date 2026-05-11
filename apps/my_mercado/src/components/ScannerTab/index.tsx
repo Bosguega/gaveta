@@ -57,6 +57,8 @@ function ScannerTab() {
     setManualItem,
     torch,
     torchSupported,
+    nativeVideoRef,
+    isNativeSupported,
     startCamera,
     stopCamera,
     applyTorch,
@@ -179,6 +181,8 @@ function ScannerTab() {
           torch={torch}
           torchSupported={torchSupported}
           applyTorch={applyTorch}
+          isNative={isNativeSupported}
+          nativeVideoRef={nativeVideoRef}
         />
       )}
 

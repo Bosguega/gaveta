@@ -6,6 +6,8 @@ export function ScannerView({
   torchSupported,
   torch,
   applyTorch,
+  isNative,
+  nativeVideoRef,
 }: ScannerViewProps) {
   if (!isScanning) return null;
 
@@ -13,11 +15,23 @@ export function ScannerView({
     <div
       className="scanner-container block bg-black rounded-2xl overflow-hidden border-2 border-[var(--primary)] w-full max-w-[500px] mx-auto relative min-h-[clamp(280px,64vh,420px)]"
     >
-      {/* Elemento div para o html5-qrcode */}
-      <div
-        id="reader"
-        className="w-full min-h-[clamp(280px,64vh,420px)]"
-      />
+      {/* Scanner Nativo: usa elemento <video> direto */}
+      {isNative && nativeVideoRef ? (
+        <video
+          ref={nativeVideoRef as React.RefObject<HTMLVideoElement>}
+          playsInline
+          autoPlay
+          muted
+          className="w-full min-h-[clamp(280px,64vh,420px)] object-cover"
+        />
+      ) : (
+        /* Fallback html5-qrcode: usa div #reader */
+        <div
+          id="reader"
+          className="w-full min-h-[clamp(280px,64vh,420px)]"
+        />
+      )}
+
       <div
         className="scanner-overlay-frame absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[clamp(150px,58vw,220px)] h-[clamp(150px,58vw,220px)] border-2 border-[var(--success)] rounded-2xl pointer-events-none shadow-[0_0_0_4000px_rgba(15,23,42,0.7)]"
       >
