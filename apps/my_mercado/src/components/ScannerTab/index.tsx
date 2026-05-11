@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { notify } from "../../utils/notifications";
 import { logger } from "../../utils/logger";
 import { useReceiptScanner } from "../../hooks/useReceiptScanner";
+import { useImageQrScanner } from "../../hooks/useImageQrScanner";
 import { useReceiptsSessionStore } from "../../stores/useReceiptsSessionStore";
 import { useUiStore } from "../../stores/useUiStore";
 import { useSaveReceipt } from "../../hooks/queries/useReceiptsQuery";
@@ -18,6 +19,7 @@ function ScannerTab() {
   const saveReceiptMutation = useSaveReceipt();
   const sessionUserId = useReceiptsSessionStore((state) => state.sessionUserId);
   const tab = useUiStore((state) => state.tab);
+  const { decodeQRFromImage } = useImageQrScanner();
 
   // Wrapper para adaptar a interface da mutation do React Query
   const saveReceipt = useCallback(
@@ -74,22 +76,32 @@ function ScannerTab() {
   const isLoading = loading;
   const isScanning = scanning;
 
-  // Handler de upload de arquivo
+  // Handler de upload de arquivo (foto/galeria)
   const handleFileUpload = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (!file) return;
 
       try {
-        const imageUrl = URL.createObjectURL(file);
-        // Processar arquivo como URL para o QR Code
-        await handleScanSuccess(imageUrl);
-        URL.revokeObjectURL(imageUrl);
+        // Notificar que está processando
+        notify.loading('Analisando imagem...');
+
+        // Decodificar QR Code da imagem usando BarcodeDetector ou html5-qrcode
+        const decodedText = await decodeQRFromImage(file);
+
+        if (decodedText) {
+          // QR Code encontrado! Processar o texto decodificado
+          notify.success('QR Code encontrado na imagem!');
+          await handleScanSuccess(decodedText);
+        } else {
+          notify.error('Nenhum QR Code encontrado na imagem.');
+        }
       } catch (err) {
         logger.error('ScannerTab', 'Erro ao processar arquivo', err);
+        notify.error('Erro ao processar imagem.');
       }
     },
-    [handleScanSuccess]
+    [handleScanSuccess, decodeQRFromImage]
   );
 
   // Handler de URL
