@@ -13,7 +13,7 @@ import { LoadingScreen } from "./screens/LoadingScreen";
 import { ResultScreen } from "./screens/ResultScreen";
 import { ManualReceiptForm } from "./forms/ManualReceiptForm";
 import { DuplicateModal } from "./modals/DuplicateModal";
-import type { Receipt } from "../../types/domain";
+import type { Receipt, ReceiptItem } from "../../types/domain";
 import type { SaveReceiptResponse } from "../../types/scanner";
 
 function ScannerTab() {
@@ -175,10 +175,9 @@ function ScannerTab() {
   }, [duplicateReceipt, saveReceipt, setCurrentReceipt, setDuplicateReceipt, stopCamera]);
 
   // Calcular total do receipt
-  // A função é pura e não depende de manualData, apenas do tipo
   const calculateReceiptTotal = useCallback(
-    (items: typeof manualData.items) => {
-      return items.reduce((acc, item) => acc + (item.total || item.price * item.quantity), 0);
+    (items: ReceiptItem[]) => {
+      return items.reduce((acc, item) => acc + (item.total ?? item.price * item.quantity), 0);
     },
     []
   );
