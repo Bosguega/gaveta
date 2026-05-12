@@ -32,7 +32,10 @@ function rawToProcessed(item: RawReceiptItem): ReceiptItem {
 
 type ItemWithKey = RawReceiptItem & { normalized_key: string; id?: string };
 
-export async function processItemsPipeline(rawItems: RawReceiptItem[] = []): Promise<ReceiptItem[]> {
+export async function processItemsPipeline(
+  rawItems: RawReceiptItem[] = [],
+  onProgress?: (step: "verifying_dict" | "calling_ai" | "saving_vips") => void
+): Promise<ReceiptItem[]> {
   if (!rawItems.length) return [];
 
   // Carregar produtos VIP existentes para o Auto-Match
@@ -50,6 +53,8 @@ export async function processItemsPipeline(rawItems: RawReceiptItem[] = []): Pro
       normalized_key: key,
     };
   });
+
+  if (onProgress) onProgress("verifying_dict");
 
   const keys = [...new Set(itemsWithKey.map((i) => i.normalized_key))];
   const dictionary: DictionaryMap = await getDictionary(keys);
@@ -81,6 +86,10 @@ export async function processItemsPipeline(rawItems: RawReceiptItem[] = []): Pro
 
   let aiResults: AiNormalizationResult[] = [];
 
+  if (unknownEntries.length > 0 && onProgress) {
+    onProgress("calling_ai");
+  }
+
   for (let i = 0; i < unknownEntries.length; i += 10) {
     const chunk = unknownEntries.slice(i, i + 10);
 
@@ -111,6 +120,7 @@ export async function processItemsPipeline(rawItems: RawReceiptItem[] = []): Pro
 
   // MODO PREGUIÇOSO ATIVADO: Auto-criar Produtos VIP
   if (aiResults.length) {
+    if (onProgress) onProgress("saving_vips");
     for (const r of aiResults) {
       if (!r.canonical_product_id) {
         // 1. Tentar match por slug ou nome exato

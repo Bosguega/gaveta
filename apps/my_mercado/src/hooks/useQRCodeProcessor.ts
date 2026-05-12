@@ -120,11 +120,35 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
           return;
         }
 
+        logger.debug('QRProcessor', 'Processando produtos na pipeline...');
+        
+        // Passar os itens crus para a pipeline
+        const { processItemsPipeline } = await import('../../services/productService');
+        
+        // Converter de ReceiptItem (que parseNFCeSP retornou de forma mascarada) para RawReceiptItem
+        const rawItemsForPipeline = extractedData.items.map(item => ({
+          name: item.name,
+          qty: item.quantity.toString().replace('.', ','),
+          unit: item.unit || 'UN',
+          unitPrice: item.price.toString().replace('.', ','),
+          total: (item.total ?? item.price * item.quantity).toString().replace('.', ',')
+        }));
+
+        const processedItems = await processItemsPipeline(rawItemsForPipeline, (step) => {
+          setLoadingStep(step as any);
+        });
+
+        // Atualizar receipt com itens processados
+        const processedReceipt = {
+          ...extractedData,
+          items: processedItems
+        };
+
         setLoadingStep('processing');
-        logger.debug('QRProcessor', 'Exibindo nota para revisão (sem salvar ainda)...');
+        logger.debug('QRProcessor', 'Exibindo nota processada para revisão...');
 
         // Apenas exibe a nota no ResultScreen — NÃO salva ainda
-        setCurrentReceipt(extractedData);
+        setCurrentReceipt(processedReceipt);
       } catch (err: unknown) {
         logger.error('QRProcessor', 'Erro ao processar QR Code', err);
         const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
@@ -158,9 +182,29 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
           return;
         }
 
+        logger.debug('QRProcessor', 'Processando produtos manuais na pipeline...');
+        const { processItemsPipeline } = await import('../../services/productService');
+        
+        const rawItemsForPipeline = extractedData.items.map(item => ({
+          name: item.name,
+          qty: item.quantity.toString().replace('.', ','),
+          unit: item.unit || 'UN',
+          unitPrice: item.price.toString().replace('.', ','),
+          total: (item.total ?? item.price * item.quantity).toString().replace('.', ',')
+        }));
+
+        const processedItems = await processItemsPipeline(rawItemsForPipeline, (step) => {
+          setLoadingStep(step as any);
+        });
+
+        const processedReceipt = {
+          ...extractedData,
+          items: processedItems
+        };
+
         setLoadingStep('processing');
         // Apenas exibe — NÃO salva ainda
-        setCurrentReceipt(extractedData);
+        setCurrentReceipt(processedReceipt);
       } catch (err: unknown) {
         logger.error('QRProcessor', 'Erro ao processar texto', err);
         const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';

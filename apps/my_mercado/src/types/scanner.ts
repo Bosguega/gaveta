@@ -19,22 +19,20 @@ export type ScannerScreen = "idle" | "scanning" | "loading" | "result" | "manual
 // LOADING STEPS
 // =========================
 
-/**
- * Etapas do processo de carregamento/processamento de uma nota
- */
 export type LoadingStep =
-  | "fetching"    // Buscando dados da NFC-e (proxy)
-  | "parsing"     // Analisando/extraindo itens da nota
-  | "processing"  // Processando produtos (pipeline)
-  | "saving";     // Salvando nota no banco
+  | "fetching"
+  | "parsing"
+  | "verifying_dict"
+  | "calling_ai"
+  | "saving_vips"
+  | "saving";
 
-/**
- * Rótulo amigável para cada etapa de loading
- */
 export const LOADING_STEP_LABELS: Record<LoadingStep, string> = {
   fetching: "Buscando dados da nota fiscal...",
   parsing: "Analisando itens da nota...",
-  processing: "Processando produtos...",
+  verifying_dict: "Verificando dicionário de produtos...",
+  calling_ai: "Processando nomes com Inteligência Artificial...",
+  saving_vips: "Atualizando base de produtos canônicos...",
   saving: "Salvando nota...",
 };
 

@@ -4,7 +4,7 @@ import {
     saveReceiptToDB,
     deleteReceiptFromDB
 } from "../../services";
-import { processItemsPipeline } from "../../services/productService";
+
 import { getReceiptIdCandidates, toUserScopedReceiptId } from "../../utils/receiptId";
 import { logger } from "../../utils/logger";
 import { canonicalProductKeys } from "./useCanonicalProductsQuery";
@@ -60,18 +60,9 @@ export function useSaveReceiptMutation() {
                 await deleteReceiptFromDB(existing.id);
             }
 
-            // Processar items
-            logger.debug('SaveReceipt', 'Processando items...');
-            // Converter ReceiptItem para RawReceiptItem para o pipeline
-            const rawItems = (receipt.items || []).map((item) => ({
-              name: item.name,
-              qty: item.quantity.toString().replace('.', ','),
-              unit: item.unit || 'UN',
-              unitPrice: item.price.toString().replace('.', ','),
-              total: (item.total ?? item.price * item.quantity).toString().replace('.', ','),
-            }));
-            const processedItems = await processItemsPipeline(rawItems);
-            const fullReceipt = { ...receipt, id: receiptId, items: processedItems };
+            // Os itens já vêm processados do useQRCodeProcessor
+            const processedItems = receipt.items;
+            const fullReceipt = { ...receipt, id: receiptId };
 
             // Salvar no banco
             logger.debug('SaveReceipt', 'Salvando no DB...');
