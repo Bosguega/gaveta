@@ -1,11 +1,17 @@
-import { CheckCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { CheckCircle, ChevronDown, ChevronUp, XCircle, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { formatBRL, parseBRL } from "../../../utils/currency";
 import { formatToBR } from "../../../utils/date";
 import type { ReceiptItem } from "../../../types/domain";
 import type { ReceiptResultProps } from "../../../types/scanner";
 
-export function ResultScreen({ currentReceipt, onReset, calculateReceiptTotal }: ReceiptResultProps) {
+export function ResultScreen({
+  currentReceipt,
+  onReset,
+  onSave,
+  isSaving = false,
+  calculateReceiptTotal,
+}: ReceiptResultProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const displayDate = formatToBR(currentReceipt.date) || currentReceipt.date;
 
@@ -105,12 +111,33 @@ export function ResultScreen({ currentReceipt, onReset, calculateReceiptTotal }:
           </span>
         </div>
 
+        {/* Botão Salvar */}
         <button
-          className="btn btn-success w-full p-4 text-base font-semibold"
-          onClick={onReset}
+          className="btn btn-success w-full p-4 text-base font-semibold mb-3 disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick={onSave}
+          disabled={isSaving}
         >
-          <CheckCircle size={20} />
-          Confirmar e Concluir
+          {isSaving ? (
+            <>
+              <Loader2 size={20} className="animate-spin" />
+              Salvando...
+            </>
+          ) : (
+            <>
+              <CheckCircle size={20} />
+              Salvar Nota
+            </>
+          )}
+        </button>
+
+        {/* Botão Descartar */}
+        <button
+          className="btn btn-ghost w-full p-4 text-base font-semibold text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/20"
+          onClick={onReset}
+          disabled={isSaving}
+        >
+          <XCircle size={20} />
+          Descartar
         </button>
       </div>
     </div>

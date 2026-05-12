@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { Receipt } from "../types/domain";
-import type { ManualReceiptData, ManualReceiptItemInput } from "../types/scanner";
+import type { ManualReceiptData, ManualReceiptItemInput, LoadingStep } from "../types/scanner";
 
 // ==============================
 // Sub-slices
@@ -9,9 +9,11 @@ import type { ManualReceiptData, ManualReceiptItemInput } from "../types/scanner
 interface ScanSlice {
   currentReceipt: Receipt | null;
   loading: boolean;
+  loadingStep: LoadingStep | null;
   scanning: boolean;
   error: string | null;
   duplicateReceipt: Receipt | null;
+  isSaving: boolean;
 }
 
 interface ScanActions {
@@ -19,9 +21,11 @@ interface ScanActions {
     value: Receipt | null | ((prev: Receipt | null) => Receipt | null),
   ) => void;
   setLoading: (value: boolean) => void;
+  setLoadingStep: (value: LoadingStep | null) => void;
   setScanning: (value: boolean) => void;
   setError: (value: string | null) => void;
   setDuplicateReceipt: (value: Receipt | null) => void;
+  setIsSaving: (value: boolean) => void;
 }
 
 interface CameraSlice {
@@ -81,9 +85,11 @@ const defaultManualItem: ManualReceiptItemInput = {
 const initialScanState: ScanSlice = {
   currentReceipt: null,
   loading: false,
+  loadingStep: null,
   scanning: false,
   error: null,
   duplicateReceipt: null,
+  isSaving: false,
 };
 
 const initialCameraState: CameraSlice = {
@@ -120,9 +126,11 @@ export const useScannerStore = create<ScannerState>()((set) => ({
         typeof value === "function" ? value(state.currentReceipt) : value,
     })),
   setLoading: (value) => set({ loading: value }),
+  setLoadingStep: (value) => set({ loadingStep: value }),
   setScanning: (value) => set({ scanning: value }),
   setError: (value) => set({ error: value }),
   setDuplicateReceipt: (value) => set({ duplicateReceipt: value }),
+  setIsSaving: (value) => set({ isSaving: value }),
 
   // Camera Slice
   ...initialCameraState,

@@ -5,6 +5,7 @@ import { parseNFCeSP, parseRawTextReceipt } from '../services/receiptParser';
 import { useScannerStore } from '../stores/useScannerStore';
 import { logger } from '../utils/logger';
 import type { Receipt } from '../types/domain';
+import type { LoadingStep } from '../types/scanner';
 
 type SaveReceiptResponse =
   | { duplicate: true; existingReceipt: Receipt }
@@ -25,8 +26,14 @@ function isSuccessResult(
   return 'success' in result && result.success === true;
 }
 
+function setLoadingStep(step: LoadingStep | null) {
+  useScannerStore.getState().setLoadingStep(step);
+}
+
 /**
  * Hook para processamento de QR Code e URL de NFC-e
+ * Agora APENAS faz o parse e exibe no ResultScreen.
+ * O salvamento é feito posteriormente pelo ScannerTab.
  */
 export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
   const setLoading = useScannerStore((state) => state.setLoading);
@@ -34,11 +41,46 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
   const setDuplicateReceipt = useScannerStore((state) => state.setDuplicateReceipt);
   const setError = useScannerStore((state) => state.setError);
 
+  /**
+   * Salva a nota atualmente exibida (chamado pelo ScannerTab)
+   */
+  const saveCurrentReceipt = useCallback(
+    async (receipt: Receipt): Promise<SaveReceiptResponse> => {
+      setLoadingStep('saving');
+      try {
+        const result = await saveReceipt(receipt);
+
+        if (isDuplicateResult(result)) {
+          logger.info('QRProcessor', 'Nota duplicada detectada');
+          setDuplicateReceipt(receipt);
+          notify.nfceDuplicate(result.existingReceipt.date.split(' ')[0]);
+        } else if (isSuccessResult(result)) {
+          logger.info('QRProcessor', 'Nota salva com sucesso!', result.receipt.id);
+          setCurrentReceipt(result.receipt);
+          notify.success('Nota fiscal processada com sucesso!');
+        }
+
+        return result;
+      } catch (err: unknown) {
+        logger.error('QRProcessor', 'Erro ao salvar nota', err);
+        const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+        notify.error(`Erro ao salvar: ${errorMessage}`);
+        setError(errorMessage);
+        return { success: false, error: err };
+      } finally {
+        setLoadingStep(null);
+        // O loading é desligado externamente
+      }
+    },
+    [saveReceipt, setCurrentReceipt, setDuplicateReceipt, setError],
+  );
+
   const processQRCode = useCallback(
     async (decodedText: string) => {
       logger.debug('QRProcessor', 'Processando QR Code', decodedText.substring(0, 100));
 
       setLoading(true);
+      setLoadingStep('fetching');
 
       try {
         if (!decodedText || typeof decodedText !== 'string') {
@@ -59,6 +101,7 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
         }
 
         logger.debug('QRProcessor', 'Chamando parseNFCeSP...');
+        setLoadingStep('parsing');
         const extractedData = await parseNFCeSP(decodedText.trim());
 
         logger.debug('QRProcessor', 'Parse completado!', {
@@ -77,21 +120,11 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
           return;
         }
 
-        logger.debug('QRProcessor', 'Salvando receipt...');
+        setLoadingStep('processing');
+        logger.debug('QRProcessor', 'Exibindo nota para revisão (sem salvar ainda)...');
 
-        const result = await saveReceipt(extractedData);
-
-        logger.debug('QRProcessor', 'Result do save:', result);
-
-        if (isDuplicateResult(result)) {
-          logger.info('QRProcessor', 'Nota duplicada detectada');
-          setDuplicateReceipt(extractedData);
-          notify.nfceDuplicate(result.existingReceipt.date.split(' ')[0]);
-        } else if (isSuccessResult(result)) {
-          logger.info('QRProcessor', 'Nota salva com sucesso!', result.receipt.id);
-          setCurrentReceipt(result.receipt);
-          notify.success('Nota fiscal processada com sucesso!');
-        }
+        // Apenas exibe a nota no ResultScreen — NÃO salva ainda
+        setCurrentReceipt(extractedData);
       } catch (err: unknown) {
         logger.error('QRProcessor', 'Erro ao processar QR Code', err);
         const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
@@ -103,29 +136,31 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
         setError(errorMessage);
       } finally {
         setLoading(false);
+        setLoadingStep(null);
       }
     },
-    [saveReceipt, setLoading, setCurrentReceipt, setDuplicateReceipt, setError],
+    [setLoading, setCurrentReceipt, setError],
   );
 
   const processRawText = useCallback(
     async (text: string) => {
       logger.debug('QRProcessor', 'Processando texto manual');
       setLoading(true);
+      setLoadingStep('parsing');
       setError(null);
 
       try {
         const extractedData = parseRawTextReceipt(text);
 
-        const result = await saveReceipt(extractedData);
-
-        if (isDuplicateResult(result)) {
-          setDuplicateReceipt(extractedData);
-          notify.nfceDuplicate(result.existingReceipt.date.split(' ')[0]);
-        } else if (isSuccessResult(result)) {
-          setCurrentReceipt(result.receipt);
-          notify.success('Nota processada com sucesso!');
+        if (!extractedData || !extractedData.items || extractedData.items.length === 0) {
+          setError('Nenhum item encontrado no texto.');
+          notify.error('Texto não contém itens válidos.');
+          return;
         }
+
+        setLoadingStep('processing');
+        // Apenas exibe — NÃO salva ainda
+        setCurrentReceipt(extractedData);
       } catch (err: unknown) {
         logger.error('QRProcessor', 'Erro ao processar texto', err);
         const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
@@ -133,13 +168,15 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
         setError(errorMessage);
       } finally {
         setLoading(false);
+        setLoadingStep(null);
       }
     },
-    [saveReceipt, setLoading, setCurrentReceipt, setDuplicateReceipt, setError]
+    [setLoading, setCurrentReceipt, setError]
   );
 
   return {
     processQRCode,
     processRawText,
+    saveCurrentReceipt,
   };
 }

@@ -16,6 +16,29 @@ import type { Receipt, ReceiptItem } from "./domain";
 export type ScannerScreen = "idle" | "scanning" | "loading" | "result" | "manual";
 
 // =========================
+// LOADING STEPS
+// =========================
+
+/**
+ * Etapas do processo de carregamento/processamento de uma nota
+ */
+export type LoadingStep =
+  | "fetching"    // Buscando dados da NFC-e (proxy)
+  | "parsing"     // Analisando/extraindo itens da nota
+  | "processing"  // Processando produtos (pipeline)
+  | "saving";     // Salvando nota no banco
+
+/**
+ * Rótulo amigável para cada etapa de loading
+ */
+export const LOADING_STEP_LABELS: Record<LoadingStep, string> = {
+  fetching: "Buscando dados da nota fiscal...",
+  parsing: "Analisando itens da nota...",
+  processing: "Processando produtos...",
+  saving: "Salvando nota...",
+};
+
+// =========================
 // SAVE RESPONSE TYPES
 // =========================
 
@@ -113,6 +136,8 @@ export interface ScannerViewProps {
 export interface ReceiptResultProps {
   currentReceipt: Receipt;
   onReset: () => void;
+  onSave: () => void;
+  isSaving?: boolean;
   calculateReceiptTotal: (items: ReceiptItem[]) => number;
 }
 
@@ -130,6 +155,7 @@ export interface DuplicateModalProps {
  */
 export interface LoadingScreenProps {
   message?: string;
+  step?: LoadingStep | null;
 }
 
 /**

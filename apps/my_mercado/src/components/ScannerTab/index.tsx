@@ -5,6 +5,7 @@ import { useReceiptScanner } from "../../hooks/useReceiptScanner";
 import { useImageQrScanner } from "../../hooks/useImageQrScanner";
 import { useReceiptsSessionStore } from "../../stores/useReceiptsSessionStore";
 import { useUiStore } from "../../stores/useUiStore";
+import { useScannerStore } from "../../stores/useScannerStore";
 import { useSaveReceipt } from "../../hooks/queries/useReceiptsQuery";
 import { IdleScreen } from "./screens/IdleScreen";
 import { ScanningScreen } from "./screens/ScanningScreen";
@@ -19,6 +20,10 @@ function ScannerTab() {
   const saveReceiptMutation = useSaveReceipt();
   const sessionUserId = useReceiptsSessionStore((state) => state.sessionUserId);
   const tab = useUiStore((state) => state.tab);
+  const loadingStep = useScannerStore((state) => state.loadingStep);
+  const isSaving = useScannerStore((state) => state.isSaving);
+  const setCurrentReceipt = useScannerStore((state) => state.setCurrentReceipt);
+  const setDuplicateReceipt = useScannerStore((state) => state.setDuplicateReceipt);
   const { decodeQRFromImage } = useImageQrScanner();
 
   // Wrapper para adaptar a interface da mutation do React Query
@@ -46,12 +51,10 @@ function ScannerTab() {
 
   const {
     currentReceipt,
-    setCurrentReceipt,
     loading,
     scanning,
     error,
     duplicateReceipt,
-    setDuplicateReceipt,
     manualMode,
     setManualMode,
     manualData,
@@ -66,6 +69,7 @@ function ScannerTab() {
     applyTorch,
     handleScanSuccess,
     processRawText,
+    saveCurrentReceipt,
     handleAddManualItem,
     handleSaveManualReceipt,
     handleCancelManualReceipt,
@@ -112,11 +116,38 @@ function ScannerTab() {
     [handleScanSuccess]
   );
 
-  // Handler de reset
+  // Handler de reset (descartar)
   const handleReset = useCallback(() => {
     setCurrentReceipt(null);
     stopCamera();
   }, [setCurrentReceipt, stopCamera]);
+
+  // Handler de salvar nota (chamado pelo ResultScreen)
+  const handleSaveCurrentReceipt = useCallback(async () => {
+    if (!currentReceipt) return;
+
+    useScannerStore.getState().setIsSaving(true);
+
+    try {
+      const result = await saveCurrentReceipt(currentReceipt);
+
+      if ("success" in result && result.success) {
+        // Sucesso: o currentReceipt já foi atualizado pelo saveCurrentReceipt
+        // Vamos resetar após breve delay para mostrar o estado de sucesso
+        setTimeout(() => {
+          setCurrentReceipt(null);
+          stopCamera();
+        }, 1000);
+      }
+      // Se for duplicata, o DuplicateModal será exibido (lida no saveCurrentReceipt)
+      // Se for erro, a notificação já foi mostrada
+    } catch (err) {
+      logger.error('ScannerTab', 'Erro ao salvar nota', err);
+      notify.error('Erro ao salvar nota.');
+    } finally {
+      useScannerStore.getState().setIsSaving(false);
+    }
+  }, [currentReceipt, saveCurrentReceipt, setCurrentReceipt, stopCamera]);
 
   // Handler de duplicata
   const handleSetDuplicateReceipt = useCallback(
@@ -135,8 +166,13 @@ function ScannerTab() {
       setCurrentReceipt(result.receipt);
       setDuplicateReceipt(null);
       notify.success('Nota atualizada com sucesso!');
+      // Resetar após breve delay
+      setTimeout(() => {
+        setCurrentReceipt(null);
+        stopCamera();
+      }, 1000);
     }
-  }, [duplicateReceipt, saveReceipt, setCurrentReceipt, setDuplicateReceipt]);
+  }, [duplicateReceipt, saveReceipt, setCurrentReceipt, setDuplicateReceipt, stopCamera]);
 
   // Calcular total do receipt
   // A função é pura e não depende de manualData, apenas do tipo
@@ -144,7 +180,7 @@ function ScannerTab() {
     (items: typeof manualData.items) => {
       return items.reduce((acc, item) => acc + (item.total || item.price * item.quantity), 0);
     },
-    [manualData]
+    []
   );
 
   return (
@@ -168,6 +204,8 @@ function ScannerTab() {
         <ResultScreen
           currentReceipt={currentReceipt}
           onReset={handleReset}
+          onSave={handleSaveCurrentReceipt}
+          isSaving={isSaving}
           calculateReceiptTotal={calculateReceiptTotal}
         />
       )}
@@ -199,7 +237,9 @@ function ScannerTab() {
       )}
 
       {/* Tela de Loading */}
-      {!manualMode && !currentReceipt && isLoading && <LoadingScreen />}
+      {!manualMode && !currentReceipt && isLoading && (
+        <LoadingScreen step={loadingStep} />
+      )}
 
       {/* Modal de Duplicata */}
       {duplicateReceipt && (

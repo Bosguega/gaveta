@@ -49,7 +49,7 @@ export function useReceiptScanner({
     applyTorch,
   } = useCameraScanner();
 
-  const { processQRCode, processRawText } = useQRCodeProcessor(saveReceipt);
+  const { processQRCode, processRawText, saveCurrentReceipt } = useQRCodeProcessor(saveReceipt);
 
   const {
     manualData,
@@ -118,6 +118,7 @@ export function useReceiptScanner({
 
     handleScanSuccess,
     processRawText,
+    saveCurrentReceipt,
 
     handleAddManualItem,
     handleSaveManualReceipt,

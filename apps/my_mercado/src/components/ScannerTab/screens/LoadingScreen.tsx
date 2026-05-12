@@ -1,7 +1,13 @@
 import { Skeleton, SkeletonCard } from "../../Skeleton";
+import { LOADING_STEP_LABELS } from "../../../types/scanner";
 import type { LoadingScreenProps } from "../../../types/scanner";
 
-export function LoadingScreen({ message = "Extraindo dados da nota fiscal..." }: LoadingScreenProps) {
+export function LoadingScreen({
+  message = "Extraindo dados da nota fiscal...",
+  step,
+}: LoadingScreenProps) {
+  const currentMessage = step ? LOADING_STEP_LABELS[step] : message;
+
   return (
     <>
       <SkeletonCard className="p-8">
@@ -24,9 +30,21 @@ export function LoadingScreen({ message = "Extraindo dados da nota fiscal..." }:
           ))}
         </div>
       </SkeletonCard>
-      <p className="text-center text-slate-400 mt-4 text-sm">
-        {message}
-      </p>
+
+      {/* Mensagem da etapa atual */}
+      <div className="flex items-center justify-center gap-2 mt-4">
+        <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+        <p className="text-center text-slate-400 text-sm">
+          {currentMessage}
+        </p>
+      </div>
+
+      {/* Aviso persistente */}
+      <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 mt-3 mx-4">
+        <p className="text-amber-400 text-xs text-center font-medium">
+          ⏳ Processando... Não feche ou saia desta tela
+        </p>
+      </div>
     </>
   );
 }
