@@ -14,6 +14,7 @@ import {
   getApiModelCached,
   hasApiKeyCached,
   invalidateAiConfigCache,
+  initializeAiConfig,
   detectProvider as coreDetectProvider,
   setApiKey as coreSetApiKey,
   setApiModel as coreSetApiModel,
@@ -35,14 +36,18 @@ export function getApiKey(): string | null {
 }
 
 export function setApiKey(key: string | null | undefined): void {
-  // Salva no core (fire-and-forget async) e invalida cache
-  coreSetApiKey(key).catch(() => { })
-  invalidateAiConfigCache()
+  // Salva no core e atualiza o cache para manter sincronizado sem quebrar getters
+  coreSetApiKey(key).then(() => {
+    invalidateAiConfigCache()
+    initializeAiConfig().catch(() => {})
+  }).catch(() => { })
 }
 
 export function clearApiKey(): void {
-  coreClearApiKey().catch(() => { })
-  invalidateAiConfigCache()
+  coreClearApiKey().then(() => {
+    invalidateAiConfigCache()
+    initializeAiConfig().catch(() => {})
+  }).catch(() => { })
 }
 
 // ------ Modelo ------
@@ -52,7 +57,10 @@ export function getApiModel(): string {
 }
 
 export function setApiModel(model: string): void {
-  coreSetApiModel(model).catch(() => { })
+  coreSetApiModel(model).then(() => {
+    invalidateAiConfigCache()
+    initializeAiConfig().catch(() => {})
+  }).catch(() => { })
 }
 
 // ------ Persistência ------

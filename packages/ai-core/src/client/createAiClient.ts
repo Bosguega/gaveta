@@ -61,7 +61,8 @@ export function createAiClient(options?: CreateAiClientOptions): ProviderClient 
         // Modo fallback explícito
         client = options.primary
     } else {
-        client = provider === 'openai'
+        const isOpenAi = provider === 'openai' || provider === 'OpenAI'
+        client = isOpenAi
             ? createOpenAiClient(apiKey, model)
             : createGeminiClient(apiKey, model)
     }
