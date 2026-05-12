@@ -49,7 +49,7 @@ export async function testAiConnection(
   if (!apiKey) return { success: false, error: 'API Key não informada' }
 
   try {
-    const ai = createAiClient({ model })
+    const ai = createAiClient({ apiKey, model })
     return await ai.testConnection()
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido'

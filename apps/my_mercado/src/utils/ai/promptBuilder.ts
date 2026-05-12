@@ -7,6 +7,7 @@
 import { CATEGORIES } from "../../constants/domain";
 import type { AiNormalizationInput } from "../../types/ai";
 import { logger } from "../logger";
+import { extractJsonFromResponse } from '@bosguega/ai-core';
 
 /**
  * Constrói o prompt para normalização de itens
@@ -41,14 +42,8 @@ Responda SOMENTE com o JSON array no formato: [{"key": "...", "normalized_name":
  * Parse de resposta JSON da IA
  */
 export function parseAiJsonResponse(text: string) {
-  // Remove possible markdown ```json ... ``` wrapper
-  const cleaned = text
-    .replace(/```json\s*/gi, "")
-    .replace(/```\s*/g, "")
-    .trim();
-
   try {
-    const parsed = JSON.parse(cleaned) as unknown;
+    const parsed = extractJsonFromResponse(text);
     if (!Array.isArray(parsed)) {
       throw new Error("Resposta da IA nao e um array.");
     }

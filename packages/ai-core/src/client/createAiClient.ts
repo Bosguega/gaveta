@@ -13,10 +13,13 @@ import { createGeminiClient } from '../gemini/createGeminiClient'
 import { createOpenAiClient } from '../openai/createOpenAiClient'
 import { withRetry } from './retryWrapper'
 import { withFallback } from './fallbackWrapper'
-import { getApiKeyCached, getApiModelCached, detectProviderCached } from '../storage/cache'
+import { getApiKeyCached, getApiModelCached } from '../storage/cache'
+import { detectProvider } from '../storage/aiConfig'
 import type { ProviderClient, ProviderName } from './types'
 
 export interface CreateAiClientOptions {
+    /** API key explícita. Se não informada, usa a do cache. */
+    apiKey?: string
     /** Provider explícito. Se não informado, detecta pela chave. */
     provider?: ProviderName
     /** Modelo explícito. Se não informado, usa o salvo no storage. */
@@ -41,9 +44,9 @@ export interface CreateAiClientOptions {
  *   4. Aplica fallback wrapper (se primary/secondary forem fornecidos)
  */
 export function createAiClient(options?: CreateAiClientOptions): ProviderClient {
-    const apiKey = getApiKeyCached()
+    const apiKey = options?.apiKey ?? getApiKeyCached()
     const model = options?.model ?? getApiModelCached()
-    const provider = options?.provider ?? detectProviderCached()
+    const provider = options?.provider ?? detectProvider(apiKey)
 
     if (!apiKey) {
         throw new Error(
