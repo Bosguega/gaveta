@@ -61,10 +61,13 @@ export function createAiClient(options?: CreateAiClientOptions): ProviderClient 
         // Modo fallback explícito
         client = options.primary
     } else {
-        const isOpenAi = provider === 'openai' || provider === 'OpenAI'
-        client = isOpenAi
-            ? createOpenAiClient(apiKey, model)
-            : createGeminiClient(apiKey, model)
+        if (provider === 'openai') {
+            client = createOpenAiClient(apiKey, model)
+        } else if (provider === 'gemini') {
+            client = createGeminiClient(apiKey, model)
+        } else {
+            throw new Error('Provider de IA nao suportado para a chave informada.')
+        }
     }
 
     // 2. Aplica retry (a menos que desabilitado)

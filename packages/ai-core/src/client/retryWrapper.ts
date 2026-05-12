@@ -1,11 +1,16 @@
 /**
  * Retry Wrapper
  *
- * Wrapper que adiciona retry com backoff exponencial a um ProviderClient.
- * Responsabilidade única: retentar chamadas de rede com falha recuperável.
+ * Adds retry with simple backoff to a ProviderClient.
  */
 
-import type { ProviderClient, GenerateTextOptions, GenerateTextResult, TestConnectionResult } from './types'
+import { AiApiError, isNetworkError, isRetryableError } from '../errors'
+import type {
+    GenerateTextOptions,
+    GenerateTextResult,
+    ProviderClient,
+    TestConnectionResult,
+} from './types'
 
 export interface RetryOptions {
     maxRetries?: number
@@ -15,14 +20,6 @@ export interface RetryOptions {
 const DEFAULT_MAX_RETRIES = 2
 const DEFAULT_DELAY_MS = 1000
 
-/**
- * Envolve um ProviderClient com lógica de retry.
- *
- * Regras:
- * - Não retenta erros de autenticação (4xx exceto 429)
- * - Backoff exponencial simples
- * - testConnection NÃO tem retry
- */
 export function withRetry(
     client: ProviderClient,
     options?: RetryOptions
@@ -43,8 +40,7 @@ export function withRetry(
                 } catch (err) {
                     lastError = err instanceof Error ? err : new Error(String(err))
 
-                    // Não retenta se for erro do cliente (exceto rate limit)
-                    if (isClientError(lastError) && !isRateLimitError(lastError)) {
+                    if (!shouldRetry(lastError)) {
                         break
                     }
                 }
@@ -54,21 +50,18 @@ export function withRetry(
         },
 
         testConnection: async (): Promise<TestConnectionResult> => {
-            // testConnection executa uma única vez, sem retry
             return client.testConnection()
         },
     }
 }
 
-function isClientError(err: Error): boolean {
-    // Detecta erros HTTP 4xx pela mensagem
-    return /HTTP_4\d{2}/.test(err.message) ||
-        /INVALID_API_KEY/.test(err.message)
-}
+function shouldRetry(err: Error): boolean {
+    if (err instanceof AiApiError) {
+        if (err.isClientError()) return false
+        return isRetryableError(err.code) || isNetworkError(err.code) || err.isServerError()
+    }
 
-function isRateLimitError(err: Error): boolean {
-    return /RATE_LIMIT_EXCEEDED/.test(err.message) ||
-        /HTTP_429/.test(err.message)
+    return false
 }
 
 async function delay(ms: number): Promise<void> {

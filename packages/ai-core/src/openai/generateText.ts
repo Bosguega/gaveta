@@ -5,7 +5,7 @@
  * Sem lógica de domínio — apenas chamada HTTP e parsing básico.
  */
 
-import { createAiApiError } from '../gemini/errors'
+import { createAiApiError } from '../errors'
 
 interface OpenAIResponse {
     choices?: Array<{
@@ -21,24 +21,30 @@ export async function generateText(
     model: string,
     options?: { temperature?: number; maxTokens?: number }
 ): Promise<{ text: string }> {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-            model,
-            temperature: options?.temperature ?? 0.7,
-            max_tokens: options?.maxTokens ?? 2048,
-            messages: [
-                {
-                    role: 'user',
-                    content: prompt,
-                },
-            ],
-        }),
-    })
+    let response: Response
+
+    try {
+        response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+                model,
+                temperature: options?.temperature ?? 0.7,
+                max_tokens: options?.maxTokens ?? 2048,
+                messages: [
+                    {
+                        role: 'user',
+                        content: prompt,
+                    },
+                ],
+            }),
+        })
+    } catch {
+        throw createAiApiError('NETWORK_ERROR')
+    }
 
     if (!response.ok) {
         const body = await response.text()

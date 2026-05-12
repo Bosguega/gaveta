@@ -1,6 +1,9 @@
-// Re-exports dos módulos internos (evitando conflitos de nome)
-export { generateText as geminiGenerateText } from './gemini'
-export type { GenerateTextOptions as GeminiGenerateTextOptions, GenerateTextResult as GeminiGenerateTextResult } from './gemini'
+// Gemini raw API kept unprefixed for backwards compatibility.
+export { generateText, generateText as geminiGenerateText } from './gemini'
+export type {
+    GenerateTextOptions as GeminiGenerateTextOptions,
+    GenerateTextResult as GeminiGenerateTextResult,
+} from './gemini'
 
 export { listModels } from './gemini'
 export type { ModelInfo } from './gemini'
@@ -8,13 +11,18 @@ export type { ModelInfo } from './gemini'
 export { parseGeminiError } from './gemini'
 export type { ParsedError } from './gemini'
 
-export { testConnection as geminiTestConnection } from './gemini'
+export { testConnection, testConnection as geminiTestConnection } from './gemini'
 export type { TestConnectionResult as GeminiTestConnectionResult } from './gemini'
 
 export { createGeminiClient } from './gemini'
 
-// OpenAI
-export * from './openai'
+// OpenAI raw API is prefixed to avoid colliding with Gemini's legacy exports.
+export {
+    createOpenAiClient,
+    generateText as openaiGenerateText,
+    testConnection as openaiTestConnection,
+} from './openai'
+export type { TestConnectionResult as OpenAiTestConnectionResult } from './openai'
 
 // Client (ProviderClient, createAiClient, wrappers)
 export {
@@ -31,11 +39,11 @@ export type {
     RetryOptions,
 } from './client'
 
-// Storage (inclui cache sync)
+// Storage
 export * from './storage'
 export type { ConfigStore, KeyValueStore, Provider } from './storage'
 
-// Similarity e Hash
+// Similarity and hash
 export * from './similarity'
 export * from './hash'
 
@@ -43,6 +51,13 @@ export * from './hash'
 export * from './parsing'
 
 // Errors
-export { AiApiError, friendlyMessages, getFriendlyMessage, createAiApiError } from './gemini/errors'
+export {
+    AiApiError,
+    createAiApiError,
+    friendlyMessages,
+    getFriendlyMessage,
+    isAuthError,
+    isRetryableError,
+    isNetworkError,
+} from './errors'
 export type { ApiErrorCode, ApiErrorLike } from './errors'
-export { isAuthError, isRetryableError, isNetworkError } from './errors'

@@ -143,9 +143,9 @@ export interface ApiKeyModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentKey?: string;
-  onSave: (key: string) => void;
+  onSave: (key: string) => void | Promise<void>;
   persistKey?: boolean;
-  onPersistChange?: (persist: boolean) => void;
+  onPersistChange?: (persist: boolean) => void | Promise<void>;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { getDictionary, updateDictionary, getCanonicalProducts, createCanonicalProduct } from ".";
-import { callAI } from "../utils/aiClient";
+import { callAI } from "../utils/ai";
 import { normalizeKey } from "../utils/normalize";
 import { stripVariableInfo, cleanAIName } from "../utils/stringUtils";
 import { toNumber } from "../utils/shoppingList";

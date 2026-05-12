@@ -1,5 +1,5 @@
 import { parseGeminiError } from './parseError'
-import { createAiApiError } from './errors'
+import { createAiApiError } from '../errors'
 
 export type GenerateTextOptions = {
     temperature?: number

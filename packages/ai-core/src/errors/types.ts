@@ -5,7 +5,7 @@
  * Servem como "contrato" entre backend (Rust, Node, etc.) e frontend.
  */
 
-/** Códigos de erro canônicos */
+/** Codigos de erro canonicos conhecidos. */
 export type ApiErrorCode =
     | 'INVALID_API_KEY'
     | 'RATE_LIMIT_EXCEEDED'
@@ -14,6 +14,7 @@ export type ApiErrorCode =
     | 'SERVER_ERROR'
     | 'TIMEOUT'
     | 'INVALID_RESPONSE'
+    | 'INVALID_RESPONSE_FORMAT'
     | 'UNKNOWN_ERROR'
 
 /** Estrutura padronizada de erro retornada por APIs de IA */
@@ -23,8 +24,42 @@ export interface ApiErrorLike {
     status_code?: number
 }
 
-/** Mapa de códigos para mensagens amigáveis em português */
-export const friendlyMessages: Record<ApiErrorCode, string> = {
+export class AiApiError extends Error {
+    readonly code: string
+    readonly statusCode?: number
+
+    constructor(message: string, code: string, statusCode?: number) {
+        super(message)
+        this.name = 'AiApiError'
+        this.code = code
+        this.statusCode = statusCode
+    }
+
+    isAuthError(): boolean {
+        return isAuthError(this.code)
+    }
+
+    isRateLimit(): boolean {
+        return this.code === 'RATE_LIMIT_EXCEEDED'
+    }
+
+    isClientError(): boolean {
+        if (!this.statusCode) return false
+        return this.statusCode >= 400 && this.statusCode < 500 && this.statusCode !== 429
+    }
+
+    isServerError(): boolean {
+        if (!this.statusCode) return false
+        return this.statusCode >= 500
+    }
+
+    isNetworkError(): boolean {
+        return isNetworkError(this.code)
+    }
+}
+
+/** Mapa de codigos para mensagens amigaveis em portugues */
+export const friendlyMessages: Record<string, string> = {
     INVALID_API_KEY:
         'A chave de API informada não é válida. Gere uma nova em https://aistudio.google.com/apikey',
     RATE_LIMIT_EXCEEDED:
@@ -37,15 +72,24 @@ export const friendlyMessages: Record<ApiErrorCode, string> = {
         'Ocorreu um erro interno no servidor de IA. Tente novamente em alguns minutos.',
     INVALID_RESPONSE:
         'A API retornou uma resposta inesperada. Pode ser um problema temporário.',
+    INVALID_RESPONSE_FORMAT:
+        'A API retornou uma resposta inesperada. Pode ser um problema temporário.',
     NETWORK_ERROR:
         'Não foi possível conectar ao servidor. Verifique sua conexão de internet.',
     UNKNOWN_ERROR:
         'Ocorreu um erro inesperado. Tente novamente.',
 }
 
-/** Retorna a mensagem amigável para um código */
-export function getFriendlyMessage(code: ApiErrorCode, fallback?: string): string {
+/** Retorna a mensagem amigavel para um codigo */
+export function getFriendlyMessage(code: string, fallback?: string): string {
     return friendlyMessages[code] ?? fallback ?? `Erro inesperado (${code})`
+}
+
+export function createAiApiError(code: string, statusCode?: number, details?: string): AiApiError {
+    const message = details
+        ? `${getFriendlyMessage(code)}: ${details}`
+        : getFriendlyMessage(code)
+    return new AiApiError(message, code, statusCode)
 }
 
 // ------ Helpers ------

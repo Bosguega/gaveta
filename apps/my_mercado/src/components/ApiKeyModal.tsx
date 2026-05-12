@@ -10,8 +10,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { notify } from "../utils/notifications";
-import { detectProvider, getApiModel, setApiModel } from "../utils/aiConfig";
-import { testAiConnection } from "../utils/aiClient";
+import { detectProvider, getApiModel, setApiModel } from "../utils/ai/aiConfig";
+import { testAiConnection } from "../utils/ai";
 import { validateApiKey } from "../utils/validation";
 import { logger } from "../utils/logger";
 import { listModels } from "@bosguega/ai-core";
@@ -90,7 +90,7 @@ export default function ApiKeyModal({
     }
   }, [provider, providerDefaultModel, selectedModel]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const trimmedKey = key.trim();
     if (!trimmedKey) {
       notify.errorByKey("API_KEY_REQUIRED");
@@ -105,11 +105,11 @@ export default function ApiKeyModal({
 
     // Salvar preferência de persistência antes de salvar a chave
     if (onPersistChange) {
-      onPersistChange(localPersist);
+      await onPersistChange(localPersist);
     }
 
-    setApiModel(selectedModel || providerDefaultModel);
-    onSave(trimmedKey);
+    await setApiModel(selectedModel || providerDefaultModel);
+    await onSave(trimmedKey);
     notify.settingsSaved();
     onClose();
   };

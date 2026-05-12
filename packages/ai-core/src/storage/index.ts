@@ -19,6 +19,7 @@ export {
     initializeAiConfig,
     getApiKeyCached,
     getApiModelCached,
+    isPersistenceEnabledCached,
     detectProviderCached,
     hasApiKeyCached,
     invalidateAiConfigCache,

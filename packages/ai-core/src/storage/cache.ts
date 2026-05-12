@@ -11,13 +11,14 @@
  *   const key = getApiKeyCached()  // sync!
  */
 
-import { detectProvider, getApiKey, getApiModel } from './aiConfig'
+import { DEFAULT_AI_MODEL, detectProvider, getApiKey, getApiModel, isPersistenceEnabled } from './aiConfig'
 import type { Provider } from './types'
 
 // ------ Estado interno ------
 
 let _key: string | null = null
 let _model: string | null = null
+let _persist = false
 let _initialized = false
 
 // ------ Bootstrap ------
@@ -30,6 +31,7 @@ export async function initializeAiConfig(): Promise<void> {
     if (_initialized) return
     _key = await getApiKey()
     _model = await getApiModel()
+    _persist = await isPersistenceEnabled()
     _initialized = true
 }
 
@@ -50,7 +52,12 @@ export function getApiKeyCached(): string | null {
  */
 export function getApiModelCached(): string {
     assertInitialized()
-    return _model ?? 'gemini-1.5-flash-lite'
+    return _model ?? DEFAULT_AI_MODEL
+}
+
+export function isPersistenceEnabledCached(): boolean {
+    assertInitialized()
+    return _persist
 }
 
 /**
@@ -80,6 +87,7 @@ export function hasApiKeyCached(): boolean {
 export function invalidateAiConfigCache(): void {
     _key = null
     _model = null
+    _persist = false
     _initialized = false
 }
 

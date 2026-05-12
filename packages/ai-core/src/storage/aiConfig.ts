@@ -22,7 +22,7 @@ let currentStore: ConfigStore = browserStore
 const STORAGE_KEY_KEY = 'ai_key'
 const STORAGE_KEY_MODEL = 'ai_model'
 const STORAGE_KEY_PERSIST = 'ai_key_persist'
-const DEFAULT_MODEL = 'gemini-2.0-flash'
+export const DEFAULT_AI_MODEL = 'gemini-1.5-flash-lite'
 
 /**
  * Substitui o ConfigStore ativo.
@@ -47,11 +47,17 @@ export async function isPersistenceEnabled(): Promise<boolean> {
 }
 
 export async function setPersistenceEnabled(enabled: boolean): Promise<void> {
+    const currentKey = await getApiKey()
+
     if (enabled) {
         await currentStore.preferences.set(STORAGE_KEY_PERSIST, 'true')
     } else {
         await currentStore.preferences.remove(STORAGE_KEY_PERSIST)
-        await currentStore.preferences.remove(STORAGE_KEY_KEY as string)
+        await currentStore.preferences.remove(STORAGE_KEY_KEY)
+    }
+
+    if (currentKey) {
+        await setApiKey(currentKey)
     }
 }
 
@@ -95,7 +101,7 @@ export async function clearApiKey(): Promise<void> {
 
 export async function getApiModel(): Promise<string> {
     const val = await currentStore.preferences.get(STORAGE_KEY_MODEL)
-    return val ?? DEFAULT_MODEL
+    return val ?? DEFAULT_AI_MODEL
 }
 
 export async function setApiModel(model: string): Promise<void> {
@@ -105,10 +111,11 @@ export async function setApiModel(model: string): Promise<void> {
 // ------ Detecção de provedor ------
 
 export function detectProvider(key: string | null | undefined): Provider {
-    if (!key) return 'Nenhum'
-    if (key.startsWith('AIza')) return 'Google AI Studio'
-    if (key.startsWith('sk-')) return 'OpenAI'
-    return 'Desconhecido'
+    const trimmed = key?.trim()
+    if (!trimmed) return 'none'
+    if (trimmed.startsWith('AIza')) return 'gemini'
+    if (trimmed.startsWith('sk-') || trimmed.startsWith('sk_')) return 'openai'
+    return 'unknown'
 }
 
 // ------ Helpers ------

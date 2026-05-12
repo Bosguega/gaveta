@@ -27,5 +27,5 @@ export interface ConfigStore {
     preferences: KeyValueStore
 }
 
-/** Provedores de IA detectados pelo prefixo da chave */
-export type Provider = 'Google AI Studio' | 'OpenAI' | 'Nenhum' | 'Desconhecido'
+/** Provider ids canonicos, sem rotulos de UI. */
+export type Provider = 'gemini' | 'openai' | 'none' | 'unknown'

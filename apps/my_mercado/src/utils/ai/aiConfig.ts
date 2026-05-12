@@ -1,78 +1,70 @@
 /**
- * AI Configuration — Adapter
+ * AI Configuration - app adapter.
  *
- * Este arquivo existe para compatibilidade com imports existentes.
- * Delega todas as funções para o cache sync do @bosguega/ai-core.
- *
- * NOTA: Requer que initializeAiConfig() tenha sido chamado no bootstrap do app.
- *
- * @deprecated Importe diretamente de '@bosguega/ai-core' em novos códigos.
+ * Keeps the app's synchronous read API backed by ai-core's cached config.
  */
 
 import {
+  clearApiKey as coreClearApiKey,
+  detectProvider as coreDetectProvider,
   getApiKeyCached,
   getApiModelCached,
   hasApiKeyCached,
-  invalidateAiConfigCache,
   initializeAiConfig,
-  detectProvider as coreDetectProvider,
+  invalidateAiConfigCache,
+  isPersistenceEnabledCached,
   setApiKey as coreSetApiKey,
   setApiModel as coreSetApiModel,
   setPersistenceEnabled as coreSetPersistenceEnabled,
-  clearApiKey as coreClearApiKey,
+  type Provider,
 } from '@bosguega/ai-core'
-
-// ------ API Key (cache sync) ------
 
 export { hasApiKeyCached as hasApiKey }
 
-// detectProvider mantém a assinatura original (aceita key como argumento)
+const PROVIDER_LABELS: Record<Provider, string> = {
+  gemini: 'Google AI Studio',
+  openai: 'OpenAI',
+  none: 'Nenhum',
+  unknown: 'Desconhecido',
+}
+
+async function refreshAiConfigCache(): Promise<void> {
+  invalidateAiConfigCache()
+  await initializeAiConfig()
+}
+
 export function detectProvider(key: string | null | undefined): string {
-  return coreDetectProvider(key)
+  return PROVIDER_LABELS[coreDetectProvider(key)]
 }
 
 export function getApiKey(): string | null {
   return getApiKeyCached()
 }
 
-export function setApiKey(key: string | null | undefined): void {
-  // Salva no core e atualiza o cache para manter sincronizado sem quebrar getters
-  coreSetApiKey(key).then(() => {
-    invalidateAiConfigCache()
-    initializeAiConfig().catch(() => {})
-  }).catch(() => { })
+export async function setApiKey(key: string | null | undefined): Promise<void> {
+  await coreSetApiKey(key)
+  await refreshAiConfigCache()
 }
 
-export function clearApiKey(): void {
-  coreClearApiKey().then(() => {
-    invalidateAiConfigCache()
-    initializeAiConfig().catch(() => {})
-  }).catch(() => { })
+export async function clearApiKey(): Promise<void> {
+  await coreClearApiKey()
+  await refreshAiConfigCache()
 }
-
-// ------ Modelo ------
 
 export function getApiModel(): string {
   return getApiModelCached()
 }
 
-export function setApiModel(model: string): void {
-  coreSetApiModel(model).then(() => {
-    invalidateAiConfigCache()
-    initializeAiConfig().catch(() => {})
-  }).catch(() => { })
+export async function setApiModel(model: string): Promise<void> {
+  await coreSetApiModel(model)
+  await refreshAiConfigCache()
 }
-
-// ------ Persistência ------
 
 export function isPersistenceEnabled(): boolean {
-  // Temporariamente retorna o valor em memória
-  return _persistenceEnabled
+  return isPersistenceEnabledCached()
 }
 
-export function setPersistenceEnabled(enabled: boolean): void {
-  _persistenceEnabled = enabled
-  coreSetPersistenceEnabled(enabled).catch(() => { })
+export async function setPersistenceEnabled(enabled: boolean): Promise<void> {
+  await coreSetPersistenceEnabled(enabled)
+  await refreshAiConfigCache()
 }
-
-let _persistenceEnabled = false

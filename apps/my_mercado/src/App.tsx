@@ -230,8 +230,8 @@ function App() {
     }
   }, [hasKey]);
 
-  const handleSaveApiKey = (newKey: string) => {
-    setApiKey(newKey);
+  const handleSaveApiKey = async (newKey: string) => {
+    await setApiKey(newKey);
     setShowApiKeyModal(false);
   };
 

@@ -7,31 +7,26 @@ import {
   detectProvider,
   isPersistenceEnabled,
   setPersistenceEnabled
-} from '../utils/aiConfig';
+} from '../utils/ai/aiConfig';
 
 export function useApiKey() {
   const [apiKey, setApiKeyInternal] = useState(() => getApiKey());
   const [model, setModelInternal] = useState(() => getApiModel());
   const [persistApiKey, setPersistApiKeyInternal] = useState(() => isPersistenceEnabled());
 
-  const setApiKey = useCallback((newKey: string | null | undefined) => {
-    setApiKeyStorage(newKey);
+  const setApiKey = useCallback(async (newKey: string | null | undefined) => {
+    await setApiKeyStorage(newKey);
     setApiKeyInternal(newKey ?? null);
   }, []);
 
-  const setModel = useCallback((newModel: string) => {
-    setApiModelStorage(newModel);
+  const setModel = useCallback(async (newModel: string) => {
+    await setApiModelStorage(newModel);
     setModelInternal(newModel);
   }, []);
 
-  const setPersistApiKey = useCallback((enabled: boolean) => {
-    setPersistenceEnabled(enabled);
+  const setPersistApiKey = useCallback(async (enabled: boolean) => {
+    await setPersistenceEnabled(enabled);
     setPersistApiKeyInternal(enabled);
-    // Re-salva a chave atual no novo local se ela existir
-    const currentKey = getApiKey();
-    if (currentKey) {
-      setApiKeyStorage(currentKey);
-    }
   }, []);
 
   const provider = useMemo(() => detectProvider(apiKey), [apiKey]);
