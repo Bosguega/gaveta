@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@bosguega/ai-core": "workspace:*",
+    "@bosguega/eslint-config": "workspace:*",
     "@bosguega/supabase": "workspace:*",
     "@supabase/supabase-js": "^2.99.3",
     "@tanstack/react-query": "^5.95.2",
@@ -40,7 +41,6 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
-    "@eslint/js": "^9.13.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -53,16 +53,11 @@
     "@vitest/ui": "^3.2.4",
     "autoprefixer": "^10.5.0",
     "eslint": "^9.13.0",
-    "eslint-plugin-react": "^7.37.2",
-    "eslint-plugin-react-hooks": "^5.0.0",
-    "eslint-plugin-react-refresh": "^0.4.14",
-    "globals": "^15.11.0",
     "husky": "^9.1.7",
     "jsdom": "^29.0.2",
     "postcss": "^8.5.10",
     "tailwindcss": "^3.4.19",
     "typescript": "5.9.3",
-    "typescript-eslint": "^8.57.2",
     "vite": "^6.0.0",
     "vite-plugin-pwa": "^0.21.0",
     "vitest": "^3.2.4"
