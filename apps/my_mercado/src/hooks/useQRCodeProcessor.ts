@@ -123,7 +123,7 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
         logger.debug('QRProcessor', 'Processando produtos na pipeline...');
         
         // Passar os itens crus para a pipeline
-        const { processItemsPipeline } = await import('../../services/productService');
+        const { processItemsPipeline } = await import('../services/productService');
         
         // Converter de ReceiptItem (que parseNFCeSP retornou de forma mascarada) para RawReceiptItem
         const rawItemsForPipeline = extractedData.items.map(item => ({
@@ -134,8 +134,8 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
           total: (item.total ?? item.price * item.quantity).toString().replace('.', ',')
         }));
 
-        const processedItems = await processItemsPipeline(rawItemsForPipeline, (step) => {
-          setLoadingStep(step as any);
+        const processedItems = await processItemsPipeline(rawItemsForPipeline, (step: LoadingStep) => {
+          setLoadingStep(step);
         });
 
         // Atualizar receipt com itens processados
@@ -144,7 +144,6 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
           items: processedItems
         };
 
-        setLoadingStep('processing');
         logger.debug('QRProcessor', 'Exibindo nota processada para revisão...');
 
         // Apenas exibe a nota no ResultScreen — NÃO salva ainda
@@ -183,7 +182,7 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
         }
 
         logger.debug('QRProcessor', 'Processando produtos manuais na pipeline...');
-        const { processItemsPipeline } = await import('../../services/productService');
+        const { processItemsPipeline } = await import('../services/productService');
         
         const rawItemsForPipeline = extractedData.items.map(item => ({
           name: item.name,
@@ -193,8 +192,8 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
           total: (item.total ?? item.price * item.quantity).toString().replace('.', ',')
         }));
 
-        const processedItems = await processItemsPipeline(rawItemsForPipeline, (step) => {
-          setLoadingStep(step as any);
+        const processedItems = await processItemsPipeline(rawItemsForPipeline, (step: LoadingStep) => {
+          setLoadingStep(step);
         });
 
         const processedReceipt = {
@@ -202,7 +201,6 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
           items: processedItems
         };
 
-        setLoadingStep('processing');
         // Apenas exibe — NÃO salva ainda
         setCurrentReceipt(processedReceipt);
       } catch (err: unknown) {
