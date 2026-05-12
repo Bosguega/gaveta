@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import { logger } from "./logger";
 /**
  * Storage Unificado com Fallback Automático

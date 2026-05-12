@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { logger } from "./logger";
 

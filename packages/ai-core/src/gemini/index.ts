@@ -10,4 +10,6 @@ export type { ParsedError } from './parseError'
 export { testConnection } from './testConnection'
 export type { TestConnectionResult } from './testConnection'
 
+export { createGeminiClient } from './createGeminiClient'
+
 export { AiApiError, friendlyMessages, getFriendlyMessage, createAiApiError } from './errors'

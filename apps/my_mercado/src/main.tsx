@@ -5,6 +5,10 @@ import './index.css'
 import App from './App'
 import { QueryProvider } from './providers/QueryProvider'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { initializeAiConfig } from '@bosguega/ai-core'
+
+// Inicializa configurações de IA (carrega API key e modelo para cache sync)
+await initializeAiConfig()
 
 createRoot(document.getElementById('root') as HTMLElement).render(
   <StrictMode>

@@ -10,10 +10,10 @@
         "lint:fix": "eslint . --fix"
     },
     "dependencies": {
-        "@bosguega/ai-core": "workspace:*",
-        "@bosguega/eslint-config": "workspace:*"
+        "@bosguega/ai-core": "workspace:*"
     },
     "devDependencies": {
+        "@bosguega/eslint-config": "workspace:*",
         "eslint": "^9.0.0",
         "typescript": "^5.7.0",
         "vite": "^6.0.0"

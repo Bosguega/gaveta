@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Logger centralizado para a aplicação
  * Em produção, logs são desabilitados para melhor performance

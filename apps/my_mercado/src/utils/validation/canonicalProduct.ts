@@ -14,7 +14,7 @@ export function toCanonicalSlug(input: string): string {
     .toLowerCase();
 
   return raw
-    .replace(/[\s\-\/]+/g, "_")
+    .replace(/[\s\-/]+/g, "_")
     .replace(/[^a-z0-9_]/g, "")
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "");

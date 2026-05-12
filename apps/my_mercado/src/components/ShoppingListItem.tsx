@@ -1,11 +1,11 @@
 import { ArrowRightLeft, CheckCircle2, Circle, Copy, ReceiptText, Trash2 } from "lucide-react";
 import { formatBRL } from "../utils/currency";
 import { formatToBR } from "../utils/date";
-import type { ShoppingListItem } from "../types/ui";
+import type { ShoppingListItem as ShoppingListItemData } from "../types/ui";
 import type { PurchaseHistoryEntry } from "../hooks/queries/usePurchaseHistory";
 
 type ShoppingListItemProps = {
-  item: ShoppingListItem;
+  item: ShoppingListItemData;
   history: PurchaseHistoryEntry[];
   historyMatchType?: "exact" | "approx" | "none";
   onToggle: () => void;

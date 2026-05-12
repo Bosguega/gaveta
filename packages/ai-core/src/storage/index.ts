@@ -14,3 +14,12 @@ export {
 } from './aiConfig'
 
 export type { ConfigStore, KeyValueStore, Provider } from './types'
+
+export {
+    initializeAiConfig,
+    getApiKeyCached,
+    getApiModelCached,
+    detectProviderCached,
+    hasApiKeyCached,
+    invalidateAiConfigCache,
+} from './cache'

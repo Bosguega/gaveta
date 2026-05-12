@@ -14,6 +14,7 @@ import { detectProvider, getApiModel, setApiModel } from "../utils/aiConfig";
 import { testAiConnection } from "../utils/aiClient";
 import { validateApiKey } from "../utils/validation";
 import { logger } from "../utils/logger";
+import { listModels } from "@bosguega/ai-core";
 import type { ApiKeyModalProps } from "../types/ui";
 
 export default function ApiKeyModal({
@@ -127,27 +128,14 @@ export default function ApiKeyModal({
 
     setFetchingModels(true);
     try {
-      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
-        headers: { "x-goog-api-key": trimmedKey },
-      });
+      const models = await listModels(trimmedKey);
 
-      if (!res.ok) {
-        throw new Error(`Erro na API (${res.status})`);
-      }
-
-      const data = (await res.json()) as { models?: Array<{ name?: string }> };
-      if (data && data.models && Array.isArray(data.models)) {
-        const names = data.models
-          .map((m) => (m.name || "").replace("models/", ""))
-          .filter(
-            (name: string) =>
-              !name.includes("vision") && !name.includes("embedding"),
-          );
-
+      if (models.length === 0) {
+        notify.warning("Nenhum modelo compatível encontrado");
+      } else {
+        const names = models.map((m) => m.id);
         setFetchedModels(names);
         notify.success(`${names.length} modelos encontrados!`);
-      } else {
-        notify.warning("Nenhum modelo compatível encontrado");
       }
     } catch (err) {
       logger.error("ApiKeyModal", "Erro ao listar modelos", err);
