@@ -1,0 +1,183 @@
+/* ========================================
+   Animations — My Mercado
+   @keyframes compartilhados e classes de animação
+   ======================================== */
+
+/* Slide Up (entrada de cards) */
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(15px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Fade In */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Fade In Up */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Fade Out Scale */
+@keyframes fadeOutScale {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    to {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+}
+
+/* Expand Height */
+@keyframes expandHeight {
+    from {
+        height: 0;
+        opacity: 0;
+    }
+
+    to {
+        height: auto;
+        opacity: 1;
+    }
+}
+
+/* Collapse Height */
+@keyframes collapseHeight {
+    from {
+        height: auto;
+        opacity: 1;
+    }
+
+    to {
+        height: 0;
+        opacity: 0;
+    }
+}
+
+/* Pulse Ring (scanner) */
+@keyframes pulse-ring {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scale(1.35);
+    }
+}
+
+/* Shimmer (skeleton) */
+@keyframes shimmer {
+    0% {
+        background-position: -1000px 0;
+    }
+
+    100% {
+        background-position: 1000px 0;
+    }
+}
+
+/* Spin */
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Bounce (typing indicator) */
+@keyframes bounce {
+
+    0%,
+    80%,
+    100% {
+        transform: scale(0);
+    }
+
+    40% {
+        transform: scale(1);
+    }
+}
+
+/* ── Utility Classes ── */
+
+.message-fade {
+    animation: fadeIn var(--duration-fast) ease-in-out;
+}
+
+.animated-item {
+    animation: fadeInUp var(--duration-fast) ease-out forwards;
+}
+
+.animated-item.exiting {
+    animation: fadeOutScale var(--duration-fast) ease-out forwards;
+}
+
+.animated-expand {
+    animation: expandHeight var(--duration-fast) ease-out forwards;
+    overflow: hidden;
+}
+
+.animated-expand.exiting {
+    animation: collapseHeight var(--duration-fast) ease-out forwards;
+}
+
+.smooth-layout {
+    transition: all var(--duration-fast) ease-out;
+}
+
+.typing-indicator {
+    display: flex;
+    gap: 4px;
+}
+
+.typing-indicator span {
+    width: 6px;
+    height: 6px;
+    background: var(--text-tertiary);
+    border-radius: 50%;
+    animation: bounce 1.4s infinite ease-in-out both;
+}
+
+.typing-indicator span:nth-child(1) {
+    animation-delay: -0.32s;
+}
+
+.typing-indicator span:nth-child(2) {
+    animation-delay: -0.16s;
+}
+
+.spin {
+    animation: spin 1s linear infinite;
+}

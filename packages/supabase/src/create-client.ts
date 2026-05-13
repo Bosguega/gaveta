@@ -1,34 +1,35 @@
 import { createClient } from '@supabase/supabase-js'
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient, SupabaseClientOptions } from '@supabase/supabase-js'
 import { SupabaseError } from './errors'
 
-/**
- * Configuração necessária para criar uma instância do Supabase client.
- */
 export interface SupabaseConfig {
-    /** URL do projeto Supabase (ex: https://xyz.supabase.co) */
+    /** URL do projeto Supabase. */
     url: string
-    /** Chave anônima pública do projeto Supabase */
+    /** Chave anonima publica do projeto Supabase. */
     anonKey: string
+    /** Opcoes repassadas ao createClient do supabase-js. */
+    options?: SupabaseClientOptions<any>
 }
 
-/**
- * Cria e retorna uma instância do Supabase client.
- * Lança SupabaseError se url ou anonKey forem inválidos.
- *
- * @example
- * const supabase = createSupabaseClient({
- *   url: 'https://xyz.supabase.co',
- *   anonKey: 'public-anon-key'
- * })
- */
-export function createSupabaseClient(config: SupabaseConfig): SupabaseClient {
+export function createSupabaseClient<
+    Database = any,
+    SchemaNameOrClientOptions extends
+        | (string & keyof Omit<Database, '__InternalSupabase'>)
+        | { PostgrestVersion: string } =
+        'public' extends keyof Omit<Database, '__InternalSupabase'>
+            ? 'public'
+            : string & keyof Omit<Database, '__InternalSupabase'>,
+>(config: SupabaseConfig): SupabaseClient<Database, SchemaNameOrClientOptions> {
     if (!config.url || !config.anonKey) {
         throw new SupabaseError(
             'INVALID_CONFIG',
-            'Supabase URL e Anon Key são obrigatórios'
+            'Supabase URL e Anon Key sao obrigatorios'
         )
     }
 
-    return createClient(config.url, config.anonKey)
+    return createClient<Database, SchemaNameOrClientOptions>(
+        config.url,
+        config.anonKey,
+        config.options
+    )
 }

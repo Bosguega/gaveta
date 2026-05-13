@@ -3,7 +3,15 @@ export { createSupabaseClient } from './create-client'
 export type { SupabaseConfig } from './create-client'
 
 // Errors
-export { SupabaseError, isAuthError, isNetworkError, mapSupabaseError } from './errors'
+export {
+    SupabaseError,
+    getSupabaseErrorInfo,
+    isAuthError,
+    isNetworkError,
+    isRetryableError,
+    mapSupabaseError,
+} from './errors'
+export type { SupabaseErrorInfo } from './errors'
 
 // Utils
 export { withRetry } from './retry'
@@ -16,7 +24,10 @@ export {
     signUp,
     signOut,
     getUser,
+    requireUser,
+    getAuthenticatedContext,
     getSession,
+    requireSession,
     onAuthStateChange,
     mapAuthError,
 } from './auth'

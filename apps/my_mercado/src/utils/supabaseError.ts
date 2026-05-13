@@ -1,10 +1,5 @@
 import { AppError, ErrorCodes, type ErrorCode } from "./errorCodes";
-
-type SupabaseLikeError = {
-  code?: unknown;
-  message?: unknown;
-  details?: unknown;
-};
+import { getSupabaseErrorInfo } from "@bosguega/supabase";
 
 export function mapSupabaseError(
   error: unknown,
@@ -13,14 +8,9 @@ export function mapSupabaseError(
 ): AppError {
   if (error instanceof AppError) return error;
 
-  const candidate = error as SupabaseLikeError | null;
-  const code = typeof candidate?.code === "string" ? candidate.code : undefined;
-  const message =
-    typeof candidate?.message === "string"
-      ? candidate.message
-      : error instanceof Error
-        ? error.message
-        : "Erro ao executar operacao no Supabase";
+  const info = getSupabaseErrorInfo(error, "Erro ao executar operacao no Supabase");
+  const code = info.code;
+  const message = info.message;
 
   if (code === "PGRST116") {
     return new AppError(ErrorCodes.NOT_FOUND, "Registro nao encontrado.", context, error);

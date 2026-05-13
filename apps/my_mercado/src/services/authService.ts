@@ -1,4 +1,11 @@
-import { signIn, signUp, signOut, getUser } from '@bosguega/supabase';
+import {
+  getAuthenticatedContext,
+  getUser,
+  requireUser,
+  signIn,
+  signOut,
+  signUp,
+} from '@bosguega/supabase';
 import { logger } from "../utils/logger";
 import { ErrorCodes, AppError } from "../utils/errorCodes";
 import { supabase } from "./supabaseClient";
@@ -65,16 +72,17 @@ export async function logout() {
  */
 export async function getUserOrThrow() {
   const client = requireSupabase();
-  const user = await getUser(client);
-  if (!user) {
+  try {
+    return await requireUser(client);
+  } catch (err) {
     logger.error("authService", "User not authenticated", null, ErrorCodes.AUTH_SESSION_INVALID);
     throw new AppError(
       ErrorCodes.AUTH_SESSION_INVALID,
       "Usuário não autenticado",
-      "getUserOrThrow"
+      "getUserOrThrow",
+      err
     );
   }
-  return user;
 }
 
 /**
@@ -82,20 +90,17 @@ export async function getUserOrThrow() {
  */
 export async function getAuthenticatedSupabaseContext() {
   const client = requireSupabase();
-  const user = await getUser(client);
-  if (!user) {
+  try {
+    return await getAuthenticatedContext(client);
+  } catch (err) {
     logger.error("authService", "User not authenticated", null, ErrorCodes.AUTH_SESSION_INVALID);
     throw new AppError(
       ErrorCodes.AUTH_SESSION_INVALID,
       "Usuário não autenticado",
-      "getAuthenticatedSupabaseContext"
+      "getAuthenticatedSupabaseContext",
+      err
     );
   }
-
-  return {
-    client,
-    user,
-  };
 }
 
 /**

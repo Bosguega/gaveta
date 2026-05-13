@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient";
+import { invoke, SupabaseError } from "@bosguega/supabase";
 
 export type NfceEdgeSuccess = {
   success: true;
@@ -26,12 +27,18 @@ export async function fetchNfceHtmlFromEdge(
     return { ok: false, detail: "supabase_desabilitado" };
   }
 
-  const { data, error } = await supabase.functions.invoke<NfceEdgeResponse>("fetch-nfce", {
-    body: { url },
-  });
-
-  if (error) {
-    return { ok: false, detail: error.message || "invoke_failed" };
+  let data: NfceEdgeResponse;
+  try {
+    data = await invoke<NfceEdgeResponse>(supabase, "fetch-nfce", {
+      body: { url },
+      timeoutMs: 30_000,
+      retries: 1,
+    });
+  } catch (error) {
+    if (error instanceof SupabaseError) {
+      return { ok: false, detail: error.message || error.code };
+    }
+    return { ok: false, detail: error instanceof Error ? error.message : "invoke_failed" };
   }
 
   if (!data) {

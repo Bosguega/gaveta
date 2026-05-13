@@ -69,6 +69,23 @@ export async function getUser(client: SupabaseClient): Promise<User | null> {
     return data.user
 }
 
+export async function requireUser(client: SupabaseClient): Promise<User> {
+    const { data, error } = await client.auth.getUser()
+    if (error) throw mapAuthError(error, 'requireUser')
+    if (!data.user) {
+        throw new SupabaseError('AUTH_SESSION_MISSING', 'Usuario nao autenticado')
+    }
+    return data.user
+}
+
+export async function getAuthenticatedContext(client: SupabaseClient): Promise<{
+    client: SupabaseClient
+    user: User
+}> {
+    const user = await requireUser(client)
+    return { client, user }
+}
+
 /**
  * Obtém a sessão atual ou null se não houver sessão ativa.
  * Não lança erro — apenas retorna null.
@@ -76,6 +93,15 @@ export async function getUser(client: SupabaseClient): Promise<User | null> {
 export async function getSession(client: SupabaseClient): Promise<Session | null> {
     const { data, error } = await client.auth.getSession()
     if (error) return null
+    return data.session
+}
+
+export async function requireSession(client: SupabaseClient): Promise<Session> {
+    const { data, error } = await client.auth.getSession()
+    if (error) throw mapAuthError(error, 'requireSession')
+    if (!data.session) {
+        throw new SupabaseError('AUTH_SESSION_MISSING', 'Sessao nao encontrada')
+    }
     return data.session
 }
 

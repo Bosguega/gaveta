@@ -1,23 +1,10 @@
 # @bosguega/supabase
 
-Package compartilhado de infraestrutura Supabase para o monorepo.
+Infraestrutura Supabase reutilizavel para o monorepo.
 
-## Filosofia
+O pacote permanece agnostico: nao cria singleton, nao le `import.meta.env`, nao conhece tabelas/RPCs do app e nao depende de React/Vue. Apps passam o client explicitamente e mantem regras de dominio localmente.
 
-- **Simples** — sem abstrações desnecessárias
-- **Explícito** — sem estado global, sem mágica
-- **Agnóstico** — zero dependência de framework, bundler ou runtime
-- **Composable** — funções puras que recebem o client como parâmetro
-
-## Instalação
-
-```bash
-pnpm add @bosguega/supabase
-```
-
-## Uso
-
-### Client
+## Client
 
 ```ts
 import { createSupabaseClient } from '@bosguega/supabase'
@@ -25,114 +12,97 @@ import { createSupabaseClient } from '@bosguega/supabase'
 const supabase = createSupabaseClient({
   url: import.meta.env.VITE_SUPABASE_URL,
   anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+  options: {
+    auth: { persistSession: true },
+  },
 })
 ```
 
-O app é responsável por armazenar e exportar a instância do client.
-
-### Auth
+O factory aceita generics de database:
 
 ```ts
-import { signIn, signUp, signOut, getUser } from '@bosguega/supabase'
-
-// Login
-const data = await signIn(supabase, 'email@exemplo.com', 'senha')
-
-// Cadastro
-const data = await signUp(supabase, 'email@exemplo.com', 'senha')
-
-// Logout
-await signOut(supabase)
-
-// Verificar usuário logado
-const user = await getUser(supabase)
-if (user) {
-  console.log('Logado como', user.email)
-}
+const supabase = createSupabaseClient<Database>({ url, anonKey })
 ```
 
-### Edge Functions
+## Auth
+
+```ts
+import {
+  signIn,
+  signUp,
+  signOut,
+  getUser,
+  requireUser,
+  getAuthenticatedContext,
+} from '@bosguega/supabase'
+
+await signIn(supabase, email, password)
+const user = await requireUser(supabase)
+const { client, user: currentUser } = await getAuthenticatedContext(supabase)
+```
+
+`getUser` e `getSession` retornam `null` em falha. `requireUser`, `requireSession` e `getAuthenticatedContext` lancam `SupabaseError` preservando a causa.
+
+## Edge Functions
 
 ```ts
 import { invoke } from '@bosguega/supabase'
 
-const result = await invoke(supabase, 'send-email', {
-  body: { to: 'user@email.com' },
-  timeoutMs: 10000,
+const result = await invoke<MyResponse>(supabase, 'fetch-nfce', {
+  body: { url },
+  headers: { 'x-request-id': requestId },
+  timeoutMs: 30_000,
   retries: 2,
 })
 ```
 
-### Storage
+`invoke` repassa opcoes de `FunctionInvokeOptions`, aplica timeout, retry seletivo e unwrap de `{ data, error }`.
 
-```ts
-import { upload, download, remove, getPublicUrl } from '@bosguega/supabase'
-
-// Upload
-await upload(supabase, 'bucket', 'caminho/arquivo.pdf', file)
-
-// Download
-const blob = await download(supabase, 'bucket', 'caminho/arquivo.pdf')
-
-// Remover
-await remove(supabase, 'bucket', ['arquivo1.pdf', 'arquivo2.pdf'])
-
-// URL pública
-const url = getPublicUrl(supabase, 'bucket', 'caminho/arquivo.pdf')
-```
-
-### Retry e Timeout
+## Retry e Timeout
 
 ```ts
 import { withRetry, withTimeout } from '@bosguega/supabase'
 
-// Retry com backoff exponencial
 const data = await withRetry(
-  () => supabase.from('users').select('*'),
+  () => supabase.from('receipts').select('*'),
   { attempts: 3, baseDelayMs: 500 }
 )
 
-// Timeout
-const data = await withTimeout(
-  supabase.from('users').select('*'),
-  5000
-)
+await withTimeout(operation, 5000)
 ```
 
-### Tratamento de Erro
+Retry padrao ocorre apenas para falhas recuperaveis: rede, timeout, HTTP 408/429 e 5xx. Apps podem passar `shouldRetry`.
+
+## Errors
 
 ```ts
-import { SupabaseError, isAuthError, isNetworkError } from '@bosguega/supabase'
+import {
+  SupabaseError,
+  getSupabaseErrorInfo,
+  isRetryableError,
+  mapSupabaseError,
+} from '@bosguega/supabase'
 
-try {
-  await signIn(supabase, 'email', 'senha errada')
-} catch (err) {
-  if (isAuthError(err)) {
-    console.error('Erro de autenticação:', err.message)
-  }
-  if (err instanceof SupabaseError) {
-    console.error(`[${err.code}] ${err.message}`)
-  }
-}
+const info = getSupabaseErrorInfo(error)
 ```
 
-## Módulos
+O package normaliza erros Supabase/PostgREST/Postgres/Functions em informacoes genericas (`code`, `message`, `details`, `hint`, `status`). Apps devem converter isso para erros de dominio quando necessario.
 
-| Módulo | Arquivo | Responsabilidade |
-|--------|---------|-----------------|
-| Client | `create-client.ts` | Factory para criar instância do Supabase |
-| Errors | `errors.ts` | Classes de erro e helpers |
-| Auth | `auth.ts` | Login, cadastro, logout, sessão |
-| Retry | `retry.ts` | Retry com backoff exponencial |
-| Timeout | `timeout.ts` | Timeout para operações assíncronas |
-| Functions | `services/functions.ts` | Invocação de edge functions |
-| Storage | `services/storage.ts` | Upload, download, remoção |
+## Storage
 
-## O que NÃO está incluído
+```ts
+import { upload, download, remove, getPublicUrl } from '@bosguega/supabase'
 
-- Estado global / singleton
-- Dependência de framework (Vue, React)
-- `import.meta.env` — o app passa as credenciais explicitamente
-- Tipos de tabelas do banco — o app gera com `supabase gen types`
-- Realtime (adiado até surgir padrão repetitivo)
-- Logger (adiado até surgir necessidade real)
+await upload(supabase, 'bucket', 'path/file.pdf', file)
+const blob = await download(supabase, 'bucket', 'path/file.pdf')
+await remove(supabase, 'bucket', ['path/file.pdf'])
+```
+
+## Desenvolvimento
+
+```bash
+npm run build
+npm run test
+```
+
+No workspace atual, o script de teste usa o Vitest instalado pelo app `my_mercado`.

@@ -1,0 +1,66 @@
+/* ========================================
+   Design Tokens — My Mercado
+   Sistema de tokens visuais do app
+   Mantido propositalmente simples e direto
+   ======================================== */
+
+:root {
+    /* ── Cores existentes (preservadas) ── */
+    --bg-color: #020617;
+    --text-color: #f8fafc;
+    --card-bg: rgba(15, 23, 42, 0.6);
+    --card-border: rgba(255, 255, 255, 0.08);
+    --primary: #3b82f6;
+    --primary-glow: rgba(59, 130, 246, 0.5);
+    --primary-hover: #60a5fa;
+    --success: #10b981;
+    --warn: #f43f5e;
+    --font-main: "Outfit", sans-serif;
+
+    /* ── Spacing scale ── */
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.25rem;
+    --space-6: 1.5rem;
+    --space-8: 2rem;
+
+    /* ── Typography ── */
+    --text-xs: 0.7rem;
+    --text-sm: 0.8rem;
+    --text-base: 0.95rem;
+    --text-lg: 1.1rem;
+    --text-xl: 1.4rem;
+    --text-2xl: 2rem;
+    --weight-normal: 400;
+    --weight-medium: 500;
+    --weight-semibold: 600;
+    --weight-bold: 700;
+    --weight-extrabold: 800;
+
+    /* ── Border radius ── */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 1.25rem;
+    --radius-xl: 1.5rem;
+    --radius-full: 9999px;
+
+    /* ── Shadows ── */
+    --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.2);
+    --shadow-nav: 0 12px 40px rgba(0, 0, 0, 0.5);
+    --shadow-btn: 0 4px 12px var(--primary-glow);
+
+    /* ── Animation ── */
+    --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+    --duration-fast: 0.2s;
+    --duration-normal: 0.3s;
+
+    /* ── Semantic colors ── */
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-tertiary: #64748b;
+    --text-muted: #475569;
+    --border-subtle: rgba(255, 255, 255, 0.05);
+    --bg-overlay: rgba(0, 0, 0, 0.65);
+}

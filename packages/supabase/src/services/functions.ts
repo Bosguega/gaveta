@@ -1,44 +1,36 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { FunctionInvokeOptions, SupabaseClient } from '@supabase/supabase-js'
 import { SupabaseError } from '../errors'
-import { withTimeout } from '../timeout'
 import { withRetry } from '../retry'
+import { withTimeout } from '../timeout'
 
-/**
- * Opções para invocação de edge function.
- */
-export interface InvokeOptions {
-    /** Payload enviado à função */
-    body?: Record<string, unknown>
-    /** Timeout em ms (default: 30000) */
+export interface InvokeOptions extends Omit<FunctionInvokeOptions, 'timeout'> {
+    /** Timeout em ms (default: 30000). */
     timeoutMs?: number
-    /** Número de tentativas em caso de falha (default: 1, sem retry) */
+    /** Numero de tentativas totais (default: 1, sem retry). */
     retries?: number
+    /** Permite data null/undefined como resposta valida. */
+    allowEmptyResponse?: boolean
 }
 
-/**
- * Executa uma edge function do Supabase com suporte a timeout e retry.
- * Retorna apenas o payload de sucesso (unwrap automático de { data, error }).
- * Lança SupabaseError em caso de erro na função, timeout ou falha de rede.
- *
- * @example
- * const result = await invoke(client, 'send-email', {
- *   body: { to: 'user@email.com' },
- *   timeoutMs: 10000,
- *   retries: 2
- * })
- */
 export async function invoke<T = unknown>(
     client: SupabaseClient,
     functionName: string,
     options?: InvokeOptions
 ): Promise<T> {
+    const {
+        timeoutMs = 30_000,
+        retries = 1,
+        allowEmptyResponse = false,
+        ...invokeOptions
+    } = options ?? {}
+
     const fn = () =>
         withTimeout(
-            client.functions.invoke<T>(functionName, { body: options?.body }),
-            options?.timeoutMs ?? 30_000
+            client.functions.invoke<T>(functionName, invokeOptions),
+            timeoutMs
         )
 
-    const response = await withRetry(fn, { attempts: options?.retries ?? 1 })
+    const response = await withRetry(fn, { attempts: retries })
 
     if (response.error) {
         throw new SupabaseError(
@@ -48,8 +40,7 @@ export async function invoke<T = unknown>(
         )
     }
 
-    // response.data é T | null; se for null tratamos como erro
-    if (response.data === null || response.data === undefined) {
+    if (!allowEmptyResponse && (response.data === null || response.data === undefined)) {
         throw new SupabaseError(
             'EDGE_FUNCTION_EMPTY_RESPONSE',
             `Edge function '${functionName}' retornou resposta vazia`

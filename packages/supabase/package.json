@@ -6,7 +6,8 @@
     "main": "src/index.ts",
     "types": "src/index.ts",
     "scripts": {
-        "build": "tsc --noEmit"
+        "build": "tsc --noEmit",
+        "test": "node ../../apps/my_mercado/node_modules/vitest/vitest.mjs run"
     },
     "dependencies": {
         "@supabase/supabase-js": "^2.99.3"
