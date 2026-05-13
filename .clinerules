@@ -1,0 +1,73 @@
+# Gaveta Monorepo — Regras Globais
+
+## Estrutura do Repositório
+
+pnpm workspaces com dois diretórios principais:
+- `packages/*` — Bibliotecas compartilhadas
+- `apps/*` — Aplicações
+
+Workspaces atuais:
+- `@bosguega/ai-core` (packages/ai-core) — Core de IA
+- `@bosguega/supabase` (packages/supabase) — Cliente Supabase utilitário
+- `@bosguega/eslint-config` (packages/eslint-config) — Config compartilhada de ESLint
+- `my_mercado` (apps/my_mercado) — App React de gerenciamento de compras
+- `memoria-auxiliar` (apps/memoria_auxiliar) — App Vue + Tauri de notas com IA
+- `app-teste` (apps/app-teste) — App de teste simples
+
+## Comandos Essenciais
+
+```bash
+# Instalar dependências (sempre na raiz)
+pnpm install
+
+# Build de um package específico
+pnpm --filter @bosguega/ai-core build
+
+# Rodar um app
+pnpm --filter my_mercado dev
+pnpm --filter memoria-auxiliar dev
+
+# Testes
+pnpm --filter my_mercado test
+pnpm --filter memoria-auxiliar test
+```
+
+## TypeScript
+
+O `tsconfig.json` raiz é a base. Cada app/package estende dele com `"extends": "../../tsconfig.json"`.
+- `strict: true` obrigatório em todo o monorepo
+- `target: ES2022`, `module: ESNext`, `moduleResolution: bundler`
+
+## Commits
+
+Usar [Conventional Commits](https://www.conventionalcommits.org/):
+- `feat:` — Nova funcionalidade
+- `fix:` — Correção de bug
+- `chore:` — Manutenção, deps, build
+- `docs:` — Documentação
+- `refactor:` — Refatoração sem mudança de comportamento
+- `test:` — Testes
+- `style:` — Formatação, estilos
+
+## Convenções Gerais
+
+- Preferir **funções a classes** em packages compartilhados
+- Código autoexplicativo: comentários mínimos, nomes descritivos
+- Variáveis e funções em camelCase, componentes React/PascalCase
+- Arquivos em kebab-case para diretórios, camelCase para arquivos .ts
+- Mensagens de erro e UI em **pt-BR**
+- Código fonte e JSDoc em **inglês** (para libs compartilhadas)
+- Todo formulário deve usar validação com **Zod**
+
+## CI/CD
+
+GitHub Actions em `.github/workflows/`:
+- `ci-cd.yml` — CI básico
+- `deploy-pages.yml` — Deploy para GitHub Pages
+
+## Subdiretórios com regras próprias
+
+Cada workspace pode ter seu próprio `.clinerules` com regras específicas:
+- `packages/ai-core/.clinerules` — Regras da lib de IA
+- `apps/my_mercado/.clinerules` — Regras do app React
+- `apps/memoria_auxiliar/.clinerules` — Regras do app Vue + Tauri

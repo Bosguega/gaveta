@@ -1,0 +1,89 @@
+# My Mercado — Regras
+
+## Stack
+
+React 18 + TypeScript + Vite 6 + Tailwind CSS + PostCSS + PWA (vite-plugin-pwa)
+- **Estado global:** Zustand 5 (apenas UI)
+- **Dados + Cache:** TanStack React Query 5
+- **Persistência:** Supabase (PostgreSQL + Auth + RLS) com fallback IndexedDB → localStorage
+- **Scanner:** html5-qrcode + BarcodeDetector nativo
+- **IA:** BYOK (Bring Your Own Key) — Google Gemini ou OpenAI
+- **Validação:** Zod 4
+- **Testes:** Vitest + Testing Library + jsdom
+- **Ícones:** Lucide React
+- **Gráficos:** Recharts
+- **Formatação:** currency.js + date-fns
+
+## Arquitetura
+
+### Separação de Responsabilidades
+
+| Camada | Responsabilidade | Tecnologia |
+|--------|------------------|------------|
+| **Apresentação** | UI, componentes, A11y | React, Lucide, Recharts |
+| **Estado de UI** | Abas, filtros, scanner, modais | Zustand stores |
+| **Dados** | Cache, sync, mutações | React Query hooks |
+| **Validação** | Formulários, schemas | Zod (`utils/validation.ts`) |
+| **Domínio** | Regras de negócio | Services + Utils |
+| **Persistência** | Armazenamento | Supabase → IndexedDB → localStorage |
+
+### Regras de Dependência
+
+- **React Query** é a fonte única da verdade para dados de receipts
+- **Zustand** é usado **apenas** para estado de UI (nunca para dados que vêm do servidor)
+- Componentes não chamam serviços diretamente — sempre através de hooks
+- Mensagens de erro nunca hardcoded — usar `utils/errorMessages.ts` com `notify.errorByKey()`
+- Todo formulário deve usar Zod para validação
+
+## Estrutura de Diretórios
+
+```
+src/
+├── components/       — Componentes React (cada aba em subpasta)
+│   ├── ui/           — Componentes genéricos reutilizáveis (Modal, Button, Card)
+│   ├── HistoryTab/   — Histórico de notas
+│   ├── ScannerTab/   — Scanner de QR Code (screens/, views/, forms/, modals/)
+│   ├── CanonicalProductsTab/
+│   └── ShoppingListTab/
+├── hooks/            — Hooks customizados
+│   ├── queries/      — React Query hooks (useReceiptsQuery, etc.)
+│   ├── canonicalProduct/
+│   └── shoppingList/
+├── stores/           — Zustand stores (apenas estado de UI)
+├── services/         — Chamadas a APIs (Supabase, Sefaz, IA)
+├── utils/            — Funções puras
+│   ├── ai/           — Clientes IA (geminiClient, openaiClient, promptBuilder)
+│   ├── analytics/    — Agregação, filtros, séries temporais
+│   └── validation/   — Schemas Zod e validadores
+├── types/            — Tipos TypeScript (domain, ui, ai, scanner, history)
+├── providers/        — Context providers (QueryProvider)
+├── workers/          — Web Workers (receiptParser)
+├── styles/           — CSS (tokens, base, components, animations)
+├── constants/        — Constantes de domínio
+└── tests/            — Setup de testes
+```
+
+## Padrões de Código
+
+- Componentes com no máximo **~200 linhas**
+- Hooks customizados para toda lógica reutilizável
+- Logs apenas em DEV: `import.meta.env.DEV`
+- Error Boundary nos componentes críticos (App, Scanner)
+- Mensagens de erro em **pt-BR** com acentos
+- Nomes descritivos — comentários mínimos
+- Testes ao lado do código testado (`*.test.tsx`)
+- **BYOK:** chave de IA nunca fica hardcoded no código
+
+## Fluxo de Dados
+
+1. **Captura:** Scanner/Upload/Manual → validação Zod → `useReceiptScanner`
+2. **Processamento:** `receiptParser` (proxies Sefaz) → `productService` (Pipeline de normalização com IA)
+3. **Persistência:** `useSaveReceipt` (React Query) → Supabase (primário) → IndexedDB (fallback) → localStorage (último recurso)
+4. **Cache e Render:** React Query invalida → componentes re-renderizam
+
+## Testes
+
+- **Vitest** + **Testing Library** para componentes React
+- **jsdom** para ambiente de DOM simulado
+- Testar: sucesso, erro, loading, empty state
+- Mock de chamadas externas (Supabase, IA, Sefaz)

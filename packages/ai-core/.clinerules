@@ -1,0 +1,59 @@
+# @bosguega/ai-core — Regras
+
+## Stack
+
+TypeScript puro. **Zero dependências de framework** (React, Vue, DOM).
+A única dependência de produção é opcional e por provider (ex: OpenAI SDK).
+
+## Organização
+
+```
+src/
+├── client/        — Factory unificada (createAiClient, retryWrapper, fallbackWrapper)
+├── gemini/        — Provider Google Gemini
+├── openai/        — Provider OpenAI
+├── errors/        — Tipos de erro compartilhados
+├── parsing/       — Parsing de resposta (extractJson)
+├── hash/          — Utilitários de hash (sha256)
+├── similarity/    — Busca vetorial (cosineSimilarity)
+├── storage/       — Gerenciamento de chave/modelo (browserStore, aiConfig, cache)
+└── index.ts       — Barrel export
+```
+
+## Convenções
+
+- **Sempre exportar funções, nunca classes** (exceção: `AiApiError` que estende `Error`)
+- **JSDoc em inglês** para toda API pública (parâmetros, retorno, exemplos)
+- **Mensagens de erro em pt-BR** no `AiApiError` — o usuário final não precisa saber inglês
+- Nomes descritivos e autoexplicativos — comentários mínimos
+- Cada provider tem sua própria pasta com barrel `index.ts`
+- O `src/index.ts` raiz re-exporta tudo que é público
+
+## Providers
+
+Cada provider segue a mesma interface (`AiClient` em `client/types.ts`):
+- `generateText(prompt, apiKey, model, options?) → Promise<AiResponse>`
+- `testConnection(apiKey, model) → Promise<ConnectionResult>`
+- Funções auxiliares específicas (ex: `listModels` para Gemini)
+
+## Tratamento de Erros
+
+Usar `AiApiError` (de `errors/`) com:
+- `message` em português
+- `code` padronizado (ex: `INVALID_API_KEY`, `RATE_LIMIT_EXCEEDED`)
+- `statusCode` HTTP quando aplicável
+- Métodos helper: `isAuthError()`, `isRateLimit()`, `isClientError()`, `isServerError()`, `isNetworkError()`
+
+## Storage
+
+Framework-agnostic (funciona em browser, não depende de React/Vue):
+- `sessionStorage` para chave (padrão) ou `localStorage` (se persistência ativada)
+- `localStorage` para modelo (não é dado sensível)
+
+## Testes
+
+Usar **Vitest** — os arquivos de teste ficam ao lado do código que testam (`*.test.ts`).
+Testar:
+- Casos de sucesso (retorno esperado)
+- Casos de erro (timeout, HTTP errors, resposta inválida)
+- Casos de borda (string vazia, null, undefined)
