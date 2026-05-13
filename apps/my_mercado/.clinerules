@@ -2,12 +2,13 @@
 
 ## Stack
 
-React 18 + TypeScript + Vite 6 + Tailwind CSS + PostCSS + PWA (vite-plugin-pwa)
-- **Estado global:** Zustand 5 (apenas UI)
+React 18 + TypeScript + Vite 6 + Tailwind CSS 3 + PostCSS + PWA (vite-plugin-pwa)
+- **Estado global:** Zustand 5 (UI + shopping list local-first)
 - **Dados + Cache:** TanStack React Query 5
-- **Persistência:** Supabase (PostgreSQL + Auth + RLS) com fallback IndexedDB → localStorage
+- **Persistência:** Supabase (PostgreSQL + Auth + RLS + Edge Functions) com fallback IndexedDB → localStorage
 - **Scanner:** html5-qrcode + BarcodeDetector nativo
-- **IA:** BYOK (Bring Your Own Key) — Google Gemini ou OpenAI
+- **NFC-e:** Cloudflare Workers (Supabase Edge Functions) para proxy CORS via `@bosguega/supabase`
+- **IA:** BYOK (Bring Your Own Key) — Google Gemini ou OpenAI, via `@bosguega/ai-core`
 - **Validação:** Zod 4
 - **Testes:** Vitest + Testing Library + jsdom
 - **Ícones:** Lucide React
@@ -20,70 +21,101 @@ React 18 + TypeScript + Vite 6 + Tailwind CSS + PostCSS + PWA (vite-plugin-pwa)
 
 | Camada | Responsabilidade | Tecnologia |
 |--------|------------------|------------|
-| **Apresentação** | UI, componentes, A11y | React, Lucide, Recharts |
+| **Apresentação** | UI, componentes, A11y | React, TailwindCSS, Lucide, Recharts |
 | **Estado de UI** | Abas, filtros, scanner, modais | Zustand stores |
-| **Dados** | Cache, sync, mutações | React Query hooks |
-| **Validação** | Formulários, schemas | Zod (`utils/validation.ts`) |
+| **Estado local-first** | Lista de compras (local + sync opcional nuvem) | Zustand store fatorada (`shoppingListStore/`) |
+| **Dados** | Cache, sync, mutações | React Query hooks (17 hooks em `queries/`) |
+| **Validação** | Formulários, schemas | Zod (`utils/validation.ts`, `utils/validation/canonicalProduct.ts`) |
 | **Domínio** | Regras de negócio | Services + Utils |
 | **Persistência** | Armazenamento | Supabase → IndexedDB → localStorage |
+| **Error Handling** | Códigos, mensagens pt-BR, parsing Supabase | `errorCodes.ts` + `errorMessages.ts` + `supabaseError.ts` |
 
 ### Regras de Dependência
 
-- **React Query** é a fonte única da verdade para dados de receipts
-- **Zustand** é usado **apenas** para estado de UI (nunca para dados que vêm do servidor)
-- Componentes não chamam serviços diretamente — sempre através de hooks
-- Mensagens de erro nunca hardcoded — usar `utils/errorMessages.ts` com `notify.errorByKey()`
+- **React Query** é a fonte única da verdade para dados de receipts, dicionário, produtos canônicos e listas colaborativas
+- **Zustand** para estado de UI + lista de compras local-first (stores fatoradas: types/core/mutations/selectors/store)
+- Componentes não chamam serviços diretamente — sempre através de hooks ou hooks de query
+- Mensagens de erro nunca hardcoded — usar `useErrorHandler()` + `parseErrorCode()` + `getErrorMessage()`
 - Todo formulário deve usar Zod para validação
 
 ## Estrutura de Diretórios
 
 ```
 src/
-├── components/       — Componentes React (cada aba em subpasta)
-│   ├── ui/           — Componentes genéricos reutilizáveis (Modal, Button, Card)
-│   ├── HistoryTab/   — Histórico de notas
-│   ├── ScannerTab/   — Scanner de QR Code (screens/, views/, forms/, modals/)
-│   ├── CanonicalProductsTab/
-│   └── ShoppingListTab/
-├── hooks/            — Hooks customizados
-│   ├── queries/      — React Query hooks (useReceiptsQuery, etc.)
-│   ├── canonicalProduct/
-│   └── shoppingList/
-├── stores/           — Zustand stores (apenas estado de UI)
-├── services/         — Chamadas a APIs (Supabase, Sefaz, IA)
-├── utils/            — Funções puras
-│   ├── ai/           — Clientes IA (geminiClient, openaiClient, promptBuilder)
-│   ├── analytics/    — Agregação, filtros, séries temporais
-│   └── validation/   — Schemas Zod e validadores
-├── types/            — Tipos TypeScript (domain, ui, ai, scanner, history)
-├── providers/        — Context providers (QueryProvider)
-├── workers/          — Web Workers (receiptParser)
-├── styles/           — CSS (tokens, base, components, animations)
-├── constants/        — Constantes de domínio
-└── tests/            — Setup de testes
+├── components/          — Componentes React (cada aba em subpasta)
+│   ├── ui/              — Componentes genéricos reutilizáveis (Modal, Button, Card, EmptyState)
+│   ├── HistoryTab/      — Histórico de notas (HeaderSection, SummaryCard, ReceiptList)
+│   ├── ScannerTab/      — Scanner de QR Code (screens/, views/, forms/, modals/)
+│   ├── CanonicalProductsTab/  — Gestão de produtos canônicos
+│   └── ShoppingListTab/       — Lista de compras (colaborativa + local)
+│   ├── PeriodSelector.tsx     — Filtro de período genérico (NOVO)
+│   ├── PriceChart.tsx         — Gráfico de tendência de preços (lazy-loaded) (NOVO)
+│   ├── InputDialog.tsx        — Diálogo de entrada reutilizável (NOVO)
+│   ├── UniversalSearchBar.tsx — Barra de busca universal (NOVO)
+│   ├── SearchItemSkeleton.tsx — Skeleton de busca (NOVO)
+│   └── ConfirmDialog.tsx      — Diálogo de confirmação
+├── hooks/               — Hooks customizados
+│   ├── queries/         — 17 React Query hooks (useReceiptsQuery, etc.)
+│   ├── canonicalProduct/ — useCanonicalProductsForm, useCanonicalProductsUI
+│   ├── shoppingList/    — usePurchaseHistory, useSortedShoppingItems
+│   └── useErrorHandler.ts  — Hook de erro unificado (NOVO)
+├── stores/              — Zustand stores
+│   ├── shoppingListStore/ — Store fatorada: types.ts, core.ts, mutations.ts, selectors.ts, store.ts (NOVO)
+│   ├── useUiStore.ts
+│   ├── useScannerStore.ts
+│   └── useReceiptsSessionStore.ts
+├── services/            — Chamadas a APIs (Supabase, Sefaz, IA, Edge Functions)
+│   ├── nfceEdgeFetch.ts            — Proxy CORS NFC-e via Edge Functions (NOVO)
+│   ├── collaborativeShoppingListService.ts  — Listas colaborativas (NOVO)
+│   ├── shoppingListCloudSyncService.ts      — Sync lista nuvem
+│   └── canonicalProductService.ts           — CRUD produtos canônicos
+├── utils/               — Funções puras
+│   ├── ai/              — Config e prompts IA (aiConfig, promptBuilder)
+│   ├── analytics/       — Agregação, filtros, séries temporais
+│   ├── validation/      — Schemas Zod (validation.ts, canonicalProduct.ts)
+│   ├── errorCodes.ts         — Enum ErrorCode (NOVO)
+│   ├── errorMessages.ts      — Mensagens pt-BR (NOVO)
+│   ├── supabaseError.ts      — Parse de erros Supabase (NOVO)
+│   ├── search.ts             — Busca textual (NOVO)
+│   ├── idGenerator.ts        — Geração de IDs (NOVO)
+│   ├── shoppingHistoryMatch.ts — Score de matching (NOVO)
+│   └── shoppingListCloudMerge.ts — Merge de snapshots
+├── types/               — Tipos TypeScript (domain, ui, ai, scanner, history)
+├── providers/           — Context providers (QueryProvider)
+├── workers/             — Web Workers (receiptParser)
+├── styles/              — CSS (tokens, base, components, animations)
+├── constants/           — Constantes de domínio (domain.ts) (NOVO)
+└── tests/               — Setup de testes (setup.ts) (NOVO)
 ```
 
 ## Padrões de Código
 
 - Componentes com no máximo **~200 linhas**
 - Hooks customizados para toda lógica reutilizável
-- Logs apenas em DEV: `import.meta.env.DEV`
+- Logs apenas em DEV: `import.meta.env.DEV` via `utils/logger.ts`
 - Error Boundary nos componentes críticos (App, Scanner)
-- Mensagens de erro em **pt-BR** com acentos
+- Error handling unificado: `useErrorHandler()` → `parseErrorCode()` → `getErrorMessage()` → `toast.error()`
+- Mensagens de erro em **pt-BR** com acentos (centralizadas em `errorMessages.ts`)
 - Nomes descritivos — comentários mínimos
-- Testes ao lado do código testado (`*.test.tsx`)
-- **BYOK:** chave de IA nunca fica hardcoded no código
+- Testes ao lado do código testado (`*.test.tsx` ou `*.test.ts`)
+- **BYOK:** chave de IA nunca fica hardcoded no código (armazenada em sessionStorage)
+- **Stores fatoradas:** lógica pura em arquivos separados (types, core, mutations, selectors)
+- **TailwindCSS:** classes utilitárias no JSX (com tokens CSS complementares)
 
 ## Fluxo de Dados
 
-1. **Captura:** Scanner/Upload/Manual → validação Zod → `useReceiptScanner`
-2. **Processamento:** `receiptParser` (proxies Sefaz) → `productService` (Pipeline de normalização com IA)
-3. **Persistência:** `useSaveReceipt` (React Query) → Supabase (primário) → IndexedDB (fallback) → localStorage (último recurso)
+1. **Captura:** Scanner/Upload/Manual/URL → validação Zod → `useReceiptScanner`
+   - NFC-e via Edge Fetch (proxy CORS Cloudflare Workers) → `nfceEdgeFetch.ts`
+2. **Processamento:** `receiptParser` → `productService` (Pipeline de normalização com IA + dicionário + stringUtils)
+3. **Persistência:** `useSaveReceiptMutation` (React Query) → Supabase (primário) → IndexedDB (fallback) → localStorage (último recurso)
 4. **Cache e Render:** React Query invalida → componentes re-renderizam
+5. **Error Handling:** Erro → `supabaseError.ts` (parse) → `errorMessages.ts` (mensagem) → `useErrorHandler` (toast + log dev)
 
 ## Testes
 
 - **Vitest** + **Testing Library** para componentes React
 - **jsdom** para ambiente de DOM simulado
+- **Setup global:** `tests/setup.ts` com mocks de `matchMedia`, `ResizeObserver`
 - Testar: sucesso, erro, loading, empty state
 - Mock de chamadas externas (Supabase, IA, Sefaz)
+- **16+ arquivos de teste** (utils, services, stores, hooks, components)
