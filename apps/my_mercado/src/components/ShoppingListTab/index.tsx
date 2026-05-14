@@ -1,6 +1,6 @@
-import { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import type { FormEvent } from "react";
-import { ListChecks, Plus, Eraser, Trash2, Pencil, Share2 } from "lucide-react";
+import { ListChecks, Plus, Eraser, Trash2, Share2, ChevronDown, ChevronUp, Pencil } from "lucide-react";
 import { notify } from "../../utils/notifications";
 import { useAllReceiptsQuery } from "../../hooks/queries/useReceiptsQuery";
 import { useReceiptsSessionStore } from "../../stores/useReceiptsSessionStore";
@@ -21,6 +21,7 @@ import ConfirmDialog from "../ConfirmDialog";
 import InputDialog from "../InputDialog";
 import type {
   ShoppingListItem as ShoppingListItemType,
+  ShoppingListMeta,
 } from "../../types/ui";
 
 const EMPTY_SHOPPING_ITEMS: ShoppingListItemType[] = [];
@@ -33,9 +34,8 @@ type ListInputDialogState =
 /**
  * Componente principal da Lista de Compras.
  *
- * Experiência simplificada: uma lista sempre pronta.
- * Múltiplas listas existem como recurso secundário,
- * acessível via seletor compacto + ações extras em menu.
+ * Layout com cards expansíveis no estilo do ReceiptCard.
+ * Input de adicionar itens sempre visível no topo.
  */
 export default function ShoppingListTab() {
   // Detecta lista compartilhada na URL
@@ -47,24 +47,18 @@ export default function ShoppingListTab() {
 
   const lists = useShoppingListStore((state) => state.getLists(sessionUserId));
   const activeListId = useShoppingListStore((state) => state.getActiveListId(sessionUserId));
-  const rawShoppingItems = useShoppingListStore((state) =>
-    state.getItems(sessionUserId, activeListId),
-  );
-
-  const shoppingItems = useMemo(
-    () => sanitizeShoppingList(rawShoppingItems || EMPTY_SHOPPING_ITEMS),
-    [rawShoppingItems],
-  );
-
   const setActiveList = useShoppingListStore((state) => state.setActiveList);
-  const orderedItems = useSortedShoppingItems(shoppingItems);
+
+  // Estado: quais listas estão expandidas (ativa sempre expandida)
+  const [expandedListIds, setExpandedListIds] = useState<Set<string>>(new Set([activeListId]));
+
   const [itemName, setItemName] = useState("");
   const [itemQty, setItemQty] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [showListMenu, setShowListMenu] = useState(false);
   const [transferTargetByItem, setTransferTargetByItem] = useState<Record<string, string>>({});
   const [listInputDialog, setListInputDialog] = useState<ListInputDialogState>(null);
 
+  // Buscar dados de histórico
   const { historyByKey, suggestions: allSuggestions } = usePurchaseHistory(savedReceipts, canonicalProducts);
 
   const suggestions = useMemo(() => {
@@ -75,9 +69,20 @@ export default function ShoppingListTab() {
   const actions = useLocalShoppingListActions(sessionUserId);
 
   const activeLocalList = lists.find((list) => list.id === activeListId) || lists[0];
-  const checkedCount = shoppingItems.filter((item) => item.checked).length;
-  const pendingCount = shoppingItems.length - checkedCount;
   const listTransferOptions = lists.filter((list) => list.id !== activeListId);
+
+  // Toggle expansão de lista
+  const toggleExpandList = useCallback((listId: string) => {
+    setExpandedListIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(listId)) {
+        next.delete(listId);
+      } else {
+        next.add(listId);
+      }
+      return next;
+    });
+  }, []);
 
   const handleShare = useCallback(async () => {
     const snapshot = useShoppingListStore.getState().getCloudSnapshot(sessionUserId);
@@ -93,7 +98,6 @@ export default function ShoppingListTab() {
       if (result === "shared") {
         notify.success("Lista compartilhada!");
       } else if (result === "copied") {
-        const url = `${window.location.origin}${window.location.pathname}?shared=${shareId}`;
         notify.success("Link copiado! Envie para quem quiser.");
       } else {
         notify.error("Não foi possível compartilhar.");
@@ -102,14 +106,6 @@ export default function ShoppingListTab() {
       notify.error("Erro ao compartilhar lista.");
     }
   }, [sessionUserId]);
-
-  const getTransferTargetId = (itemId: string): string => {
-    const selected = transferTargetByItem[itemId];
-    if (selected && listTransferOptions.some((list) => list.id === selected)) {
-      return selected;
-    }
-    return listTransferOptions[0]?.id || "";
-  };
 
   const handleAddItem = async (event: FormEvent) => {
     event.preventDefault();
@@ -121,17 +117,20 @@ export default function ShoppingListTab() {
   };
 
   const handleCreateList = () => {
-    setShowListMenu(false);
-    // Nome automático baseado em data: "Compras 14/05"
+    // Nome automático baseado em data
     const now = new Date();
     const day = String(now.getDate()).padStart(2, "0");
     const month = String(now.getMonth() + 1).padStart(2, "0");
-    const suggestedName = `Compras ${day}/${month}`;
-    setListInputDialog({ mode: "create", initialValue: suggestedName });
+    const name = `Compras ${day}/${month}`;
+    const success = actions.handleCreateList(name);
+    if (!success) {
+      // Se já existe "Compras 14/05", adiciona um sufixo
+      const fallbackName = `Compras ${day}/${month} (${lists.length + 1})`;
+      actions.handleCreateList(fallbackName);
+    }
   };
 
   const handleRenameList = () => {
-    setShowListMenu(false);
     if (!activeLocalList) return;
     setListInputDialog({ mode: "rename", initialValue: activeLocalList.name });
   };
@@ -140,44 +139,56 @@ export default function ShoppingListTab() {
     const trimmed = rawValue.trim();
     if (!trimmed) return;
 
-    if (listInputDialog?.mode === "create") {
-      const success = actions.handleCreateList(trimmed);
-      if (success) setListInputDialog(null);
-      return;
-    }
-
     if (listInputDialog?.mode === "rename" && activeLocalList) {
       const success = actions.handleRenameList(activeLocalList.id, trimmed);
       if (success) setListInputDialog(null);
     }
   };
 
-  const getRecentHistory = (
-    item: ShoppingListItemType,
-  ): { entries: PurchaseHistoryEntry[]; matchType: HistoryMatchType } => {
-    const safeKey = normalizeKey(toText(item.normalized_key).trim() || item.name);
-    if (!safeKey) return { entries: [], matchType: "none" };
+  // Obter histórico de um item
+  const getItemHistory = useCallback(
+    (item: ShoppingListItemType): { entries: PurchaseHistoryEntry[]; matchType: HistoryMatchType } => {
+      const safeKey = normalizeKey(toText(item.normalized_key).trim() || item.name);
+      if (!safeKey) return { entries: [], matchType: "none" };
 
-    const exact = historyByKey.get(safeKey);
-    if (exact && exact.length > 0) return { entries: exact.slice(0, 3), matchType: "exact" };
+      const exact = historyByKey.get(safeKey);
+      if (exact && exact.length > 0) return { entries: exact.slice(0, 3), matchType: "exact" };
 
-    const fallback: Array<{ entry: PurchaseHistoryEntry; score: number }> = [];
-    for (const [key, entries] of historyByKey.entries()) {
-      const match = scoreHistoryKeyMatch(safeKey, key);
-      if (match.score > 0) {
-        for (const entry of entries.slice(0, 2)) {
-          fallback.push({ entry, score: match.score });
+      const fallback: Array<{ entry: PurchaseHistoryEntry; score: number }> = [];
+      for (const [key, entries] of historyByKey.entries()) {
+        const match = scoreHistoryKeyMatch(safeKey, key);
+        if (match.score > 0) {
+          for (const entry of entries.slice(0, 2)) {
+            fallback.push({ entry, score: match.score });
+          }
         }
       }
-    }
 
-    fallback.sort((a, b) => b.score - a.score || b.entry.timestamp - a.entry.timestamp);
-    const entries = fallback.slice(0, 3).map((candidate) => candidate.entry);
-    return {
-      entries,
-      matchType: entries.length > 0 ? "approx" : "none",
-    };
-  };
+      fallback.sort((a, b) => b.score - a.score || b.entry.timestamp - a.entry.timestamp);
+      const entries = fallback.slice(0, 3).map((candidate) => candidate.entry);
+      return {
+        entries,
+        matchType: entries.length > 0 ? "approx" : "none",
+      };
+    },
+    [historyByKey],
+  );
+
+  // Contar itens pendentes de cada lista
+  const getListCounts = useMemo(() => {
+    const counts: Record<string, { total: number; pending: number }> = {};
+    for (const list of lists) {
+      const items = useShoppingListStore.getState().getItems(sessionUserId, list.id);
+      const sanitized = sanitizeShoppingList(items || EMPTY_SHOPPING_ITEMS);
+      counts[list.id] = {
+        total: sanitized.length,
+        pending: sanitized.filter((i) => !i.checked).length,
+      };
+    }
+    return counts;
+  }, [lists, sessionUserId]);
+
+  const checkedCount = (getListCounts[activeListId]?.total ?? 0) - (getListCounts[activeListId]?.pending ?? 0);
 
   return (
     <div>
@@ -186,11 +197,8 @@ export default function ShoppingListTab() {
         <div>
           <h2 className="section-title mb-1">
             <ListChecks size={20} color="var(--primary)" />
-            {activeLocalList?.name || "Lista de Compras"}
+            Lista de Compras
           </h2>
-          <p className="text-[0.8rem] text-slate-500 ml-7">
-            {pendingCount} pendente(s) de {shoppingItems.length}
-          </p>
         </div>
 
         <div className="shopping-icon-actions">
@@ -216,82 +224,14 @@ export default function ShoppingListTab() {
             title="Limpar lista"
             aria-label="Limpar lista"
             onClick={() => actions.confirmClearAll(actions.handleClearAll)}
-            disabled={shoppingItems.length === 0}
+            disabled={getListCounts[activeListId]?.total === 0}
           >
             <Trash2 size={16} />
           </button>
         </div>
       </div>
 
-      {/* Seletor de lista + ações extras (compacto) */}
-      <div className="glass-card mb-4 p-3">
-        <div className="flex items-center gap-2">
-          <select
-            className="search-input flex-1"
-            value={activeListId}
-            onChange={(e) => setActiveList(sessionUserId, e.target.value)}
-            aria-label="Selecionar lista"
-          >
-            {lists.map((list) => (
-              <option key={list.id} value={list.id}>
-                {list.name}
-              </option>
-            ))}
-          </select>
-
-          {/* Botão "..." para ações secundárias */}
-          <div className="relative">
-            <button
-              className="btn px-2 py-2 bg-white/10 shadow-none hover:bg-white/20"
-              onClick={() => setShowListMenu(!showListMenu)}
-              aria-label="Ações da lista"
-            >
-              <Pencil size={15} />
-            </button>
-            {showListMenu && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setShowListMenu(false)}
-                />
-                <div className="absolute right-0 top-full mt-1 z-50 bg-[#1e293b] border border-white/10 rounded-xl p-1 shadow-2xl min-w-[180px]">
-                  <button
-                    className="w-full text-left px-3 py-2 hover:bg-white/10 rounded-lg text-sm flex items-center gap-2"
-                    onClick={handleCreateList}
-                  >
-                    <Plus size={14} /> Nova lista
-                  </button>
-                  <button
-                    className="w-full text-left px-3 py-2 hover:bg-white/10 rounded-lg text-sm flex items-center gap-2"
-                    onClick={handleRenameList}
-                    disabled={!activeLocalList}
-                  >
-                    <Pencil size={14} /> Renomear
-                  </button>
-                  <button
-                    className="w-full text-left px-3 py-2 hover:bg-white/10 rounded-lg text-sm flex items-center gap-2 text-red-400"
-                    onClick={() => {
-                      setShowListMenu(false);
-                      if (activeLocalList) {
-                        actions.confirmDeleteList(
-                          activeLocalList.id,
-                          activeLocalList.name,
-                          lists.length,
-                        );
-                      }
-                    }}
-                    disabled={!activeLocalList || lists.length <= 1}
-                  >
-                    <Trash2 size={14} /> Excluir
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Input de adicionar item */}
+      {/* Input de adicionar item - SEMPRE visível no topo */}
       <form className="glass-card mb-4 relative z-20" onSubmit={handleAddItem}>
         <div className="shopping-add-form-row">
           <div className="relative">
@@ -355,69 +295,59 @@ export default function ShoppingListTab() {
           />
         </div>
 
-        <button
-          className="btn w-full"
-          type="submit"
-        >
+        <button className="btn w-full" type="submit">
           <Plus size={18} />
           Adicionar Item
         </button>
       </form>
 
-      {/* Lista de itens */}
+      {/* Botão Nova lista + Renomear */}
+      <div className="flex items-center gap-2 mb-4">
+        <button className="btn px-3 py-2 text-sm flex items-center gap-1.5" onClick={handleCreateList}>
+          <Plus size={15} /> Nova lista
+        </button>
+        <button
+          className="btn px-3 py-2 text-sm bg-white/10 shadow-none hover:bg-white/20 flex items-center gap-1.5"
+          onClick={handleRenameList}
+          disabled={!activeLocalList}
+        >
+          <Pencil size={14} /> Renomear
+        </button>
+      </div>
+
+      {/* Cards de listas */}
       <div className="items-list gap-3.5">
-        {orderedItems.length === 0 ? (
+        {lists.length === 0 ? (
           <div className="glass-card text-center py-12 px-4">
             <ListChecks size={44} color="#334155" />
-            <h3 className="text-slate-200 mt-3">Sua lista esta vazia</h3>
+            <h3 className="text-slate-200 mt-3">Nenhuma lista ainda</h3>
             <p className="text-slate-400 text-sm mt-1">
-              Adicione itens para acompanhar o que falta pegar no mercado.
+              Crie uma nova lista para começar.
             </p>
           </div>
         ) : (
-          orderedItems.map((item) => {
-            const historyContext = getRecentHistory(item);
-            return (
-              <ShoppingListItem
-                key={item.id}
-                item={item}
-                history={historyContext.entries}
-                historyMatchType={historyContext.matchType}
-                onToggle={() => actions.handleToggleItem(item.id)}
-                onRemove={() => actions.handleRemoveItem(item.id)}
-                transferOptions={listTransferOptions}
-                transferTargetId={getTransferTargetId(item.id)}
-                onTransferTargetChange={(targetListId) =>
-                  setTransferTargetByItem((prev) => ({ ...prev, [item.id]: targetListId }))
-                }
-                onMoveToList={() => {
-                  const targetListId = getTransferTargetId(item.id);
-                  if (!targetListId) {
-                    notify.error("Crie outra lista para mover itens.");
-                    return;
-                  }
-                  const success = actions.handleMoveItem(item.id, targetListId, activeListId);
-                  if (success) {
-                    const destinationName = lists.find((list) => list.id === targetListId)?.name || "outra lista";
-                    notify.success(`Item movido para "${destinationName}".`);
-                  }
-                }}
-                onCopyToList={() => {
-                  const targetListId = getTransferTargetId(item.id);
-                  if (!targetListId) {
-                    notify.error("Crie outra lista para copiar itens.");
-                    return;
-                  }
-                  const success = actions.handleCopyItem(item.id, targetListId, activeListId);
-                  if (success) {
-                    const destinationName = lists.find((list) => list.id === targetListId)?.name || "outra lista";
-                    notify.success(`Item copiado para "${destinationName}".`);
-                  }
-                }}
-                currentUserId={sessionUserId}
-              />
-            );
-          })
+          lists.map((listMeta) => (
+            <ListCardWithData
+              key={listMeta.id}
+              listMeta={listMeta}
+              isActive={listMeta.id === activeListId}
+              isExpanded={expandedListIds.has(listMeta.id) || listMeta.id === activeListId}
+              sessionUserId={sessionUserId}
+              listTransferOptions={listTransferOptions}
+              transferTargetByItem={transferTargetByItem}
+              counts={getListCounts[listMeta.id] || { total: 0, pending: 0 }}
+              getItemHistory={getItemHistory}
+              actions={actions}
+              onChangeActive={(id) => {
+                setActiveList(sessionUserId, id);
+                toggleExpandList(id);
+              }}
+              onToggleExpand={(id) => toggleExpandList(id)}
+              onTransferTargetChange={(itemId, targetListId) =>
+                setTransferTargetByItem((prev) => ({ ...prev, [itemId]: targetListId }))
+              }
+            />
+          ))
         )}
       </div>
 
@@ -438,18 +368,178 @@ export default function ShoppingListTab() {
 
       <InputDialog
         isOpen={Boolean(listInputDialog)}
-        title={listInputDialog?.mode === "rename" ? "Renomear lista" : "Nova lista"}
-        message={
-          listInputDialog?.mode === "rename"
-            ? "Informe o novo nome da lista."
-            : "Informe o nome da nova lista."
-        }
+        title="Renomear lista"
+        message="Informe o novo nome da lista."
         placeholder="Nome da lista"
         initialValue={listInputDialog?.initialValue || ""}
-        confirmText={listInputDialog?.mode === "rename" ? "Renomear" : "Criar"}
+        confirmText="Renomear"
         onCancel={() => setListInputDialog(null)}
         onConfirm={handleConfirmListInput}
       />
+    </div>
+  );
+}
+
+// =========================
+// ListCardWithData - Subcomponente que busca dados da store e renderiza o card
+// =========================
+
+interface ListCardWithDataProps {
+  listMeta: ShoppingListMeta;
+  isActive: boolean;
+  isExpanded: boolean;
+  sessionUserId: string | null | undefined;
+  listTransferOptions: ShoppingListMeta[];
+  transferTargetByItem: Record<string, string>;
+  counts: { total: number; pending: number };
+  getItemHistory: (item: ShoppingListItemType) => { entries: PurchaseHistoryEntry[]; matchType: HistoryMatchType };
+  actions: ReturnType<typeof useLocalShoppingListActions>;
+  onChangeActive: (listId: string) => void;
+  onToggleExpand: (listId: string) => void;
+  onTransferTargetChange: (itemId: string, targetListId: string) => void;
+}
+
+function ListCardWithData({
+  listMeta,
+  isActive,
+  isExpanded,
+  sessionUserId,
+  listTransferOptions,
+  transferTargetByItem,
+  counts,
+  getItemHistory,
+  actions,
+  onChangeActive,
+  onToggleExpand,
+  onTransferTargetChange,
+}: ListCardWithDataProps) {
+  const rawItems = useShoppingListStore((state) => state.getItems(sessionUserId, listMeta.id));
+  const listItems = useMemo(
+    () => sanitizeShoppingList(rawItems || EMPTY_SHOPPING_ITEMS),
+    [rawItems],
+  );
+  const orderedItems = useSortedShoppingItems(listItems);
+
+  return (
+    <div
+      className={`glass-card animated-item p-0 overflow-hidden mb-0 ${isActive ? "ring-1 ring-blue-500/30" : ""
+        }`}
+    >
+      {/* Cabeçalho do card - clicável para expandir */}
+      <div
+        onClick={() => {
+          if (!isExpanded) {
+            onChangeActive(listMeta.id);
+          }
+          onToggleExpand(listMeta.id);
+        }}
+        className="p-4 cursor-pointer relative"
+      >
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <ListChecks size={18} color="var(--primary)" className="shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <h3 className="text-slate-50 text-[1rem] truncate">
+                  {listMeta.name}
+                </h3>
+                {isActive && (
+                  <span className="text-[0.6rem] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-full font-medium shrink-0">
+                    Ativa
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-3 items-center mt-0.5">
+                <span className="text-slate-400 text-xs">
+                  {counts.total} {counts.total === 1 ? "item" : "itens"}
+                </span>
+                {counts.pending > 0 && (
+                  <span className="text-amber-400 text-xs">
+                    {counts.pending} pendente(s)
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {!isExpanded && counts.pending > 0 && (
+              <span className="bg-amber-500/20 text-amber-400 text-[0.65rem] px-2 py-0.5 rounded-full font-bold">
+                {counts.pending}
+              </span>
+            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                actions.confirmDeleteList(listMeta.id, listMeta.name, 0);
+              }}
+              className="bg-red-500/10 border-none rounded-lg w-7 h-7 flex items-center justify-center text-red-500 cursor-pointer hover:bg-red-500/20"
+              title="Excluir lista"
+            >
+              <Trash2 size={14} />
+            </button>
+            <div className="text-slate-500">
+              {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Conteúdo expandido */}
+      {isExpanded && (
+        <div className="border-t border-white/5 px-4 pb-4 pt-0">
+          {orderedItems.length === 0 ? (
+            <p className="text-slate-500 text-sm text-center py-4">
+              Nenhum item ainda. Adicione itens no campo acima.
+            </p>
+          ) : (
+            orderedItems.map((item) => {
+              const historyContext = getItemHistory(item);
+              return (
+                <ShoppingListItem
+                  key={item.id}
+                  item={item}
+                  history={historyContext.entries}
+                  historyMatchType={historyContext.matchType}
+                  onToggle={() => actions.handleToggleItem(item.id)}
+                  onRemove={() => actions.handleRemoveItem(item.id)}
+                  transferOptions={listTransferOptions}
+                  transferTargetId={
+                    transferTargetByItem[item.id] || listTransferOptions[0]?.id || ""
+                  }
+                  onTransferTargetChange={(targetListId) =>
+                    onTransferTargetChange(item.id, targetListId)
+                  }
+                  onMoveToList={() => {
+                    const targetListId = transferTargetByItem[item.id];
+                    if (!targetListId || !listTransferOptions.some((l) => l.id === targetListId)) {
+                      notify.error("Crie outra lista para mover itens.");
+                      return;
+                    }
+                    const success = actions.handleMoveItem(item.id, targetListId, listMeta.id);
+                    if (success) {
+                      const destinationName = listTransferOptions.find((l) => l.id === targetListId)?.name || "outra lista";
+                      notify.success(`Item movido para "${destinationName}".`);
+                    }
+                  }}
+                  onCopyToList={() => {
+                    const targetListId = transferTargetByItem[item.id];
+                    if (!targetListId || !listTransferOptions.some((l) => l.id === targetListId)) {
+                      notify.error("Crie outra lista para copiar itens.");
+                      return;
+                    }
+                    const success = actions.handleCopyItem(item.id, targetListId, listMeta.id);
+                    if (success) {
+                      const destinationName = listTransferOptions.find((l) => l.id === targetListId)?.name || "outra lista";
+                      notify.success(`Item copiado para "${destinationName}".`);
+                    }
+                  }}
+                  currentUserId={sessionUserId}
+                />
+              );
+            })
+          )}
+        </div>
+      )}
     </div>
   );
 }
