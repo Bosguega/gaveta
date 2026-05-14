@@ -12,7 +12,8 @@ describe("useShoppingListStore", () => {
   it("creates a default list for a user", () => {
     const lists = useShoppingListStore.getState().getLists("user-1");
     expect(lists).toHaveLength(1);
-    expect(lists[0].name).toBe("Lista Principal");
+    // Nome automático baseado na data: "Compras 14/05" ou "Compras 14/05/2026"
+    expect(lists[0].name).toMatch(/^Compras \d{2}\/\d{2}/);
   });
 
   it("can create and switch active lists", () => {

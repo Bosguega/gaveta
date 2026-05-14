@@ -22,6 +22,10 @@ export type PurchaseSuggestion = {
   count: number;
   category?: string;
   canonical_name?: string;
+  /** Último preço unitário pago (para exibir no autocomplete) */
+  lastPrice?: number;
+  /** Último mercado onde foi comprado */
+  lastStore?: string;
 };
 
 interface UsePurchaseHistoryReturn {
@@ -50,10 +54,8 @@ interface UsePurchaseHistoryReturn {
  * // Buscar histórico de um item
  * const history = historyByKey.get(normalizedKey);
  *
- * // Sugestões para autocomplete
- * <datalist>
- *   {suggestions.map(s => <option key={s.key} value={s.label} />)}
- * </datalist>
+ * // Sugestões para autocomplete com preço e mercado
+ * suggestions[0] // { label: "Arroz Tio João", count: 3, lastPrice: 28.9, lastStore: "Mercado Silva" }
  * ```
  */
 export function usePurchaseHistory(
@@ -70,6 +72,10 @@ export function usePurchaseHistory(
         lastTimestamp: number;
         category?: string;
         canonical_name?: string;
+        /** Último preço unitário registrado */
+        lastPrice?: number;
+        /** Último mercado registrado */
+        lastStore?: string;
       }
     >();
 
@@ -121,6 +127,8 @@ export function usePurchaseHistory(
               if (timestamp > prev.lastTimestamp) {
                 prev.lastTimestamp = timestamp;
                 prev.label = name;
+                prev.lastPrice = unitPrice;
+                prev.lastStore = store;
               }
               if (!prev.category) prev.category = category;
               if (!prev.canonical_name) prev.canonical_name = canonical_name;
@@ -131,6 +139,8 @@ export function usePurchaseHistory(
                 lastTimestamp: timestamp,
                 category,
                 canonical_name,
+                lastPrice: unitPrice,
+                lastStore: store,
               });
             }
           }
@@ -173,6 +183,8 @@ export function usePurchaseHistory(
           category: value.category,
           canonical_name: value.canonical_name,
           lastTimestamp: value.lastTimestamp,
+          lastPrice: value.lastPrice,
+          lastStore: value.lastStore,
         }))
         .sort(
           (a, b) =>
@@ -181,12 +193,14 @@ export function usePurchaseHistory(
             a.label.localeCompare(b.label),
         )
         .slice(0, 1000)
-        .map(({ key, label, count, category, canonical_name }) => ({
+        .map(({ key, label, count, category, canonical_name, lastPrice, lastStore }) => ({
           key,
           label,
           count,
           category,
           canonical_name,
+          lastPrice,
+          lastStore,
         }));
 
       return { historyByKey: map, suggestions: suggestionItems };

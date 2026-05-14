@@ -4,7 +4,18 @@ import type { ShoppingListItem, ShoppingListMeta } from "../../types/ui";
 import type { UserShoppingLists } from "./types";
 
 const FALLBACK_OWNER_KEY = "__local__";
-const DEFAULT_LIST_NAME = "Lista Principal";
+
+/**
+ * Gera nome automático para lista baseado na data atual.
+ * Ex: "Compras 14/05" ou "Compras 14/05/2026"
+ */
+function getDefaultListName(): string {
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, "0");
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const year = now.getFullYear();
+  return `Compras ${day}/${month}`;
+}
 
 const defaultUserDataByOwner = new Map<string, UserShoppingLists>();
 
@@ -13,11 +24,12 @@ export function getOwnerKey(userId: string | null | undefined): string {
   return trimmed || FALLBACK_OWNER_KEY;
 }
 
-export function createListMeta(name: string): ShoppingListMeta {
+export function createListMeta(name?: string): ShoppingListMeta {
   const now = new Date().toISOString();
+  const listName = (name || getDefaultListName()).trim();
   return {
     id: generateId(),
-    name: name.trim(),
+    name: listName,
     created_at: now,
     updated_at: now,
   };
@@ -66,7 +78,7 @@ export function sanitizeItems(items: unknown): ShoppingListItem[] {
 }
 
 export function createDefaultUserData(initialItems: ShoppingListItem[] = []): UserShoppingLists {
-  const list = createListMeta(DEFAULT_LIST_NAME);
+  const list = createListMeta();
   const now = new Date().toISOString();
   return {
     lists: [list],
@@ -128,7 +140,7 @@ export function getUserDataSafe(
     })
     .filter((entry): entry is ShoppingListMeta => Boolean(entry));
 
-  const normalizedLists = lists.length ? lists : [createListMeta(DEFAULT_LIST_NAME)];
+  const normalizedLists = lists.length ? lists : [createListMeta()];
   const rawItemsByList = isRecord(rawUser.itemsByList) ? rawUser.itemsByList : {};
   const itemsByList: Record<string, ShoppingListItem[]> = {};
   for (const list of normalizedLists) {
