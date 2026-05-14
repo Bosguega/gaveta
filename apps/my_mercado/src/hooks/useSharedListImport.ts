@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { notify } from "../utils/notifications";
 import { getShareIdFromUrl, loadSharedSnapshot } from "../utils/shareService";
+import { deserializeSnapshotFromUrl } from "../utils/urlDataSerializer";
 import { useShoppingListStore } from "../stores/useShoppingListStore";
 import { useUiStore } from "../stores/useUiStore";
 import { useReceiptsSessionStore } from "../stores/useReceiptsSessionStore";
@@ -18,12 +19,21 @@ export function useSharedListImport() {
         if (importedRef.current) return;
         importedRef.current = true;
 
+        const params = new URLSearchParams(window.location.search);
+        const urlData = params.get("data");
         const shareId = getShareIdFromUrl();
-        if (!shareId) return;
 
-        const snapshot = loadSharedSnapshot(shareId);
+        let snapshot = null;
+        if (urlData) {
+            snapshot = deserializeSnapshotFromUrl(urlData);
+        } else if (shareId) {
+            snapshot = loadSharedSnapshot(shareId);
+        }
+
         if (!snapshot) {
-            notify.error("Lista compartilhada não encontrada ou expirada.");
+            if (urlData || shareId) {
+                notify.error("Lista compartilhada não encontrada ou inválida.");
+            }
             return;
         }
 
@@ -40,9 +50,10 @@ export function useSharedListImport() {
             notify.error("Não foi possível importar a lista compartilhada.");
         }
 
-        // Limpar query param da URL
+        // Limpar query params da URL
         const url = new URL(window.location.href);
         url.searchParams.delete("shared");
+        url.searchParams.delete("data");
         window.history.replaceState({}, "", url.toString());
     }, []);
 }

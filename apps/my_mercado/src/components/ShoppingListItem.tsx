@@ -16,6 +16,7 @@ type ShoppingListItemProps = {
   onMoveToList?: () => void;
   onCopyToList?: () => void;
   currentUserId?: string | null;
+  readonly?: boolean;
 };
 
 export function ShoppingListItem({
@@ -30,6 +31,7 @@ export function ShoppingListItem({
   onMoveToList,
   onCopyToList,
   currentUserId,
+  readonly = false,
 }: ShoppingListItemProps) {
   const latest = history[0];
   const avgPrice =
@@ -42,27 +44,36 @@ export function ShoppingListItem({
       className={`glass-card animated-item p-4 mb-0 ${item.checked ? "border-emerald-500/30 opacity-75" : "border-[var(--card-border)] opacity-100"}`}
     >
       <div className="flex gap-3 items-start">
-        <button
-          onClick={onToggle}
-          className={`bg-transparent border-none p-0 cursor-pointer mt-1 ${item.checked ? "text-[var(--success)]" : "text-slate-500"}`}
-          aria-label={item.checked ? "Desmarcar item" : "Marcar item"}
-        >
-          {item.checked ? <CheckCircle2 size={22} /> : <Circle size={22} />}
-        </button>
+        {!readonly && (
+          <button
+            onClick={onToggle}
+            className={`bg-transparent border-none p-0 cursor-pointer mt-1 ${item.checked ? "text-[var(--success)]" : "text-slate-500"}`}
+            aria-label={item.checked ? "Desmarcar item" : "Marcar item"}
+          >
+            {item.checked ? <CheckCircle2 size={22} /> : <Circle size={22} />}
+          </button>
+        )}
+        {readonly && (
+          <div className={`mt-1 ${item.checked ? "text-[var(--success)]" : "text-slate-500"}`}>
+            {item.checked ? <CheckCircle2 size={22} /> : <Circle size={22} />}
+          </div>
+        )}
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
             <h3 className={`text-slate-50 text-base break-words ${item.checked ? "line-through" : "no-underline"}`}>
               {item.name}
             </h3>
-            <button
-              onClick={onRemove}
-              className="bg-red-500/10 border-none w-[30px] h-[30px] rounded-lg flex items-center justify-center text-red-500 cursor-pointer shrink-0 hover:bg-red-500/20"
-              title="Remover item"
-              aria-label="Remover item"
-            >
-              <Trash2 size={15} />
-            </button>
+            {!readonly && (
+              <button
+                onClick={onRemove}
+                className="bg-red-500/10 border-none w-[30px] h-[30px] rounded-lg flex items-center justify-center text-red-500 cursor-pointer shrink-0 hover:bg-red-500/20"
+                title="Remover item"
+                aria-label="Remover item"
+              >
+                <Trash2 size={15} />
+              </button>
+            )}
           </div>
 
           {item.quantity && (
@@ -80,7 +91,7 @@ export function ShoppingListItem({
             </p>
           )}
 
-          {transferOptions.length > 0 && (
+          {!readonly && transferOptions.length > 0 && (
             <div className="shopping-transfer-row mt-2">
               <select
                 value={transferTargetId}

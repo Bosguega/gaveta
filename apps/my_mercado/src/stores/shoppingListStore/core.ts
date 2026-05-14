@@ -10,11 +10,7 @@ const FALLBACK_OWNER_KEY = "__local__";
  * Ex: "Compras 14/05" ou "Compras 14/05/2026"
  */
 function getDefaultListName(): string {
-  const now = new Date();
-  const day = String(now.getDate()).padStart(2, "0");
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const year = now.getFullYear();
-  return `Compras ${day}/${month}`;
+  return "Lista Principal";
 }
 
 const defaultUserDataByOwner = new Map<string, UserShoppingLists>();

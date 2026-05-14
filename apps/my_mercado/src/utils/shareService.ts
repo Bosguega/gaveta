@@ -1,5 +1,6 @@
-import { generateId } from "./idGenerator";
 import type { ShoppingListsCloudSnapshot } from "../types/ui";
+import { serializeSnapshotToUrl } from "./urlDataSerializer";
+import { formatListToWhatsApp } from "./shoppingList";
 
 const SHARE_STORAGE_PREFIX = "@MyMercado:shared-list:";
 
@@ -59,37 +60,43 @@ export function loadSharedSnapshot(shareId: string): ShoppingListsCloudSnapshot 
 
 /**
  * Monta URL de compartilhamento para o app.
- * Se disponível, usa Web Share API.
+ * Pode ser baseado em ID (requer persistência) ou em Data (standalone).
  */
-export function getShareUrl(shareId: string): string {
+export function getShareUrl(shareIdOrData: string, isStandalone = false): string {
     const baseUrl = window.location.origin + window.location.pathname;
-    return `${baseUrl}?shared=${shareId}`;
+    const param = isStandalone ? "data" : "shared";
+    return `${baseUrl}?${param}=${shareIdOrData}`;
 }
 
 /**
  * Tenta compartilhar via Web Share API.
  * Se não disponível, copia o link para a área de transferência.
  */
-export async function shareList(shareId: string): Promise<"shared" | "copied" | "failed"> {
-    const url = getShareUrl(shareId);
+export async function shareList(
+    snapshot: ShoppingListsCloudSnapshot,
+    listName: string,
+    items: any[]
+): Promise<"shared" | "copied" | "failed"> {
+    const data = serializeSnapshotToUrl(snapshot);
+    const url = getShareUrl(data, true);
+    const text = formatListToWhatsApp(listName, items);
 
     if (navigator.share) {
         try {
             await navigator.share({
-                title: "Minha lista de compras - My Mercado",
-                text: "Veja minha lista de compras!",
+                title: `Lista: ${listName}`,
+                text: text,
                 url,
             });
             return "shared";
         } catch (err) {
-            // Usuário cancelou ou erro - fallback para cópia
             if ((err as Error).name === "AbortError") return "failed";
         }
     }
 
-    // Fallback: copiar link
+    // Fallback: copiar link e texto
     try {
-        await navigator.clipboard.writeText(url);
+        await navigator.clipboard.writeText(`${text}\n\nLink: ${url}`);
         return "copied";
     } catch {
         return "failed";

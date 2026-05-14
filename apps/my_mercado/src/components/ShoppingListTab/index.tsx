@@ -13,6 +13,7 @@ import { usePurchaseHistory } from "../../hooks/queries/usePurchaseHistory";
 import type { PurchaseHistoryEntry } from "../../hooks/queries/usePurchaseHistory";
 import { useCanonicalProductsQuery } from "../../hooks/queries/useCanonicalProductsQuery";
 import { sanitizeShoppingList, toText } from "../../utils/shoppingList";
+import { parseSmartItemInput } from "../../utils/shoppingListParser";
 import { normalizeKey } from "../../utils/normalize";
 import { filterBySearch } from "../../utils/filters";
 import { scoreHistoryKeyMatch } from "../../utils/shoppingHistoryMatch";
@@ -85,31 +86,45 @@ export default function ShoppingListTab() {
   }, []);
 
   const handleShare = useCallback(async () => {
-    const snapshot = useShoppingListStore.getState().getCloudSnapshot(sessionUserId);
-    if (!snapshot) {
-      notify.error("Nenhuma lista para compartilhar.");
+    if (!activeLocalList) {
+      notify.error("Selecione uma lista para compartilhar.");
       return;
     }
 
+    const snapshot = useShoppingListStore.getState().getCloudSnapshot(sessionUserId);
+    if (!snapshot) {
+      notify.error("Erro ao gerar dados da lista.");
+      return;
+    }
+
+    const items = useShoppingListStore.getState().getItems(sessionUserId, activeLocalList.id) || [];
+    const sanitized = sanitizeShoppingList(items);
+
     try {
-      const shareId = saveSharedSnapshot(snapshot);
-      const result = await shareList(shareId);
+      const result = await shareList(snapshot, activeLocalList.name, sanitized);
 
       if (result === "shared") {
         notify.success("Lista compartilhada!");
       } else if (result === "copied") {
-        notify.success("Link copiado! Envie para quem quiser.");
-      } else {
-        notify.error("Não foi possível compartilhar.");
+        notify.success("Link e texto copiados! Envie para o WhatsApp.");
       }
-    } catch {
+    } catch (err) {
+      console.error(err);
       notify.error("Erro ao compartilhar lista.");
     }
-  }, [sessionUserId]);
+  }, [sessionUserId, activeLocalList]);
 
   const handleAddItem = async (event: FormEvent) => {
     event.preventDefault();
-    const success = actions.handleAddItem(itemName, itemQty);
+    const trimmedName = itemName.trim();
+    if (!trimmedName) return;
+
+    // Auto-criação de lista se não houver nenhuma
+    if (lists.length === 0) {
+      actions.handleCreateList("Lista Principal");
+    }
+
+    const success = actions.handleAddItem(trimmedName, itemQty);
     if (success) {
       setItemName("");
       setItemQty("");
@@ -290,14 +305,15 @@ export default function ShoppingListTab() {
           <input
             className="search-input"
             placeholder="Qtd"
+            style={{ width: "80px", flex: "none" }}
             value={itemQty}
             onChange={(e) => setItemQty(e.target.value)}
           />
         </div>
 
-        <button className="btn w-full" type="submit">
+        <button className="btn w-full bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border-emerald-500/30" type="submit">
           <Plus size={18} />
-          Adicionar Item
+          Adicionar na Lista
         </button>
       </form>
 
@@ -338,6 +354,7 @@ export default function ShoppingListTab() {
               counts={getListCounts[listMeta.id] || { total: 0, pending: 0 }}
               getItemHistory={getItemHistory}
               actions={actions}
+              totalListsCount={lists.length}
               onChangeActive={(id) => {
                 setActiveList(sessionUserId, id);
                 toggleExpandList(id);
@@ -394,6 +411,7 @@ interface ListCardWithDataProps {
   counts: { total: number; pending: number };
   getItemHistory: (item: ShoppingListItemType) => { entries: PurchaseHistoryEntry[]; matchType: HistoryMatchType };
   actions: ReturnType<typeof useLocalShoppingListActions>;
+  totalListsCount: number;
   onChangeActive: (listId: string) => void;
   onToggleExpand: (listId: string) => void;
   onTransferTargetChange: (itemId: string, targetListId: string) => void;
@@ -409,6 +427,7 @@ function ListCardWithData({
   counts,
   getItemHistory,
   actions,
+  totalListsCount,
   onChangeActive,
   onToggleExpand,
   onTransferTargetChange,
@@ -470,7 +489,7 @@ function ListCardWithData({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                actions.confirmDeleteList(listMeta.id, listMeta.name, 0);
+                actions.confirmDeleteList(listMeta.id, listMeta.name, totalListsCount);
               }}
               className="bg-red-500/10 border-none rounded-lg w-7 h-7 flex items-center justify-center text-red-500 cursor-pointer hover:bg-red-500/20"
               title="Excluir lista"

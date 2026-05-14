@@ -53,3 +53,31 @@ export function sanitizeShoppingList(items: unknown[]): ShoppingListItem[] {
     .map((entry) => sanitizeListItem(entry))
     .filter((entry): entry is ShoppingListItem => Boolean(entry));
 }
+
+/**
+ * Formata uma lista de itens para texto (estilo WhatsApp)
+ */
+export function formatListToWhatsApp(listName: string, items: ShoppingListItem[]): string {
+  if (items.length === 0) return `🛒 *${listName}* - Lista vazia`;
+
+  const pending = items.filter(i => !i.checked);
+  const checked = items.filter(i => i.checked);
+
+  let text = `🛒 *${listName}*\n\n`;
+
+  if (pending.length > 0) {
+    text += `*Pendentes:*\n`;
+    pending.forEach(item => {
+      text += `- [ ] ${item.quantity ? `(${item.quantity}) ` : ""}${item.name}\n`;
+    });
+  }
+
+  if (checked.length > 0) {
+    text += `\n*Pegos:*\n`;
+    checked.forEach(item => {
+      text += `- [x] ~${item.quantity ? `(${item.quantity}) ` : ""}${item.name}~\n`;
+    });
+  }
+
+  return text.trim();
+}
