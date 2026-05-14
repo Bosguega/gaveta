@@ -60,12 +60,11 @@ export function loadSharedSnapshot(shareId: string): ShoppingListsCloudSnapshot 
 
 /**
  * Monta URL de compartilhamento para o app.
- * Pode ser baseado em ID (requer persistência) ou em Data (standalone).
+ * Pode ser baseado em ID (requer persistência), em Data (standalone) ou em Code (live).
  */
-export function getShareUrl(shareIdOrData: string, isStandalone = false): string {
+export function getShareUrl(shareIdOrData: string, type: "shared" | "data" | "code" = "shared"): string {
     const baseUrl = window.location.origin + window.location.pathname;
-    const param = isStandalone ? "data" : "shared";
-    return `${baseUrl}?${param}=${shareIdOrData}`;
+    return `${baseUrl}?${type}=${shareIdOrData}`;
 }
 
 /**
@@ -75,17 +74,25 @@ export function getShareUrl(shareIdOrData: string, isStandalone = false): string
 export async function shareList(
     snapshot: ShoppingListsCloudSnapshot,
     listName: string,
-    items: any[]
+    items: any[],
+    liveCode?: string
 ): Promise<"shared" | "copied" | "failed"> {
     const data = serializeSnapshotToUrl(snapshot);
-    const url = getShareUrl(data, true);
+    
+    // Se tiver liveCode, gera um link "live", senão usa o "data" (estático)
+    const url = liveCode ? getShareUrl(liveCode, "code") : getShareUrl(data, "data");
     const text = formatListToWhatsApp(listName, items);
+
+    const shareTitle = `Lista: ${listName}`;
+    const shareText = liveCode 
+        ? `🛒 Veja minha lista de compras em tempo real!\n\n${text}`
+        : text;
 
     if (navigator.share) {
         try {
             await navigator.share({
-                title: `Lista: ${listName}`,
-                text: text,
+                title: shareTitle,
+                text: shareText,
                 url,
             });
             return "shared";
@@ -96,7 +103,7 @@ export async function shareList(
 
     // Fallback: copiar link e texto
     try {
-        await navigator.clipboard.writeText(`${text}\n\nLink: ${url}`);
+        await navigator.clipboard.writeText(`${shareText}\n\nLink: ${url}`);
         return "copied";
     } catch {
         return "failed";

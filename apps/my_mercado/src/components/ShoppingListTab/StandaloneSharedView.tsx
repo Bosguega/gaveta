@@ -1,22 +1,64 @@
-import React, { useMemo } from "react";
-import { ListChecks, ArrowLeft, Share2 } from "lucide-react";
+import { ListChecks, ArrowLeft, Share2, RefreshCw } from "lucide-react";
 import { ShoppingListItem } from "../ShoppingListItem";
 import { deserializeSnapshotFromUrl } from "../../utils/urlDataSerializer";
 import { sanitizeShoppingList } from "../../utils/shoppingList";
 import { useSortedShoppingItems } from "../../hooks/queries/useSortedShoppingItems";
+import { getPublicListByCode, togglePublicItem } from "../../services/publicShoppingListService";
+import { notify } from "../../utils/notifications";
+import type { CollaborativeShoppingList, CollaborativeShoppingListItem } from "../../types/domain";
 
 interface StandaloneSharedViewProps {
-  data: string;
+  data?: string | null;
+  code?: string | null;
   onClose: () => void;
 }
 
-export function StandaloneSharedView({ data, onClose }: StandaloneSharedViewProps) {
-  const snapshot = useMemo(() => deserializeSnapshotFromUrl(data), [data]);
+export function StandaloneSharedView({ data, code, onClose }: StandaloneSharedViewProps) {
+  const [liveData, setLiveData] = React.useState<{
+    list: CollaborativeShoppingList;
+    items: CollaborativeShoppingListItem[];
+  } | null>(null);
+  const [loading, setLoading] = React.useState(!!code);
+  // Carregamento de dados (Snapshot ou Live)
+  const snapshot = useMemo(() => (data ? deserializeSnapshotFromUrl(data) : null), [data]);
 
-  const list = snapshot?.lists[0];
-  const rawItems = list ? (snapshot?.items_by_list[list.id] || []) : [];
+  React.useEffect(() => {
+    if (code) {
+      setLoading(true);
+      getPublicListByCode(code).then(res => {
+        if (res) setLiveData(res);
+        setLoading(false);
+      });
+    }
+  }, [code]);
+
+  const list = code ? liveData?.list : snapshot?.lists[0];
+  const rawItems = code ? (liveData?.items || []) : (list ? (snapshot?.items_by_list[list.id] || []) : []);
   const sanitizedItems = useMemo(() => sanitizeShoppingList(rawItems), [rawItems]);
   const orderedItems = useSortedShoppingItems(sanitizedItems);
+
+  const handleToggleItem = async (itemId: string, checked: boolean) => {
+    if (code) {
+      // Otimista
+      setLiveData(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          items: prev.items.map(item => item.id === itemId ? { ...item, checked } : item)
+        };
+      });
+      const ok = await togglePublicItem(itemId, checked);
+      if (!ok) notify.error("Erro ao sincronizar.");
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="app-container flex items-center justify-center min-h-screen">
+        <RefreshCw className="animate-spin text-blue-500" size={32} />
+      </div>
+    );
+  }
 
   if (!snapshot || !list) {
     return (
@@ -68,11 +110,9 @@ export function StandaloneSharedView({ data, onClose }: StandaloneSharedViewProp
               item={item}
               history={[]}
               historyMatchType="none"
-              // Visualização pública é read-only ou local-only? 
-              // Vamos deixar marcar apenas localmente para UX
-              onToggle={() => {}} 
+              onToggle={() => handleToggleItem(item.id, !item.checked)} 
               onRemove={() => {}}
-              readonly={true}
+              readonly={!code} // Readonly apenas se for snapshot estático
             />
           ))}
         </div>

@@ -26,6 +26,7 @@ import { useUiStore } from "./stores/useUiStore";
 import { useShoppingListStore } from "./stores/useShoppingListStore";
 import { useAllReceiptsQuery } from "./hooks/queries/useReceiptsQuery";
 import { isShoppingListCloudSyncEnabled } from "./utils/shoppingListCloudSync";
+import { StandaloneSharedView } from "./components/ShoppingListTab/StandaloneSharedView";
 import "./index.css";
 
 const LAZY_RELOAD_KEY = "@MyMercado:lazy-reload-once";
@@ -270,6 +271,25 @@ function App() {
   }
 
   if (!sessionUser) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const standaloneData = urlParams.get("data");
+    const standaloneCode = urlParams.get("code");
+
+    if (standaloneData || standaloneCode) {
+      return (
+        <StandaloneSharedView 
+          data={standaloneData} 
+          code={standaloneCode}
+          onClose={() => {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("data");
+            url.searchParams.delete("code");
+            window.history.replaceState({}, "", url.toString());
+            window.location.reload();
+          }} 
+        />
+      );
+    }
     return <Login setSessionUser={setSessionUser} />;
   }
 

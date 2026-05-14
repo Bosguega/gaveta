@@ -1,5 +1,6 @@
-import { KeyRound, Pencil, Plus, RefreshCcw, Trash2 } from "lucide-react";
+import { KeyRound, Pencil, Plus, RefreshCcw, Trash2, Share2 } from "lucide-react";
 import { useCollaborativeShoppingListActions } from "../../../hooks/shoppingList/useCollaborativeShoppingListActions";
+import { shareList } from "../../../utils/shareService";
 import type { CollaborativeShoppingList, CollaborativeShoppingListMember } from "../../../types/domain";
 
 type CollaborativeActions = ReturnType<typeof useCollaborativeShoppingListActions>;
@@ -89,6 +90,16 @@ export function CollaborativeManagementCard({
               onClick={() => actions.handleCopyShareCode(activeList.share_code)}
             >
               Copiar codigo
+            </button>
+            <button
+              className="btn px-2 py-1.5 bg-emerald-500/20 text-emerald-300 shadow-none hover:bg-emerald-500/30 text-xs flex items-center gap-1.5"
+              onClick={() => {
+                // Monta um "snapshot" parcial para o compartilhamento de texto, 
+                // mas passa o code para o link live
+                shareList({ lists: [activeList], items_by_list: {} }, activeList.name, [], activeList.share_code);
+              }}
+            >
+              <Share2 size={13} /> Compartilhar Link
             </button>
             <button
               className="btn px-2 py-1.5 bg-white/10 shadow-none hover:bg-white/20 text-xs"
