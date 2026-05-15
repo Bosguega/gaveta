@@ -5,9 +5,6 @@
  * filtros e configurações de UI
  */
 
-import type { SessionUser } from "./domain";
-import type { ReceiptItem } from "./domain";
-
 // Re-export de tipos consolidados
 export type {
   // History types
