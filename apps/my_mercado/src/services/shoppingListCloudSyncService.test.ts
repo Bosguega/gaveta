@@ -1,19 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShoppingListsCloudSnapshot } from "../types/ui";
 
-const { getUserMock, updateUserMock, getStateMock } = vi.hoisted(() => ({
-  getUserMock: vi.fn(),
-  updateUserMock: vi.fn(),
-  getStateMock: vi.fn(),
-}));
+const pushSnapshotMock = vi.fn();
+const pullSnapshotMock = vi.fn();
+const getStateMock = vi.fn();
 
 vi.mock("./supabaseClient", () => ({
-  supabase: {
-    auth: {
-      getUser: getUserMock,
-      updateUser: updateUserMock,
-    },
-  },
+  supabase: {},
+  isSupabaseConfigured: true,
+}));
+
+vi.mock("./shoppingListSnapshotService", () => ({
+  pushSnapshot: pushSnapshotMock,
+  pullSnapshot: pullSnapshotMock,
 }));
 
 vi.mock("../stores/useShoppingListStore", () => ({
@@ -57,14 +56,11 @@ describe("syncShoppingListsWithCloud", () => {
     vi.clearAllMocks();
   });
 
-  it("pushes local snapshot when remote metadata is empty", async () => {
+  it("pushes local snapshot when remote is empty", async () => {
     const localSnapshot = makeSnapshot();
 
-    getUserMock.mockResolvedValue({
-      data: { user: { id: "user-1", user_metadata: {} } },
-      error: null,
-    });
-    updateUserMock.mockResolvedValue({ error: null });
+    pullSnapshotMock.mockResolvedValue(null);
+    pushSnapshotMock.mockResolvedValue(undefined);
 
     getStateMock.mockReturnValue({
       getCloudSnapshot: () => localSnapshot,
@@ -74,22 +70,15 @@ describe("syncShoppingListsWithCloud", () => {
     const result = await syncShoppingListsWithCloud("user-1");
 
     expect(result).toEqual({ status: "pushed" });
-    expect(updateUserMock).toHaveBeenCalledTimes(1);
-    expect(updateUserMock.mock.calls[0][0]).toMatchObject({
-      data: {
-        mymercado_shopping_lists_v1: localSnapshot,
-      },
-    });
+    expect(pushSnapshotMock).toHaveBeenCalledTimes(1);
+    expect(pushSnapshotMock).toHaveBeenCalledWith("user-1", localSnapshot);
   });
 
   it("pulls remote snapshot when local is empty", async () => {
     const remoteSnapshot = makeSnapshot();
     const applyCloudSnapshot = vi.fn(() => true);
 
-    getUserMock.mockResolvedValue({
-      data: { user: { id: "user-1", user_metadata: { mymercado_shopping_lists_v1: remoteSnapshot } } },
-      error: null,
-    });
+    pullSnapshotMock.mockResolvedValue(remoteSnapshot);
 
     getStateMock.mockReturnValue({
       getCloudSnapshot: () => null,
@@ -100,16 +89,13 @@ describe("syncShoppingListsWithCloud", () => {
 
     expect(result).toEqual({ status: "pulled" });
     expect(applyCloudSnapshot).toHaveBeenCalledWith("user-1", remoteSnapshot);
-    expect(updateUserMock).not.toHaveBeenCalled();
+    expect(pushSnapshotMock).not.toHaveBeenCalled();
   });
 
   it("returns unchanged when local and remote snapshots are equivalent", async () => {
     const snapshot = makeSnapshot();
 
-    getUserMock.mockResolvedValue({
-      data: { user: { id: "user-1", user_metadata: { mymercado_shopping_lists_v1: snapshot } } },
-      error: null,
-    });
+    pullSnapshotMock.mockResolvedValue(snapshot);
 
     getStateMock.mockReturnValue({
       getCloudSnapshot: () => snapshot,
@@ -119,6 +105,13 @@ describe("syncShoppingListsWithCloud", () => {
     const result = await syncShoppingListsWithCloud("user-1");
 
     expect(result).toEqual({ status: "unchanged" });
-    expect(updateUserMock).not.toHaveBeenCalled();
+    expect(pushSnapshotMock).not.toHaveBeenCalled();
+  });
+
+
+  it("skips sync for local-only users", async () => {
+    const result = await syncShoppingListsWithCloud("__local__");
+
+    expect(result).toEqual({ status: "skipped", reason: "no_user" });
   });
 });
