@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShoppingListsCloudSnapshot } from "../types/ui";
 
-const pushSnapshotMock = vi.fn();
-const pullSnapshotMock = vi.fn();
-const getStateMock = vi.fn();
+const { pushSnapshotMock, pullSnapshotMock, getStateMock } = vi.hoisted(() => ({
+  pushSnapshotMock: vi.fn(),
+  pullSnapshotMock: vi.fn(),
+  getStateMock: vi.fn(),
+}));
 
 vi.mock("./supabaseClient", () => ({
   supabase: {},
