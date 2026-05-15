@@ -121,7 +121,7 @@ export default function ShoppingListTab() {
 
     // Auto-criação de lista se não houver nenhuma
     if (lists.length === 0) {
-      actions.handleCreateList("Lista Principal");
+      actions.handleCreateList("");
     }
 
     const success = actions.handleAddItem(trimmedName, itemQty);

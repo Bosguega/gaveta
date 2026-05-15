@@ -7,6 +7,7 @@ import {
   bumpListUpdatedAt,
   createListItem,
   createListMeta,
+  getDefaultListName,
   getItemsForList,
   getOwnerKey,
   hasUserData,
@@ -49,15 +50,15 @@ export function buildShoppingListActions({
     },
     createList: (userId, name) => {
       const trimmed = name.trim();
-      if (!trimmed) return { ok: false, reason: "empty" };
+      const finalName = trimmed || getDefaultListName();
 
       const { ownerKey, userData: current } = ensureUserData(userId);
       const duplicated = current.lists.some(
-        (list) => list.name.toLowerCase() === trimmed.toLowerCase(),
+        (list) => list.name.toLowerCase() === finalName.toLowerCase(),
       );
       if (duplicated) return { ok: false, reason: "duplicate" };
 
-      const created = createListMeta(trimmed);
+      const created = createListMeta(finalName);
       set((state) => ({
         dataByUser: {
           ...(isRecord(state.dataByUser) ? state.dataByUser : {}),

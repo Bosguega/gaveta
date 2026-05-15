@@ -9,8 +9,11 @@ const FALLBACK_OWNER_KEY = "__local__";
  * Gera nome automático para lista baseado na data atual.
  * Ex: "Compras 14/05" ou "Compras 14/05/2026"
  */
-function getDefaultListName(): string {
-  return "Lista Principal";
+export function getDefaultListName(): string {
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, "0");
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  return `Compras ${day}/${month}`;
 }
 
 const defaultUserDataByOwner = new Map<string, UserShoppingLists>();
