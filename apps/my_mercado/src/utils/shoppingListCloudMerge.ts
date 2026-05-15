@@ -54,6 +54,20 @@ export function mergeShoppingListSnapshots(
   const remoteById = new Map(remote.lists.map((list) => [list.id, list]));
   const allIds = new Set([...localById.keys(), ...remoteById.keys()]);
 
+  // Use the snapshot-level updated_at as a tiebreaker for lists that exist
+  // in only one side.
+  // - If local is strictly newer, the last mutation happened locally, so
+  //   lists that exist ONLY remotely were deleted locally and excluded.
+  // - If remote is strictly newer, the last mutation happened remotely, so
+  //   lists that exist ONLY locally were deleted remotely and excluded.
+  // - If timestamps are equal, it's ambiguous — keep all lists from both
+  //   sides (original behavior) to avoid data loss.
+  const localTs = toTimestamp(local.updated_at);
+  const remoteTs = toTimestamp(remote.updated_at);
+  const localIsNewer = localTs > remoteTs;
+  const remoteIsNewer = remoteTs > localTs;
+  const timestampsEqual = localTs === remoteTs;
+
   const mergedLists: ShoppingListMeta[] = [];
   const mergedItemsByList: Record<string, ShoppingListItem[]> = {};
 
@@ -74,13 +88,19 @@ export function mergeShoppingListSnapshots(
       continue;
     }
 
-    if (localList) {
+    // List exists only locally.
+    // Keep it if: timestamps are equal (ambiguous, avoid data loss)
+    //          OR local is newer (list was created locally, or remote is stale).
+    if (localList && (timestampsEqual || localIsNewer)) {
       mergedLists.push(localList);
       mergedItemsByList[listId] = local.items_by_list[listId] || [];
       continue;
     }
 
-    if (remoteList) {
+    // List exists only remotely.
+    // Keep it if: timestamps are equal (ambiguous, avoid data loss)
+    //          OR remote is newer (list was created remotely, or local is stale).
+    if (remoteList && (timestampsEqual || remoteIsNewer)) {
       mergedLists.push(remoteList);
       mergedItemsByList[listId] = remote.items_by_list[listId] || [];
     }

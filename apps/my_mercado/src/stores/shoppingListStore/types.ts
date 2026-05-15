@@ -40,6 +40,7 @@ export type ShoppingListState = {
     name: string,
     quantity?: string,
     listId?: string,
+    note?: string,
   ) => AddItemResult;
   toggleChecked: (
     userId: string | null | undefined,

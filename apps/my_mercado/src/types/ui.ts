@@ -74,6 +74,7 @@ export interface ShoppingListItem {
   name: string;
   normalized_key: string;
   quantity?: string;
+  note?: string;
   checked: boolean;
   created_at: string;
   checked_at?: string;
@@ -109,63 +110,14 @@ export interface ShoppingListsCloudSnapshot {
  * Filtros para histórico de compras
  */
 export interface HistoryFilters {
-  period: "all" | "this-month" | "last-3-months" | "custom";
-  sortBy: "date" | "value" | "store";
-  sortOrder: SortDirection;
-  startDate: string;
-  endDate: string;
+  search: string;
+  period: string;
+  sortBy: string;
+  sortDirection: string;
 }
 
 /**
- * Filtros para busca de preços
- */
-export interface SearchFilters {
-  period: "all" | "this-month" | "last-3-months" | "custom";
-  startDate: string;
-  endDate: string;
-}
-
-// =========================
-// COMPONENT PROPS
-// =========================
-
-/**
- * Props para componente de Login
- */
-export interface LoginProps {
-  setSessionUser: (user: SessionUser | null) => void;
-}
-
-/**
- * Props para modal de API Key
- */
-export interface ApiKeyModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  currentKey?: string;
-  onSave: (key: string) => void | Promise<void>;
-  persistKey?: boolean;
-  onPersistChange?: (persist: boolean) => void | Promise<void>;
-}
-
-/**
- * Props para ConfirmDialog (versão antiga, usar ConfirmDialogConfig)
- * @deprecated Usar ConfirmDialogConfig
- */
-export interface ConfirmDialogProps {
-  isOpen: boolean;
-  title: string;
-  message: string;
-  confirmText?: string;
-  cancelText?: string;
-  danger?: boolean;
-  busy?: boolean;
-  onConfirm: () => void | Promise<void>;
-  onCancel: () => void;
-}
-
-/**
- * Configuração para diálogo de confirmação
+ * Configuração do diálogo de confirmação
  */
 export interface ConfirmDialogConfig {
   title: string;
@@ -173,18 +125,6 @@ export interface ConfirmDialogConfig {
   confirmText?: string;
   cancelText?: string;
   danger?: boolean;
-  onConfirm: () => void | Promise<void>;
+  onConfirm: () => void;
   onCancel?: () => void;
-}
-
-// =========================
-// PURCHASE HISTORY
-// =========================
-
-/**
- * Item comprado com informações adicionais
- */
-export interface PurchasedItem extends ReceiptItem {
-  purchasedAt?: string;
-  store?: string;
 }

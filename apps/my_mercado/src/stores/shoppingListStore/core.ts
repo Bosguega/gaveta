@@ -34,13 +34,18 @@ export function createListMeta(name?: string): ShoppingListMeta {
   };
 }
 
-export function createListItem(name: string, quantity?: string): ShoppingListItem {
+export function createListItem(
+  name: string,
+  quantity?: string,
+  note?: string,
+): ShoppingListItem {
   const now = new Date().toISOString();
   return {
     id: generateId(),
     name: name.trim(),
     normalized_key: normalizeKey(name),
     quantity: quantity?.trim() || undefined,
+    note: note?.trim().slice(0, 200) || undefined,
     checked: false,
     created_at: now,
   };
@@ -63,6 +68,7 @@ function coerceItem(raw: unknown): ShoppingListItem | null {
     name,
     normalized_key,
     quantity: raw.quantity ? String(raw.quantity).trim() : undefined,
+    note: raw.note ? String(raw.note).trim().slice(0, 200) : undefined,
     checked: Boolean(raw.checked),
     created_at: raw.created_at ? String(raw.created_at) : new Date().toISOString(),
     checked_at: raw.checked_at ? String(raw.checked_at) : undefined,

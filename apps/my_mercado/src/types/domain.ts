@@ -100,6 +100,7 @@ export interface CollaborativeShoppingListItem {
   name: string;
   normalized_key: string;
   quantity?: string;
+  note?: string;
   checked: boolean;
   checked_at?: string | null;
   checked_by_user_id?: string | null;

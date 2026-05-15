@@ -130,7 +130,7 @@ export function buildShoppingListActions({
 
       return { ok: true, listId: nextActive };
     },
-    addItem: (userId, name, quantity, listId) => {
+    addItem: (userId, name, quantity, listId, note) => {
       const trimmed = name.trim();
       if (!trimmed) return { ok: false, reason: "empty" };
 
@@ -144,7 +144,7 @@ export function buildShoppingListActions({
       );
       if (hasDuplicate) return { ok: false, reason: "duplicate" };
 
-      const newItem = createListItem(trimmed, quantity);
+      const newItem = createListItem(trimmed, quantity, note);
       const now = new Date().toISOString();
       set((state) => ({
         dataByUser: {
@@ -178,10 +178,10 @@ export function buildShoppingListActions({
               [safeListId]: currentItems.map((item) =>
                 item.id === itemId
                   ? {
-                      ...item,
-                      checked: !item.checked,
-                      checked_at: !item.checked ? new Date().toISOString() : undefined,
-                    }
+                    ...item,
+                    checked: !item.checked,
+                    checked_at: !item.checked ? new Date().toISOString() : undefined,
+                  }
                   : item,
               ),
             },

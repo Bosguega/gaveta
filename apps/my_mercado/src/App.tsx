@@ -26,7 +26,8 @@ import { useUiStore } from "./stores/useUiStore";
 import { useShoppingListStore } from "./stores/useShoppingListStore";
 import { useAllReceiptsQuery } from "./hooks/queries/useReceiptsQuery";
 import { isShoppingListCloudSyncEnabled } from "./utils/shoppingListCloudSync";
-import { StandaloneSharedView } from "./components/ShoppingListTab/StandaloneSharedView";
+import { useSharedRouteDetection } from "./hooks/useSharedListImport";
+import { SharedListView } from "./components/SharedListTab/SharedListView";
 import "./index.css";
 
 const LAZY_RELOAD_KEY = "@MyMercado:lazy-reload-once";
@@ -262,6 +263,22 @@ function App() {
     );
   }
 
+  // Detecta rota /s/:code para lista compartilhada
+  const { isSharedRoute, sharedCode } = useSharedRouteDetection();
+
+  if (isSharedRoute && sharedCode) {
+    return (
+      <SharedListView
+        code={sharedCode}
+        onClose={() => {
+          // Volta para o app (ou login se não autenticado)
+          window.history.replaceState({}, "", window.location.origin + window.location.pathname.replace(/\/s\/.+$/, "/"));
+          window.location.reload();
+        }}
+      />
+    );
+  }
+
   if (authLoading) {
     return (
       <div className="app-container" style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
@@ -271,25 +288,6 @@ function App() {
   }
 
   if (!sessionUser) {
-    const urlParams = new URLSearchParams(window.location.search);
-    const standaloneData = urlParams.get("data");
-    const standaloneCode = urlParams.get("code");
-
-    if (standaloneData || standaloneCode) {
-      return (
-        <StandaloneSharedView 
-          data={standaloneData} 
-          code={standaloneCode}
-          onClose={() => {
-            const url = new URL(window.location.href);
-            url.searchParams.delete("data");
-            url.searchParams.delete("code");
-            window.history.replaceState({}, "", url.toString());
-            window.location.reload();
-          }} 
-        />
-      );
-    }
     return <Login setSessionUser={setSessionUser} />;
   }
 
