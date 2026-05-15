@@ -239,6 +239,9 @@ function App() {
 
   const handleChangeTab = (nextTab: AppTab) => setTab(nextTab);
 
+  // Detecta rota /s/:code para lista compartilhada
+  const { isSharedRoute, sharedCode } = useSharedRouteDetection();
+
   if (!isSupabaseConfigured) {
     return (
       <div className="app-container" style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", padding: "1.5rem" }}>
@@ -262,9 +265,6 @@ function App() {
       </div>
     );
   }
-
-  // Detecta rota /s/:code para lista compartilhada
-  const { isSharedRoute, sharedCode } = useSharedRouteDetection();
 
   if (isSharedRoute && sharedCode) {
     return (

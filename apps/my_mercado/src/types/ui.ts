@@ -5,6 +5,9 @@
  * filtros e configurações de UI
  */
 
+import type { SessionUser } from "./domain";
+import type { ReceiptItem } from "./domain";
+
 // Re-export de tipos consolidados
 export type {
   // History types
@@ -107,10 +110,21 @@ export interface ShoppingListsCloudSnapshot {
  * Filtros para histórico de compras
  */
 export interface HistoryFilters {
-  search: string;
+  search?: string;
   period: string;
   sortBy: string;
-  sortDirection: string;
+  sortOrder: SortDirection;
+  startDate?: string;
+  endDate?: string;
+}
+
+/**
+ * Filtros para busca de preços
+ */
+export interface SearchFilters {
+  period: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 /**
@@ -124,4 +138,55 @@ export interface ConfirmDialogConfig {
   danger?: boolean;
   onConfirm: () => void;
   onCancel?: () => void;
+}
+
+// =========================
+// COMPONENT PROPS
+// =========================
+
+/**
+ * Props para componente de Login
+ */
+export interface LoginProps {
+  setSessionUser: (user: SessionUser | null) => void;
+}
+
+/**
+ * Props para modal de API Key
+ */
+export interface ApiKeyModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  currentKey?: string;
+  onSave: (key: string) => void | Promise<void>;
+  persistKey?: boolean;
+  onPersistChange?: (persist: boolean) => void | Promise<void>;
+}
+
+/**
+ * Props para ConfirmDialog (versão antiga, usar ConfirmDialogConfig)
+ * @deprecated Usar ConfirmDialogConfig
+ */
+export interface ConfirmDialogProps {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  danger?: boolean;
+  busy?: boolean;
+  onConfirm: () => void | Promise<void>;
+  onCancel: () => void;
+}
+
+// =========================
+// PURCHASE HISTORY
+// =========================
+
+/**
+ * Item comprado com informações adicionais
+ */
+export interface PurchasedItem extends Omit<ReceiptItem, "purchasedAt"> {
+  purchasedAt?: string;
+  store?: string;
 }
