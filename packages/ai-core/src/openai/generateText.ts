@@ -79,7 +79,7 @@ function parseOpenAiError(status: number, body: string): Error {
     return createAiApiError(`HTTP_${status}`, status, body)
 }
 
-function mapOpenAiStatusToCode(status: number, code?: string): string {
+function mapOpenAiStatusToCode(status: number, _code?: string): string {
     if (status === 401) return 'INVALID_API_KEY'
     if (status === 429) return 'RATE_LIMIT_EXCEEDED'
     if (status === 500 || status === 503) return 'SERVICE_UNAVAILABLE'
