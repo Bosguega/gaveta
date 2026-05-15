@@ -27,7 +27,7 @@ import { useShoppingListStore } from "./stores/useShoppingListStore";
 import { useAllReceiptsQuery } from "./hooks/queries/useReceiptsQuery";
 import { isShoppingListCloudSyncEnabled } from "./utils/shoppingListCloudSync";
 import { useSharedRouteDetection } from "./hooks/useSharedListImport";
-import { SharedListView } from "./components/SharedListTab/SharedListView";
+import { SharedListView } from "./components/SharedListTab/SharedListView.tsx";
 import "./index.css";
 
 const LAZY_RELOAD_KEY = "@MyMercado:lazy-reload-once";

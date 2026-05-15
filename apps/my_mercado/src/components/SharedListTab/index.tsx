@@ -1,3 +1,3 @@
-export { SharedListView } from "./SharedListView";
-export { ShareListModal } from "./ShareListModal";
-export { SharedListItem } from "./SharedListItem";
+export { SharedListView } from "./SharedListView.tsx";
+export { ShareListModal } from "./ShareListModal.tsx";
+export { SharedListItem } from "./SharedListItem.tsx";

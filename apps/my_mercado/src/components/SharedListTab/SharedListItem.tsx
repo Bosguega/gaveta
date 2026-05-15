@@ -1,5 +1,5 @@
 import { CheckCircle2, Circle, Trash2 } from "lucide-react";
-import type { SharedListItem as SharedListItemData } from "../../services/sharedListService";
+import type { SharedListItem as SharedListItemData } from "../../services/sharedListService.ts";
 
 type SharedListItemProps = {
     item: SharedListItemData;

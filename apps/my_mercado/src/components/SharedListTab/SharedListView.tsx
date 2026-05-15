@@ -1,8 +1,8 @@
 import { useState, useCallback } from "react";
 import { ListChecks, ArrowLeft, RefreshCw, Plus } from "lucide-react";
-import { useSharedList } from "../../hooks/useSharedList";
-import { SharedListItem } from "./SharedListItem";
-import { notify } from "../../utils/notifications";
+import { useSharedList } from "../../hooks/useSharedList.ts";
+import { SharedListItem } from "./SharedListItem.tsx";
+import { notify } from "../../utils/notifications.ts";
 
 type SharedListViewProps = {
     code: string;

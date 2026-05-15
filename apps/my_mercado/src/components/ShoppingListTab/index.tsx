@@ -7,7 +7,6 @@ import { useAllReceiptsQuery } from "../../hooks/queries/useReceiptsQuery";
 import { useReceiptsSessionStore } from "../../stores/useReceiptsSessionStore";
 import { useShoppingListStore } from "../../stores/useShoppingListStore";
 import { useLocalShoppingListActions } from "../../hooks/shoppingList/useLocalShoppingListActions";
-import { useSharedListImport } from "../../hooks/useSharedListImport";
 import { shareList } from "../../utils/shareService";
 import { useSortedShoppingItems } from "../../hooks/queries/useSortedShoppingItems";
 import { usePurchaseHistory } from "../../hooks/queries/usePurchaseHistory";
@@ -39,9 +38,6 @@ type ListInputDialogState =
  * Input de adicionar itens sempre visível no topo.
  */
 export default function ShoppingListTab() {
-  // Detecta lista compartilhada na URL
-  useSharedListImport();
-
   const sessionUserId = useReceiptsSessionStore((state) => state.sessionUserId);
   const { data: savedReceipts = [] } = useAllReceiptsQuery();
   const { data: canonicalProducts = [] } = useCanonicalProductsQuery();
@@ -55,6 +51,7 @@ export default function ShoppingListTab() {
 
   const [itemName, setItemName] = useState("");
   const [itemQty, setItemQty] = useState("");
+  const [itemNote, setItemNote] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [transferTargetByItem, setTransferTargetByItem] = useState<Record<string, string>>({});
   const [listInputDialog, setListInputDialog] = useState<ListInputDialogState>(null);
@@ -124,10 +121,11 @@ export default function ShoppingListTab() {
       actions.handleCreateList("");
     }
 
-    const success = actions.handleAddItem(trimmedName, itemQty);
+    const success = actions.handleAddItem(trimmedName, itemQty, itemNote);
     if (success) {
       setItemName("");
       setItemQty("");
+      setItemNote("");
     }
   };
 
@@ -311,7 +309,18 @@ export default function ShoppingListTab() {
           />
         </div>
 
-        <button className="btn w-full bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border-emerald-500/30" type="submit">
+        {/* Observação discreta */}
+        <div className="px-1 mt-2">
+          <input
+            className="bg-transparent border-none outline-none text-slate-500 text-[0.78rem] w-full placeholder:text-slate-700 italic"
+            placeholder="Obs: Se não tiver pão, trazer farinha..."
+            value={itemNote}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setItemNote(e.target.value)}
+            maxLength={200}
+          />
+        </div>
+
+        <button className="btn w-full bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border-emerald-500/30 mt-2" type="submit">
           <Plus size={18} />
           Adicionar na Lista
         </button>

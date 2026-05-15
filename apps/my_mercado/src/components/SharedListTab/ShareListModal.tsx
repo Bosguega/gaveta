@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { X, Copy, RefreshCw, Share2, AlertTriangle } from "lucide-react";
-import { publishList, unpublishList, updateSharedListItems } from "../../services/sharedListService";
-import { notify } from "../../utils/notifications";
-import type { ShoppingListItem } from "../../types/ui";
+import { publishList, unpublishList, updateSharedListItems } from "../../services/sharedListService.ts";
+import { notify } from "../../utils/notifications.ts";
+import type { ShoppingListItem } from "../../types/ui.ts";
 
 type ShareListModalProps = {
     isOpen: boolean;

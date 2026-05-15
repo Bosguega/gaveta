@@ -82,6 +82,12 @@ export function ShoppingListItem({
             </p>
           )}
 
+          {item.note && (
+            <p className="text-slate-500 text-[0.75rem] mt-0.5 italic leading-relaxed">
+              {item.note.length > 120 ? item.note.slice(0, 120) + "…" : item.note}
+            </p>
+          )}
+
           {item.checked && item.checked_by_user_id && (
             <p className="text-slate-400 text-[0.76rem] mt-1">
               Marcado por{" "}
