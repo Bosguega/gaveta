@@ -50,7 +50,7 @@ export function useLocalShoppingListActions(sessionUserId: string | null | undef
     return true;
   };
 
-  const handleDeleteList = (listId: string, listName: string, listsCount: number) => {
+  const handleDeleteList = (listId: string, _listName: string, listsCount: number) => {
     if (listsCount <= 1) {
       notify.error(errorMessages.LIST_DELETE_LAST);
       return false;

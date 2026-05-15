@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useCallback } from "react";
+import * as React from "react";
+import { useMemo, useState, useCallback } from "react";
 import type { FormEvent } from "react";
 import { ListChecks, Plus, Eraser, Trash2, Share2, ChevronDown, ChevronUp, Pencil } from "lucide-react";
 import { notify } from "../../utils/notifications";
@@ -7,13 +8,12 @@ import { useReceiptsSessionStore } from "../../stores/useReceiptsSessionStore";
 import { useShoppingListStore } from "../../stores/useShoppingListStore";
 import { useLocalShoppingListActions } from "../../hooks/shoppingList/useLocalShoppingListActions";
 import { useSharedListImport } from "../../hooks/useSharedListImport";
-import { saveSharedSnapshot, shareList } from "../../utils/shareService";
+import { shareList } from "../../utils/shareService";
 import { useSortedShoppingItems } from "../../hooks/queries/useSortedShoppingItems";
 import { usePurchaseHistory } from "../../hooks/queries/usePurchaseHistory";
-import type { PurchaseHistoryEntry } from "../../hooks/queries/usePurchaseHistory";
+import type { PurchaseHistoryEntry, PurchaseSuggestion } from "../../hooks/queries/usePurchaseHistory";
 import { useCanonicalProductsQuery } from "../../hooks/queries/useCanonicalProductsQuery";
 import { sanitizeShoppingList, toText } from "../../utils/shoppingList";
-import { parseSmartItemInput } from "../../utils/shoppingListParser";
 import { normalizeKey } from "../../utils/normalize";
 import { filterBySearch } from "../../utils/filters";
 import { scoreHistoryKeyMatch } from "../../utils/shoppingHistoryMatch";
@@ -74,7 +74,7 @@ export default function ShoppingListTab() {
 
   // Toggle expansão de lista
   const toggleExpandList = useCallback((listId: string) => {
-    setExpandedListIds((prev) => {
+    setExpandedListIds((prev: Set<string>) => {
       const next = new Set(prev);
       if (next.has(listId)) {
         next.delete(listId);
@@ -254,13 +254,13 @@ export default function ShoppingListTab() {
               className="search-input"
               placeholder="Ex: Arroz, Leite, Cafe..."
               value={itemName}
-              onChange={(e) => setItemName(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setItemName(e.target.value)}
               onFocus={() => setShowSuggestions(true)}
               onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
             />
             {showSuggestions && suggestions.length > 0 && (
               <div className="absolute left-0 right-0 z-[100] mt-2 bg-[#1e293b] border border-white/10 rounded-xl p-1 max-h-64 overflow-auto shadow-2xl animated-item">
-                {suggestions.map((suggestion) => {
+                {suggestions.map((suggestion: PurchaseSuggestion) => {
                   const lastPrice = suggestion.lastPrice ?? 0;
                   return (
                     <div
@@ -307,7 +307,7 @@ export default function ShoppingListTab() {
             placeholder="Qtd"
             style={{ width: "80px", flex: "none" }}
             value={itemQty}
-            onChange={(e) => setItemQty(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setItemQty(e.target.value)}
           />
         </div>
 
@@ -361,7 +361,7 @@ export default function ShoppingListTab() {
               }}
               onToggleExpand={(id) => toggleExpandList(id)}
               onTransferTargetChange={(itemId, targetListId) =>
-                setTransferTargetByItem((prev) => ({ ...prev, [itemId]: targetListId }))
+                setTransferTargetByItem((prev: Record<string, string>) => ({ ...prev, [itemId]: targetListId }))
               }
             />
           ))
@@ -431,7 +431,7 @@ function ListCardWithData({
   onChangeActive,
   onToggleExpand,
   onTransferTargetChange,
-}: ListCardWithDataProps) {
+}: ListCardWithDataProps): React.JSX.Element {
   const rawItems = useShoppingListStore((state) => state.getItems(sessionUserId, listMeta.id));
   const listItems = useMemo(
     () => sanitizeShoppingList(rawItems || EMPTY_SHOPPING_ITEMS),
@@ -487,7 +487,7 @@ function ListCardWithData({
               </span>
             )}
             <button
-              onClick={(e) => {
+              onClick={(e: React.MouseEvent) => {
                 e.stopPropagation();
                 actions.confirmDeleteList(listMeta.id, listMeta.name, totalListsCount);
               }}

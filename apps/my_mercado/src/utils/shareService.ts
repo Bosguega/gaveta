@@ -1,4 +1,4 @@
-import type { ShoppingListsCloudSnapshot } from "../types/ui";
+import type { ShoppingListsCloudSnapshot, ShoppingListItem } from "../types/ui";
 import { serializeSnapshotToUrl } from "./urlDataSerializer";
 import { formatListToWhatsApp } from "./shoppingList";
 import { generateId } from "./idGenerator";
@@ -75,7 +75,7 @@ export function getShareUrl(shareIdOrData: string, type: "shared" | "data" | "co
 export async function shareList(
     snapshot: ShoppingListsCloudSnapshot,
     listName: string,
-    items: any[],
+    items: ShoppingListItem[],
     liveCode?: string
 ): Promise<"shared" | "copied" | "failed"> {
     const data = serializeSnapshotToUrl(snapshot);

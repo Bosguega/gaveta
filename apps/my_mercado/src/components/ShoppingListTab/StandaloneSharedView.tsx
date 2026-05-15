@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ListChecks, ArrowLeft, Share2, RefreshCw } from "lucide-react";
 import { ShoppingListItem } from "../ShoppingListItem";
 import { deserializeSnapshotFromUrl } from "../../utils/urlDataSerializer";
@@ -33,19 +33,22 @@ export function StandaloneSharedView({ data, code, onClose }: StandaloneSharedVi
     }
   }, [code]);
 
-  const list = code ? liveData?.list : snapshot?.lists[0];
-  const rawItems = code ? (liveData?.items || []) : (list ? (snapshot?.items_by_list[list.id] || []) : []);
-  const sanitizedItems = useMemo(() => sanitizeShoppingList(rawItems), [rawItems]);
+  const list = useMemo(() => (code ? liveData?.list : snapshot?.lists[0]), [code, liveData, snapshot]);
+
+  const sanitizedItems = useMemo(() => {
+    const rawItems = code ? (liveData?.items || []) : (list ? (snapshot?.items_by_list[list.id] || []) : []);
+    return sanitizeShoppingList(rawItems);
+  }, [code, liveData, list, snapshot]);
   const orderedItems = useSortedShoppingItems(sanitizedItems);
 
   const handleToggleItem = async (itemId: string, checked: boolean) => {
     if (code) {
       // Otimista
-      setLiveData(prev => {
+      setLiveData((prev: any) => {
         if (!prev) return null;
         return {
           ...prev,
-          items: prev.items.map(item => item.id === itemId ? { ...item, checked } : item)
+          items: prev.items.map((item: any) => item.id === itemId ? { ...item, checked } : item)
         };
       });
       const ok = await togglePublicItem(itemId, checked);

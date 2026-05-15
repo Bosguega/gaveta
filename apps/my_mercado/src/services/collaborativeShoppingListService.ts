@@ -260,7 +260,7 @@ export async function transferCollaborativeListOwnershipInDB(
 
     if (fetchError) throw new Error(fetchError.message);
 
-    const currentOwner = members?.find((m) => m.role === "owner");
+    const currentOwner = members?.find((m: any) => m.role === "owner");
     if (!currentOwner) throw new Error("Current owner not found.");
 
     // Update list owner_id
