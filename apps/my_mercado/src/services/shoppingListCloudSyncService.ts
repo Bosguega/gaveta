@@ -1,12 +1,11 @@
-import { supabase } from "./supabaseClient";
+import { supabase, isSupabaseConfigured } from "./supabaseClient";
 import { useShoppingListStore } from "../stores/useShoppingListStore";
-import type { ShoppingListsCloudSnapshot } from "../types/ui";
+import { pushSnapshot, pullSnapshot } from "./shoppingListSnapshotService";
 import {
   isSameShoppingListSnapshot,
   mergeShoppingListSnapshots,
 } from "../utils/shoppingListCloudMerge";
-
-const SHOPPING_LIST_META_KEY = "mymercado_shopping_lists_v1";
+import type { ShoppingListsCloudSnapshot } from "../types/ui";
 
 type SyncStatus = "disabled" | "skipped" | "pushed" | "pulled" | "unchanged";
 
@@ -15,46 +14,45 @@ export type ShoppingListCloudSyncResult = {
   reason?: string;
 };
 
-function getRemoteSnapshotValue(
-  user: { user_metadata?: Record<string, unknown> } | null,
-): unknown {
-  if (!user || !user.user_metadata) return null;
-  return user.user_metadata[SHOPPING_LIST_META_KEY];
-}
-
-function parseRemoteSnapshot(raw: unknown): ShoppingListsCloudSnapshot | null {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const candidate = raw as Partial<ShoppingListsCloudSnapshot>;
-  if (candidate.version !== 1) return null;
-  if (typeof candidate.updated_at !== "string") return null;
-  if (!Array.isArray(candidate.lists)) return null;
-  if (!candidate.items_by_list || typeof candidate.items_by_list !== "object") return null;
-  if (typeof candidate.active_list_id !== "string") return null;
-  return candidate as ShoppingListsCloudSnapshot;
+function requireSupabase() {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error("Supabase não configurado.");
+  }
+  return supabase;
 }
 
 export async function syncShoppingListsWithCloud(
   userId: string,
 ): Promise<ShoppingListCloudSyncResult> {
-  if (!supabase) return { status: "skipped", reason: "supabase_unavailable" };
+  try {
+    requireSupabase();
+  } catch {
+    return { status: "skipped", reason: "supabase_unavailable" };
+  }
 
-  const { data: userData, error: getUserError } = await supabase.auth.getUser();
-  if (getUserError) return { status: "skipped", reason: "auth_unavailable" };
+  if (!userId || userId === "__local__") {
+    return { status: "skipped", reason: "no_user" };
+  }
 
   const store = useShoppingListStore.getState();
   const localSnapshot = store.getCloudSnapshot(userId);
-  const remoteSnapshot = parseRemoteSnapshot(getRemoteSnapshotValue(userData.user));
+  let remoteSnapshot: ShoppingListsCloudSnapshot | null = null;
+
+  try {
+    remoteSnapshot = await pullSnapshot(userId);
+  } catch {
+    return { status: "skipped", reason: "pull_failed" };
+  }
 
   if (!localSnapshot && !remoteSnapshot) return { status: "unchanged" };
 
   if (localSnapshot && !remoteSnapshot) {
-    const nextMeta = {
-      ...(userData.user?.user_metadata || {}),
-      [SHOPPING_LIST_META_KEY]: localSnapshot,
-    };
-    const { error: updateError } = await supabase.auth.updateUser({ data: nextMeta });
-    if (updateError) return { status: "skipped", reason: "update_failed" };
-    return { status: "pushed" };
+    try {
+      await pushSnapshot(userId, localSnapshot);
+      return { status: "pushed" };
+    } catch {
+      return { status: "skipped", reason: "push_failed" };
+    }
   }
 
   if (!localSnapshot && remoteSnapshot) {
@@ -74,14 +72,13 @@ export async function syncShoppingListsWithCloud(
   }
 
   if (!remoteEqualsMerged) {
-    const nextMeta = {
-      ...(userData.user?.user_metadata || {}),
-      [SHOPPING_LIST_META_KEY]: mergedSnapshot,
-    };
-    const { error: updateError } = await supabase.auth.updateUser({ data: nextMeta });
-    if (updateError) return { status: "skipped", reason: "update_failed" };
-    return localEqualsMerged ? { status: "pushed" } : { status: "pulled" };
+    try {
+      await pushSnapshot(userId, mergedSnapshot);
+      return localEqualsMerged ? { status: "pushed" } : { status: "pulled" };
+    } catch {
+      return { status: "skipped", reason: "push_failed" };
+    }
   }
 
-  return localEqualsMerged ? { status: "unchanged" } : { status: "pulled" };
+  return { status: "unchanged" };
 }

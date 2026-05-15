@@ -57,3 +57,10 @@ export {
 // Sync
 export { syncLocalStorageWithSupabase } from "./syncService";
 export { syncShoppingListsWithCloud } from "./shoppingListCloudSyncService";
+
+// Shopping List Snapshots (tabela dedicada Supabase)
+export {
+  pushSnapshot,
+  pullSnapshot,
+  deleteSnapshot,
+} from "./shoppingListSnapshotService";
