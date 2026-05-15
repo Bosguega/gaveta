@@ -3,4 +3,3 @@
  */
 
 export { useLocalShoppingListActions } from './useLocalShoppingListActions';
-export { useCollaborativeShoppingListActions } from './useCollaborativeShoppingListActions';

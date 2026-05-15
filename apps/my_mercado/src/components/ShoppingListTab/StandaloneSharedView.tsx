@@ -1,3 +1,4 @@
+import React, { useState, useEffect, useMemo } from "react";
 import { ListChecks, ArrowLeft, Share2, RefreshCw } from "lucide-react";
 import { ShoppingListItem } from "../ShoppingListItem";
 import { deserializeSnapshotFromUrl } from "../../utils/urlDataSerializer";
@@ -14,15 +15,15 @@ interface StandaloneSharedViewProps {
 }
 
 export function StandaloneSharedView({ data, code, onClose }: StandaloneSharedViewProps) {
-  const [liveData, setLiveData] = React.useState<{
+  const [liveData, setLiveData] = useState<{
     list: CollaborativeShoppingList;
     items: CollaborativeShoppingListItem[];
   } | null>(null);
-  const [loading, setLoading] = React.useState(!!code);
+  const [loading, setLoading] = useState(!!code);
   // Carregamento de dados (Snapshot ou Live)
   const snapshot = useMemo(() => (data ? deserializeSnapshotFromUrl(data) : null), [data]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (code) {
       setLoading(true);
       getPublicListByCode(code).then(res => {

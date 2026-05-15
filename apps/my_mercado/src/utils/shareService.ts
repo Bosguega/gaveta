@@ -1,6 +1,7 @@
 import type { ShoppingListsCloudSnapshot } from "../types/ui";
 import { serializeSnapshotToUrl } from "./urlDataSerializer";
 import { formatListToWhatsApp } from "./shoppingList";
+import { generateId } from "./idGenerator";
 
 const SHARE_STORAGE_PREFIX = "@MyMercado:shared-list:";
 

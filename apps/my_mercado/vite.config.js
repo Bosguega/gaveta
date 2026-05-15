@@ -18,6 +18,7 @@ export default defineConfig(({ mode }) => {
     return base;
   };
 
+  const isCloudflarePages = process.env.CF_PAGES === 'true';
   const baseOverride = normalizeBase(env.VITE_BASE_URL);
   const githubRepo = process.env.GITHUB_REPOSITORY?.split('/')[1];
 
@@ -26,7 +27,12 @@ export default defineConfig(({ mode }) => {
     Boolean(githubRepo) &&
     !githubRepo.endsWith('.github.io');
 
-  const base = baseOverride ?? (isGitHubPagesBuild ? `/${githubRepo}/` : '/');
+  // Cloudflare Pages → raiz ('/'), GitHub Pages → subpath, local → raiz ('/')
+  const base = baseOverride ?? (isCloudflarePages
+    ? '/'
+    : isGitHubPagesBuild
+      ? `/${githubRepo}/`
+      : '/');
 
   const useBasicSsl = env.VITE_BASIC_SSL === 'true';
   const sslCertPath = env.VITE_SSL_CERT_PATH;
