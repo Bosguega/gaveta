@@ -249,30 +249,16 @@ export async function toggleSharedItem(
         patch.checked_at = null;
     }
 
-    // Verifica se o item pertence à lista com este código (segurança extra)
-    const { data: item } = await client
-        .from("collaborative_list_items")
-        .select("list_id")
-        .eq("id", itemId)
-        .single();
-
-    if (!item) return false;
-
-    const { data: list } = await client
-        .from("collaborative_lists")
-        .select("id")
-        .eq("id", item.list_id)
-        .eq("code", listCode)
-        .single();
-
-    if (!list) return false;
-
-    const { error } = await client
+    const { error: updateError } = await client
         .from("collaborative_list_items")
         .update(patch)
         .eq("id", itemId);
 
-    return !error;
+    if (updateError) {
+        return false;
+    }
+
+    return true;
 }
 
 /**
