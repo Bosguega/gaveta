@@ -51,22 +51,3 @@ export { usePurchaseHistory } from './usePurchaseHistory';
 // Shopping List
 export { useSortedShoppingItems } from './useSortedShoppingItems';
 
-// Collaborative Shopping Lists
-export {
-  useCollaborativeListsQuery,
-  useCollaborativeListItemsQuery,
-  useCollaborativeListMembersQuery,
-  useCollaborativeListRealtime,
-  useCreateCollaborativeList,
-  useJoinCollaborativeListByCode,
-  useRenameCollaborativeList,
-  useDeleteCollaborativeList,
-  useRegenerateCollaborativeListCode,
-  useAddCollaborativeListItem,
-  useRemoveCollaborativeListItem,
-  useToggleCollaborativeListItem,
-  useClearCollaborativeListItems,
-  useUpdateCollaborativeListMemberRole,
-  useRemoveCollaborativeListMember,
-  useTransferCollaborativeListOwnership,
-} from './useCollaborativeShoppingListsQuery';
