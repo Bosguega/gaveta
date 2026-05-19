@@ -26,8 +26,6 @@ import { useUiStore } from "./stores/useUiStore";
 import { useShoppingListStore } from "./stores/useShoppingListStore";
 import { useAllReceiptsQuery } from "./hooks/queries/useReceiptsQuery";
 import { isShoppingListCloudSyncEnabled } from "./utils/shoppingListCloudSync";
-import { useSharedRouteDetection } from "./hooks/useSharedListImport";
-import { SharedListView } from "./components/SharedListTab/SharedListView.tsx";
 import "./index.css";
 
 const LAZY_RELOAD_KEY = "@MyMercado:lazy-reload-once";
@@ -239,8 +237,7 @@ function App() {
 
   const handleChangeTab = (nextTab: AppTab) => setTab(nextTab);
 
-  // Detecta rota /s/:code para lista compartilhada
-  const { isSharedRoute, sharedCode } = useSharedRouteDetection();
+
 
   if (!isSupabaseConfigured) {
     return (
@@ -266,18 +263,6 @@ function App() {
     );
   }
 
-  if (isSharedRoute && sharedCode) {
-    return (
-      <SharedListView
-        code={sharedCode}
-        onClose={() => {
-          // Volta para o app (ou login se não autenticado)
-          window.history.replaceState({}, "", window.location.origin + window.location.pathname.replace(/\/s\/.+$/, "/"));
-          window.location.reload();
-        }}
-      />
-    );
-  }
 
   if (authLoading) {
     return (

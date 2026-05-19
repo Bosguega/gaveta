@@ -140,6 +140,10 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         output: {
           manualChunks(id) {
+            // Shared client: bundle separado (mini-app independente)
+            if (id.includes('/src/shared/')) {
+              return 'shared-client';
+            }
             if (id.includes('node_modules')) {
               if (
                 id.includes('react') ||

@@ -1,60 +1,58 @@
 import { supabase, isSupabaseConfigured } from "./supabaseClient";
 import type { ShoppingListsCloudSnapshot } from "../types/ui";
 
-type SyncStatus = "disabled" | "skipped" | "pushed" | "pulled" | "unchanged";
-
-export type ShoppingListCloudSyncResult = {
-    status: SyncStatus;
-    reason?: string;
-};
-
 function requireSupabase() {
     if (!isSupabaseConfigured || !supabase) {
-        throw new Error("Supabase não configurado.");
+        throw new Error("Supabase nao configurado.");
     }
     return supabase;
 }
 
+/**
+ * Envia (upsert) um snapshot de listas de compras para o Supabase.
+ */
 export async function pushSnapshot(
     userId: string,
     snapshot: ShoppingListsCloudSnapshot,
 ): Promise<void> {
     const client = requireSupabase();
-    const { error } = await client
-        .from("shopping_list_snapshots")
-        .upsert(
-            {
-                user_id: userId,
-                snapshot,
-                version: 1,
-            },
-            { onConflict: "user_id" },
-        );
+
+    const { error } = await client.from("shopping_list_snapshots").upsert(
+        {
+            user_id: userId,
+            data: snapshot,
+            updated_at: snapshot.updated_at,
+        },
+        { onConflict: "user_id" },
+    );
 
     if (error) throw new Error(error.message);
 }
 
+/**
+ * Busca o snapshot de listas de compras do usuario no Supabase.
+ */
 export async function pullSnapshot(
     userId: string,
 ): Promise<ShoppingListsCloudSnapshot | null> {
     const client = requireSupabase();
+
     const { data, error } = await client
         .from("shopping_list_snapshots")
-        .select("snapshot")
+        .select("data")
         .eq("user_id", userId)
-        .single();
+        .maybeSingle();
 
-    if (error) {
-        // PGRST116 = no rows found (ainda não tem snapshot)
-        if ((error as { code?: string }).code === "PGRST116") return null;
-        throw new Error(error.message);
-    }
-
-    return data?.snapshot as ShoppingListsCloudSnapshot | null;
+    if (error) throw new Error(error.message);
+    return data?.data ?? null;
 }
 
+/**
+ * Remove o snapshot do usuario no Supabase.
+ */
 export async function deleteSnapshot(userId: string): Promise<void> {
     const client = requireSupabase();
+
     const { error } = await client
         .from("shopping_list_snapshots")
         .delete()

@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { X, Copy, RefreshCw, Share2, AlertTriangle } from "lucide-react";
+import { X, Copy, RefreshCw, Share2, AlertTriangle, Download, FileText } from "lucide-react";
 import { publishList, unpublishList, updateSharedListItems } from "../../services/sharedListService.ts";
+import { generateStandaloneHtml } from "../../utils/generateStandaloneHtml.ts";
 import { notify } from "../../utils/notifications.ts";
 import type { ShoppingListItem } from "../../types/ui.ts";
 
@@ -101,6 +102,59 @@ export function ShareListModal({
         }
     };
 
+    const handleExportHtml = () => {
+        const html = generateStandaloneHtml({
+            name: listName,
+            items: items.map((item) => ({
+                name: item.name,
+                quantity: item.quantity,
+                note: item.note,
+                checked: item.checked,
+            })),
+            generatedAt: new Date().toISOString(),
+        });
+
+        const blob = new Blob([html], { type: "text/html" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${listName.replace(/[^a-zA-Z0-9]/g, "_")}.html`;
+        a.click();
+        URL.revokeObjectURL(url);
+        notify.success("Arquivo HTML baixado!");
+    };
+
+    const handleCopyText = async () => {
+        const pending = items.filter((i) => !i.checked);
+        const checked = items.filter((i) => i.checked);
+
+        let text = `${listName}\n`;
+        text += `${"=".repeat(listName.length)}\n\n`;
+
+        if (pending.length > 0) {
+            text += "Pendentes:\n";
+            pending.forEach((i) => {
+                text += `  [ ] ${i.quantity ? `(${i.quantity}) ` : ""}${i.name}\n`;
+            });
+        }
+
+        if (checked.length > 0) {
+            text += "\nPegos:\n";
+            checked.forEach((i) => {
+                text += `  [x] ${i.quantity ? `(${i.quantity}) ` : ""}${i.name}\n`;
+            });
+        }
+
+        text += `\n---\nGerado por My Mercado`;
+
+        try {
+            await navigator.clipboard.writeText(text);
+            notify.success("Texto da lista copiado!");
+        } catch {
+            notify.error("Erro ao copiar texto.");
+        }
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="glass-card max-w-md w-full p-6 relative">
@@ -113,9 +167,29 @@ export function ShareListModal({
                 </button>
 
                 <h2 className="text-lg font-bold text-slate-50 mb-1">Compartilhar Lista</h2>
-                <p className="text-slate-400 text-sm mb-6">
+                <p className="text-slate-400 text-sm mb-4">
                     Qualquer pessoa com o link pode ver e editar esta lista.
                 </p>
+
+                {/* Export options - always visible */}
+                <div className="flex gap-2 mb-4">
+                    <button
+                        onClick={handleExportHtml}
+                        className="flex-1 bg-white/5 border border-white/10 rounded-xl py-3 text-xs text-slate-300 hover:bg-white/10 cursor-pointer flex flex-col items-center gap-1"
+                        title="Baixar HTML standalone"
+                    >
+                        <Download size={18} className="text-emerald-400" />
+                        <span>Baixar HTML</span>
+                    </button>
+                    <button
+                        onClick={handleCopyText}
+                        className="flex-1 bg-white/5 border border-white/10 rounded-xl py-3 text-xs text-slate-300 hover:bg-white/10 cursor-pointer flex flex-col items-center gap-1"
+                        title="Copiar texto da lista"
+                    >
+                        <FileText size={18} className="text-blue-400" />
+                        <span>Copiar Texto</span>
+                    </button>
+                </div>
 
                 {code ? (
                     <>

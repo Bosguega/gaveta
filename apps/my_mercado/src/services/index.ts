@@ -1,66 +1,51 @@
-// Auth
-export {
-  requireSupabase,
-  getAuthenticatedSupabaseContext,
-  getUserOrThrow,
-  isAuthenticated,
-  getUserOrNull,
-} from "./authService";
+// Barrel export for services module
 
-// Receipts
+// Receipt service
 export {
-  getReceiptsPaginated,
-  getReceiptItemsFromDB,
-  getAllReceiptsFromDB,
-  restoreReceiptsToDB,
-  saveReceiptToDB,
-  deleteReceiptFromDB,
-  clearReceiptsAndItemsFromDB,
-  type GetReceiptsFilters,
-  type GetReceiptsOptions,
-  type GetReceiptsResult,
+    getReceiptsPaginated,
+    getAllReceiptsFromDB,
+    getReceiptItemsFromDB,
+    restoreReceiptsToDB,
+    saveReceiptToDB,
+    deleteReceiptFromDB,
+    clearReceiptsAndItemsFromDB,
 } from "./receiptService";
 
-// Dictionary
+// Dictionary service
 export {
-  getFullDictionaryFromDB,
-  updateDictionaryEntryInDB,
-  applyDictionaryEntryToSavedItems,
-  deleteDictionaryEntryFromDB,
-  clearDictionaryInDB,
-  getDictionary,
-  updateDictionary,
-  associateDictionaryToCanonicalProduct,
-  type DictionaryUpdateEntry,
+    getFullDictionaryFromDB,
+    updateDictionaryEntryInDB,
+    applyDictionaryEntryToSavedItems,
+    deleteDictionaryEntryFromDB,
+    clearDictionaryInDB,
+    getDictionary,
+    updateDictionary,
+    associateDictionaryToCanonicalProduct,
 } from "./dictionaryService";
 
-// Canonical Products
+// Canonical product service
 export {
-  getCanonicalProducts,
-  getCanonicalProduct,
-  createCanonicalProduct,
-  updateCanonicalProduct,
-  deleteCanonicalProduct,
-  mergeCanonicalProducts,
-  clearCanonicalProductsInDB,
-  associateItemToCanonicalProduct,
+    getCanonicalProducts,
+    getCanonicalProduct,
+    createCanonicalProduct,
+    updateCanonicalProduct,
+    deleteCanonicalProduct,
+    mergeCanonicalProducts,
+    clearCanonicalProductsInDB,
+    associateItemToCanonicalProduct,
 } from "./canonicalProductService";
 
-// Storage Fallback
+// Storage fallback service
 export {
-  getAllReceiptsFromDBWithFallback,
-  saveReceiptToDBWithFallback,
-  getDictionaryWithFallback,
-  getStorageConnectionStatus,
+    getAllReceiptsFromDBWithFallback,
+    saveReceiptToDBWithFallback,
+    getDictionaryWithFallback,
+    getStorageConnectionStatus,
 } from "./storageFallbackService";
 
-// Sync
-export { syncLocalStorageWithSupabase } from "./syncService";
-export { syncShoppingListsWithCloud } from "./shoppingListCloudSyncService";
-
-// Shopping List Snapshots (tabela dedicada Supabase)
+// Shopping list snapshot service
 export {
-  pushSnapshot,
-  pullSnapshot,
-  deleteSnapshot,
+    pushSnapshot,
+    pullSnapshot,
+    deleteSnapshot,
 } from "./shoppingListSnapshotService";

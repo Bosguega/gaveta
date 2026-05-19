@@ -7,7 +7,6 @@ import { useAllReceiptsQuery } from "../../hooks/queries/useReceiptsQuery";
 import { useReceiptsSessionStore } from "../../stores/useReceiptsSessionStore";
 import { useShoppingListStore } from "../../stores/useShoppingListStore";
 import { useLocalShoppingListActions } from "../../hooks/shoppingList/useLocalShoppingListActions";
-import { shareList } from "../../utils/shareService";
 import { useSortedShoppingItems } from "../../hooks/queries/useSortedShoppingItems";
 import { usePurchaseHistory } from "../../hooks/queries/usePurchaseHistory";
 import type { PurchaseHistoryEntry, PurchaseSuggestion } from "../../hooks/queries/usePurchaseHistory";
@@ -17,6 +16,8 @@ import { normalizeKey } from "../../utils/normalize";
 import { filterBySearch } from "../../utils/filters";
 import { scoreHistoryKeyMatch } from "../../utils/shoppingHistoryMatch";
 import { ShoppingListItem } from "../ShoppingListItem";
+import { ShareListModal } from "../SharedListTab/ShareListModal";
+import { getShareCodeByOwnerId } from "../../services/sharedListService";
 import ConfirmDialog from "../ConfirmDialog";
 import InputDialog from "../InputDialog";
 import type {
@@ -56,6 +57,10 @@ export default function ShoppingListTab() {
   const [transferTargetByItem, setTransferTargetByItem] = useState<Record<string, string>>({});
   const [listInputDialog, setListInputDialog] = useState<ListInputDialogState>(null);
 
+  // Estado do modal de compartilhamento
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [shareCode, setShareCode] = useState<string | null>(null);
+
   // Buscar dados de histórico
   const { historyByKey, suggestions: allSuggestions } = usePurchaseHistory(savedReceipts, canonicalProducts);
 
@@ -83,33 +88,22 @@ export default function ShoppingListTab() {
   }, []);
 
   const handleShare = useCallback(async () => {
-    if (!activeLocalList) {
+    if (!activeLocalList || !sessionUserId) {
       notify.error("Selecione uma lista para compartilhar.");
       return;
     }
 
-    const snapshot = useShoppingListStore.getState().getCloudSnapshot(sessionUserId);
-    if (!snapshot) {
-      notify.error("Erro ao gerar dados da lista.");
-      return;
-    }
-
-    const items = useShoppingListStore.getState().getItems(sessionUserId, activeLocalList.id) || [];
-    const sanitized = sanitizeShoppingList(items);
-
+    // Busca se já existe código de compartilhamento
     try {
-      const result = await shareList(snapshot, activeLocalList.name, sanitized);
-
-      if (result === "shared") {
-        notify.success("Lista compartilhada!");
-      } else if (result === "copied") {
-        notify.success("Link e texto copiados! Envie para o WhatsApp.");
-      }
-    } catch (err) {
-      console.error(err);
-      notify.error("Erro ao compartilhar lista.");
+      const existingCode = await getShareCodeByOwnerId(sessionUserId, activeLocalList.name);
+      setShareCode(existingCode);
+    } catch {
+      setShareCode(null);
     }
-  }, [sessionUserId, activeLocalList]);
+
+    // Abre o modal de compartilhamento
+    setShareModalOpen(true);
+  }, [activeLocalList, sessionUserId]);
 
   const handleAddItem = async (event: FormEvent) => {
     event.preventDefault();
@@ -401,6 +395,16 @@ export default function ShoppingListTab() {
         confirmText="Renomear"
         onCancel={() => setListInputDialog(null)}
         onConfirm={handleConfirmListInput}
+      />
+
+      <ShareListModal
+        isOpen={shareModalOpen}
+        onClose={() => setShareModalOpen(false)}
+        listId={activeLocalList?.id ?? ""}
+        listName={activeLocalList?.name ?? ""}
+        ownerId={sessionUserId ?? ""}
+        shareCode={shareCode}
+        items={useShoppingListStore.getState().getItems(sessionUserId, activeLocalList?.id ?? "") || []}
       />
     </div>
   );
