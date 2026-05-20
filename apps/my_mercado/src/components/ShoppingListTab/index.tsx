@@ -405,6 +405,7 @@ export default function ShoppingListTab() {
         ownerId={sessionUserId ?? ""}
         shareCode={shareCode}
         items={useShoppingListStore.getState().getItems(sessionUserId, activeLocalList?.id ?? "") || []}
+        itemsHistory={Object.fromEntries(historyByKey.entries())}
       />
     </div>
   );

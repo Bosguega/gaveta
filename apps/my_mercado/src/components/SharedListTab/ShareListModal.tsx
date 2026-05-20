@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { X, Copy, RefreshCw, Share2, AlertTriangle, Download, FileText } from "lucide-react";
+import { X } from "lucide-react";
 import { publishList, unpublishList, updateSharedListItems } from "../../services/sharedListService.ts";
-import { generateStandaloneHtml } from "../../utils/generateStandaloneHtml.ts";
 import { notify } from "../../utils/notifications.ts";
 import type { ShoppingListItem } from "../../types/ui.ts";
+import type { PurchaseHistoryEntry } from "../../hooks/queries/usePurchaseHistory";
 
 type ShareListModalProps = {
     isOpen: boolean;
@@ -13,11 +13,40 @@ type ShareListModalProps = {
     ownerId: string;
     shareCode: string | null;
     items: ShoppingListItem[];
+    itemsHistory: Record<string, PurchaseHistoryEntry[]>;
 };
+
+/**
+ * Enriquece o note do item com as últimas 3 compras no formato "papel de mercado".
+ * Se já existe nota manual, mantém ela e adiciona o histórico abaixo.
+ */
+function enrichNote(
+    originalNote: string | undefined,
+    history: PurchaseHistoryEntry[] | undefined,
+): string | undefined {
+    if (!history || history.length === 0) {
+        return originalNote || undefined;
+    }
+
+    const top3 = history.slice(0, 3);
+    const lines = top3.map(
+        (entry) =>
+            `${entry.date} R$${entry.unitPrice.toFixed(2).replace(".", ",")} (${entry.store})`,
+    );
+
+    const historyBlock = `Últimas:\n${lines.join("\n")}`;
+
+    if (originalNote) {
+        return `${originalNote}\n\n${historyBlock}`;
+    }
+
+    return historyBlock;
+}
 
 /**
  * Modal de compartilhamento de lista.
  * Permite criar/renovar/remover o link de compartilhamento.
+ * O compartilhamento enriquece os notes dos itens com o histórico de compras.
  */
 export function ShareListModal({
     isOpen,
@@ -27,6 +56,7 @@ export function ShareListModal({
     ownerId,
     shareCode,
     items,
+    itemsHistory,
 }: ShareListModalProps) {
     const [code, setCode] = useState<string | null>(shareCode);
     const [publishing, setPublishing] = useState(false);
@@ -38,18 +68,21 @@ export function ShareListModal({
     const baseUrl = window.location.origin + window.location.pathname.replace(/\/$/, "");
     const shareLink = code ? `${baseUrl}/s/${code}` : null;
 
+    const enrichItemsForPublish = () =>
+        items.map((item) => ({
+            name: item.name,
+            normalized_key: item.normalized_key,
+            quantity: item.quantity,
+            note: enrichNote(item.note, itemsHistory[item.normalized_key]),
+        }));
+
     const handlePublish = async () => {
         setPublishing(true);
         try {
             const result = await publishList({
                 ownerId,
                 name: listName,
-                items: items.map((item) => ({
-                    name: item.name,
-                    normalized_key: item.normalized_key,
-                    quantity: item.quantity,
-                    note: item.note,
-                })),
+                items: enrichItemsForPublish(),
             });
             setCode(result.code);
             notify.success("Lista compartilhada com sucesso!");
@@ -78,12 +111,7 @@ export function ShareListModal({
         if (!code) return;
         setUpdating(true);
         try {
-            await updateSharedListItems(code, ownerId, items.map((item) => ({
-                name: item.name,
-                normalized_key: item.normalized_key,
-                quantity: item.quantity,
-                note: item.note,
-            })));
+            await updateSharedListItems(code, ownerId, enrichItemsForPublish());
             notify.success("Lista compartilhada atualizada!");
         } catch (err) {
             notify.error("Erro ao atualizar lista compartilhada.");
@@ -102,59 +130,6 @@ export function ShareListModal({
         }
     };
 
-    const handleExportHtml = () => {
-        const html = generateStandaloneHtml({
-            name: listName,
-            items: items.map((item) => ({
-                name: item.name,
-                quantity: item.quantity,
-                note: item.note,
-                checked: item.checked,
-            })),
-            generatedAt: new Date().toISOString(),
-        });
-
-        const blob = new Blob([html], { type: "text/html" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${listName.replace(/[^a-zA-Z0-9]/g, "_")}.html`;
-        a.click();
-        URL.revokeObjectURL(url);
-        notify.success("Arquivo HTML baixado!");
-    };
-
-    const handleCopyText = async () => {
-        const pending = items.filter((i) => !i.checked);
-        const checked = items.filter((i) => i.checked);
-
-        let text = `${listName}\n`;
-        text += `${"=".repeat(listName.length)}\n\n`;
-
-        if (pending.length > 0) {
-            text += "Pendentes:\n";
-            pending.forEach((i) => {
-                text += `  [ ] ${i.quantity ? `(${i.quantity}) ` : ""}${i.name}\n`;
-            });
-        }
-
-        if (checked.length > 0) {
-            text += "\nPegos:\n";
-            checked.forEach((i) => {
-                text += `  [x] ${i.quantity ? `(${i.quantity}) ` : ""}${i.name}\n`;
-            });
-        }
-
-        text += `\n---\nGerado por My Mercado`;
-
-        try {
-            await navigator.clipboard.writeText(text);
-            notify.success("Texto da lista copiado!");
-        } catch {
-            notify.error("Erro ao copiar texto.");
-        }
-    };
-
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="glass-card max-w-md w-full p-6 relative">
@@ -170,26 +145,6 @@ export function ShareListModal({
                 <p className="text-slate-400 text-sm mb-4">
                     Qualquer pessoa com o link pode ver e editar esta lista.
                 </p>
-
-                {/* Export options - always visible */}
-                <div className="flex gap-2 mb-4">
-                    <button
-                        onClick={handleExportHtml}
-                        className="flex-1 bg-white/5 border border-white/10 rounded-xl py-3 text-xs text-slate-300 hover:bg-white/10 cursor-pointer flex flex-col items-center gap-1"
-                        title="Baixar HTML standalone"
-                    >
-                        <Download size={18} className="text-emerald-400" />
-                        <span>Baixar HTML</span>
-                    </button>
-                    <button
-                        onClick={handleCopyText}
-                        className="flex-1 bg-white/5 border border-white/10 rounded-xl py-3 text-xs text-slate-300 hover:bg-white/10 cursor-pointer flex flex-col items-center gap-1"
-                        title="Copiar texto da lista"
-                    >
-                        <FileText size={18} className="text-blue-400" />
-                        <span>Copiar Texto</span>
-                    </button>
-                </div>
 
                 {code ? (
                     <>
@@ -210,7 +165,7 @@ export function ShareListModal({
                                     className="bg-blue-500/20 border-none rounded-lg p-2 text-blue-400 hover:bg-blue-500/30 cursor-pointer"
                                     title="Copiar link"
                                 >
-                                    <Copy size={18} />
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
                                 </button>
                             </div>
                             <p className="text-xs text-slate-500 mt-2">
@@ -225,7 +180,7 @@ export function ShareListModal({
                                 disabled={updating}
                                 className="btn bg-emerald-500/15 border-emerald-500/30 text-emerald-300 w-full flex items-center justify-center gap-2 hover:bg-emerald-500/25 disabled:opacity-50"
                             >
-                                <RefreshCw size={16} className={updating ? "animate-spin" : ""} />
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={updating ? "animate-spin" : ""}><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
                                 {updating ? "Atualizando..." : "Atualizar lista compartilhada"}
                             </button>
 
@@ -234,7 +189,7 @@ export function ShareListModal({
                                 disabled={unpublishing}
                                 className="btn bg-red-500/10 border-red-500/20 text-red-400 w-full flex items-center justify-center gap-2 hover:bg-red-500/20 disabled:opacity-50"
                             >
-                                <AlertTriangle size={16} />
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
                                 {unpublishing ? "Removendo..." : "Remover compartilhamento"}
                             </button>
                         </div>
@@ -243,7 +198,7 @@ export function ShareListModal({
                     <>
                         {/* Sem link ainda */}
                         <div className="bg-slate-900/60 rounded-xl p-6 mb-4 border border-white/5 text-center">
-                            <Share2 size={32} className="text-slate-500 mx-auto mb-3" />
+                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 mx-auto mb-3"><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" /></svg>
                             <p className="text-slate-400 text-sm">
                                 Esta lista ainda não está compartilhada.
                             </p>
@@ -257,7 +212,7 @@ export function ShareListModal({
                             disabled={publishing}
                             className="btn bg-blue-500/20 border-blue-500/30 text-blue-300 w-full flex items-center justify-center gap-2 hover:bg-blue-500/30 disabled:opacity-50"
                         >
-                            <Share2 size={16} className={publishing ? "animate-pulse" : ""} />
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={publishing ? "animate-pulse" : ""}><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" /></svg>
                             {publishing ? "Publicando..." : "Criar link de compartilhamento"}
                         </button>
                     </>
