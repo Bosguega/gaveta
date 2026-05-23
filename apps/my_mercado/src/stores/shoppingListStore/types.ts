@@ -41,6 +41,7 @@ export type ShoppingListState = {
     quantity?: string,
     listId?: string,
     note?: string,
+    normalizedName?: string,
   ) => AddItemResult;
   toggleChecked: (
     userId: string | null | undefined,

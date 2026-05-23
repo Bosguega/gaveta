@@ -1,5 +1,5 @@
-import { normalizeKey } from "../../utils/normalize";
 import { generateId } from "../../utils/idGenerator";
+import { toTitleCase } from "../../utils/stringUtils";
 import type { ShoppingListItem, ShoppingListMeta } from "../../types/ui";
 import type { UserShoppingLists } from "./types";
 
@@ -38,12 +38,13 @@ export function createListItem(
   name: string,
   quantity?: string,
   note?: string,
+  normalizedName?: string,
 ): ShoppingListItem {
   const now = new Date().toISOString();
   return {
     id: generateId(),
     name: name.trim(),
-    normalized_key: normalizeKey(name),
+    normalized_name: normalizedName || toTitleCase(name).replace(/\s+/g, " ").trim(),
     quantity: quantity?.trim() || undefined,
     note: note?.trim().slice(0, 200) || undefined,
     checked: false,
@@ -61,12 +62,12 @@ function coerceItem(raw: unknown): ShoppingListItem | null {
   if (!name) return null;
 
   const id = String(raw.id || "").trim() || generateId();
-  const normalized_key = String(raw.normalized_key || "").trim() || normalizeKey(name);
+  const normalized_name = String(raw.normalized_name || "").trim() || toTitleCase(name).replace(/\s+/g, " ").trim();
 
   return {
     id,
     name,
-    normalized_key,
+    normalized_name,
     quantity: raw.quantity ? String(raw.quantity).trim() : undefined,
     note: raw.note ? String(raw.note).trim().slice(0, 200) : undefined,
     checked: Boolean(raw.checked),

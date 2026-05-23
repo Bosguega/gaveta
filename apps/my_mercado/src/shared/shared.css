@@ -1,0 +1,153 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f5f0e8;
+    color: #2d2d2d;
+    min-height: 100vh;
+}
+
+.shared-container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 24px 16px;
+}
+
+.shared-card {
+    background: #fffdf7;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e8e0d0;
+}
+
+.shared-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #e8e0d0;
+}
+
+.shared-progress {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.shared-progress-bar {
+    flex: 1;
+    height: 6px;
+    background: #e8e0d0;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.shared-progress-fill {
+    height: 100%;
+    background: #4caf50;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.shared-items {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.shared-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 8px;
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+
+.shared-item:hover {
+    background: #f8f4ec;
+}
+
+.shared-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    flex: 1;
+    min-width: 0;
+}
+
+.shared-checkbox {
+    width: 18px;
+    height: 18px;
+    accent-color: #4caf50;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.shared-name {
+    font-size: 0.95rem;
+    color: #2d2d2d;
+    word-break: break-word;
+}
+
+.shared-name.checked {
+    text-decoration: line-through;
+    color: #999;
+}
+
+.shared-qty {
+    font-size: 0.8rem;
+    color: #888;
+    background: #f0ece4;
+    padding: 2px 8px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.shared-note {
+    width: 100%;
+    font-size: 0.8rem;
+    color: #888;
+    padding-left: 28px;
+    margin-top: -2px;
+    white-space: pre-wrap;
+}
+
+.shared-empty {
+    text-align: center;
+    color: #999;
+    padding: 32px 0;
+}
+
+.shared-loading {
+    text-align: center;
+    color: #888;
+    padding: 32px 0;
+}
+
+.shared-error {
+    text-align: center;
+    color: #c62828;
+    padding: 16px 0;
+}
+
+.shared-footer {
+    text-align: center;
+    font-size: 0.75rem;
+    color: #bbb;
+    margin-top: 20px;
+    padding-top: 12px;
+    border-top: 1px solid #e8e0d0;
+}

@@ -72,7 +72,7 @@ export type SearchSortBy = "recent" | "price";
 export interface ShoppingListItem {
   id: string;
   name: string;
-  normalized_key: string;
+  normalized_name: string;
   quantity?: string;
   note?: string;
   checked: boolean;

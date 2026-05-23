@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from "./supabaseClient";
+import { toTitleCase } from "../utils/stringUtils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,7 +18,7 @@ export interface SharedListItem {
     id: string;
     list_id: string;
     name: string;
-    normalized_key: string;
+    normalized_name: string;
     quantity?: string;
     note?: string;
     checked: boolean;
@@ -31,7 +32,7 @@ export type PublishListInput = {
     name: string;
     items: Array<{
         name: string;
-        normalized_key: string;
+        normalized_name: string;
         quantity?: string;
         note?: string;
     }>;
@@ -97,7 +98,7 @@ export async function getSharedList(
 
     const { data: items, error: itemsError } = await client
         .from("collaborative_list_items")
-        .select("id, list_id, name, normalized_key, quantity, note, checked, checked_at, created_at, updated_at")
+        .select("id, list_id, name, normalized_name, quantity, note, checked, checked_at, created_at, updated_at")
         .eq("list_id", list.id)
         .order("created_at", { ascending: true });
 
@@ -118,7 +119,7 @@ export async function getSharedList(
             id: item.id,
             list_id: item.list_id,
             name: item.name,
-            normalized_key: item.normalized_key,
+            normalized_name: item.normalized_name,
             quantity: item.quantity ?? undefined,
             note: item.note ?? undefined,
             checked: item.checked,
@@ -175,7 +176,7 @@ export async function publishList(
         const itemsToInsert = input.items.map((item) => ({
             list_id: list.id,
             name: item.name.trim(),
-            normalized_key: item.normalized_key,
+            normalized_name: item.normalized_name,
             quantity: item.quantity?.trim() || null,
             note: item.note?.trim().slice(0, 200) || null,
             checked: false,
@@ -285,14 +286,14 @@ export async function addSharedItem(
     if (listError || !list) return null;
 
     const now = new Date().toISOString();
-    const normalizedKey = normalizeKey(trimmedName);
+    const normalizedName = toTitleCase(trimmedName).replace(/\s+/g, " ").trim();
 
     const { data: item, error: itemError } = await client
         .from("collaborative_list_items")
         .insert({
             list_id: list.id,
             name: trimmedName,
-            normalized_key: normalizedKey,
+            normalized_name: normalizedName,
             quantity: quantity?.trim() || null,
             note: note?.trim().slice(0, 200) || null,
             checked: false,
@@ -308,7 +309,7 @@ export async function addSharedItem(
         id: item.id,
         list_id: item.list_id,
         name: item.name,
-        normalized_key: item.normalized_key,
+        normalized_name: item.normalized_name,
         quantity: item.quantity ?? undefined,
         note: item.note ?? undefined,
         checked: item.checked,
@@ -363,7 +364,7 @@ export async function updateSharedListItems(
     ownerId: string,
     items: Array<{
         name: string;
-        normalized_key: string;
+        normalized_name: string;
         quantity?: string;
         note?: string;
     }>,
@@ -394,7 +395,7 @@ export async function updateSharedListItems(
         const itemsToInsert = items.map((item) => ({
             list_id: list.id,
             name: item.name.trim(),
-            normalized_key: item.normalized_key,
+            normalized_name: item.normalized_name,
             quantity: item.quantity?.trim() || null,
             note: item.note?.trim().slice(0, 200) || null,
             checked: false,

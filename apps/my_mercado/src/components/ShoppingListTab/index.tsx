@@ -10,10 +10,11 @@ import { useLocalShoppingListActions } from "../../hooks/shoppingList/useLocalSh
 import { useSortedShoppingItems } from "../../hooks/queries/useSortedShoppingItems";
 import { usePurchaseHistory } from "../../hooks/queries/usePurchaseHistory";
 import type { PurchaseHistoryEntry, PurchaseSuggestion } from "../../hooks/queries/usePurchaseHistory";
-import { sanitizeShoppingList, toText } from "../../utils/shoppingList";
+import { useDictionaryQuery } from "../../hooks/queries/useDictionaryQuery";
+import { sanitizeShoppingList } from "../../utils/shoppingList";
 import { normalizeKey } from "../../utils/normalize";
 import { filterBySearch } from "../../utils/filters";
-import { scoreHistoryKeyMatch } from "../../utils/shoppingHistoryMatch";
+import { toTitleCase } from "../../utils/stringUtils";
 import { ShoppingListItem } from "../ShoppingListItem";
 import { ShareListModal } from "../SharedListTab/ShareListModal";
 import { getShareCodeByOwnerId } from "../../services/sharedListService";
@@ -59,7 +60,8 @@ export default function ShoppingListTab() {
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [shareCode, setShareCode] = useState<string | null>(null);
 
-  const { historyByKey, suggestions: allSuggestions } = usePurchaseHistory(savedReceipts);
+  const { historyByKey, historyByName, suggestions: allSuggestions } = usePurchaseHistory(savedReceipts);
+  const { data: dictionary = [] } = useDictionaryQuery();
 
   const suggestions = useMemo(() => {
     if (!itemName.trim()) return allSuggestions.slice(0, 50);
@@ -112,7 +114,12 @@ export default function ShoppingListTab() {
       actions.handleCreateList("");
     }
 
-    const success = actions.handleAddItem(trimmedName, itemQty, itemNote);
+    // Resolve normalized_name via dicionário
+    const nameKey = normalizeKey(trimmedName);
+    const dictEntry = dictionary.find((e) => e.key === nameKey);
+    const resolvedName = dictEntry?.normalized_name || toTitleCase(trimmedName).replace(/\s+/g, " ").trim();
+
+    const success = actions.handleAddItem(trimmedName, itemQty, itemNote, resolvedName);
     if (success) {
       setItemName("");
       setItemQty("");
@@ -149,33 +156,22 @@ export default function ShoppingListTab() {
     }
   };
 
-  // Obter histórico de um item
+  // Obter histórico de um item — lookup por normalized_name
   const getItemHistory = useCallback(
     (item: ShoppingListItemType): { entries: PurchaseHistoryEntry[]; matchType: HistoryMatchType } => {
-      const safeKey = normalizeKey(toText(item.normalized_key).trim() || item.name);
-      if (!safeKey) return { entries: [], matchType: "none" };
+      const name = item.normalized_name || toTitleCase(item.name).replace(/\s+/g, " ").trim();
+      const safeName = normalizeKey(name);
+      if (!safeName) return { entries: [], matchType: "none" };
 
-      const exact = historyByKey.get(safeKey);
+      const exact = historyByName.get(safeName);
       if (exact && exact.length > 0) return { entries: exact.slice(0, 3), matchType: "exact" };
 
-      const fallback: Array<{ entry: PurchaseHistoryEntry; score: number }> = [];
-      for (const [key, entries] of historyByKey.entries()) {
-        const match = scoreHistoryKeyMatch(safeKey, key);
-        if (match.score > 0) {
-          for (const entry of entries.slice(0, 2)) {
-            fallback.push({ entry, score: match.score });
-          }
-        }
-      }
+      const approx = historyByKey.get(safeName);
+      if (approx && approx.length > 0) return { entries: approx.slice(0, 3), matchType: "exact" };
 
-      fallback.sort((a, b) => b.score - a.score || b.entry.timestamp - a.entry.timestamp);
-      const entries = fallback.slice(0, 3).map((candidate) => candidate.entry);
-      return {
-        entries,
-        matchType: entries.length > 0 ? "approx" : "none",
-      };
+      return { entries: [], matchType: "none" };
     },
-    [historyByKey],
+    [historyByName, historyByKey],
   );
 
   // Contar itens pendentes de cada lista
@@ -402,7 +398,7 @@ export default function ShoppingListTab() {
         ownerId={sessionUserId ?? ""}
         shareCode={shareCode}
         items={useShoppingListStore.getState().getItems(sessionUserId, activeLocalList?.id ?? "") || []}
-        itemsHistory={Object.fromEntries(historyByKey.entries())}
+        itemsHistory={Object.fromEntries(historyByName.entries())}
       />
     </div>
   );

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import { publishList, unpublishList, updateSharedListItems } from "../../services/sharedListService.ts";
+import { normalizeKey } from "../../utils/normalize";
 import { notify } from "../../utils/notifications.ts";
 import type { ShoppingListItem } from "../../types/ui.ts";
 import type { PurchaseHistoryEntry } from "../../hooks/queries/usePurchaseHistory";
@@ -71,9 +72,9 @@ export function ShareListModal({
     const enrichItemsForPublish = () =>
         items.map((item) => ({
             name: item.name,
-            normalized_key: item.normalized_key,
+            normalized_name: item.normalized_name,
             quantity: item.quantity,
-            note: enrichNote(item.note, itemsHistory[item.normalized_key]),
+            note: enrichNote(item.note, itemsHistory[normalizeKey(item.normalized_name)]),
         }));
 
     const handlePublish = async () => {

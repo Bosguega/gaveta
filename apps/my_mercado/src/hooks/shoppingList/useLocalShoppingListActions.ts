@@ -65,8 +65,8 @@ export function useLocalShoppingListActions(sessionUserId: string | null | undef
     return true;
   };
 
-  const handleAddItem = (name: string, quantity?: string, note?: string) => {
-    const result = addItem(sessionUserId, name, quantity, undefined, note);
+  const handleAddItem = (name: string, quantity?: string, note?: string, normalizedName?: string) => {
+    const result = addItem(sessionUserId, name, quantity, undefined, note, normalizedName);
     if (!result.ok) {
       if (result.reason === "duplicate") {
         notify.alreadyExists();

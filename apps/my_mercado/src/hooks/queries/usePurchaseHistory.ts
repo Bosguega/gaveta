@@ -31,6 +31,8 @@ export type PurchaseSuggestion = {
 interface UsePurchaseHistoryReturn {
   /** Mapa de histórico por chave normalizada */
   historyByKey: Map<string, PurchaseHistoryEntry[]>;
+  /** Mapa de histórico por normalized_name */
+  historyByName: Map<string, PurchaseHistoryEntry[]>;
   /** Sugestões de items mais comprados */
   suggestions: PurchaseSuggestion[];
 }
@@ -143,8 +145,23 @@ export function usePurchaseHistory(
 
 
 
+      // Construir historyByName - indexado por normalized_name
+      const nameMap = new Map<string, PurchaseHistoryEntry[]>();
+      for (const [, entries] of map) {
+        for (const entry of entries) {
+          const nameKey = normalizeKey(entry.name || "");
+          if (!nameKey) continue;
+          const list = nameMap.get(nameKey) || [];
+          list.push(entry);
+          nameMap.set(nameKey, list);
+        }
+      }
+
       // Ordenar histórico por data (mais recente primeiro)
       for (const [, entries] of map) {
+        entries.sort((a, b) => b.timestamp - a.timestamp);
+      }
+      for (const [, entries] of nameMap) {
         entries.sort((a, b) => b.timestamp - a.timestamp);
       }
 
@@ -175,10 +192,10 @@ export function usePurchaseHistory(
           lastStore,
         }));
 
-      return { historyByKey: map, suggestions: suggestionItems };
+      return { historyByKey: map, historyByName: nameMap, suggestions: suggestionItems };
     } catch (err) {
       logger.error("PurchaseHistory", "Falha ao montar historico de compras para a lista", err);
-      return { historyByKey: new Map<string, PurchaseHistoryEntry[]>(), suggestions: [] };
+      return { historyByKey: new Map<string, PurchaseHistoryEntry[]>(), historyByName: new Map<string, PurchaseHistoryEntry[]>(), suggestions: [] };
     }
   }, [savedReceipts]);
 }

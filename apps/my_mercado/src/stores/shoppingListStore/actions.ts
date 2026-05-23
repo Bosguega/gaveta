@@ -1,6 +1,6 @@
 import type { StoreApi } from "zustand";
-import { normalizeKey } from "../../utils/normalize";
 import { generateId } from "../../utils/idGenerator";
+import { toTitleCase } from "../../utils/stringUtils";
 import type { ShoppingListItem } from "../../types/ui";
 import { fromCloudSnapshot, toCloudSnapshot } from "./cloud";
 import {
@@ -130,21 +130,21 @@ export function buildShoppingListActions({
 
       return { ok: true, listId: nextActive };
     },
-    addItem: (userId, name, quantity, listId, note) => {
+    addItem: (userId, name, quantity, listId, note, normalizedName) => {
       const trimmed = name.trim();
       if (!trimmed) return { ok: false, reason: "empty" };
 
       const { ownerKey, userData: current } = ensureUserData(userId);
       const safeListId =
         listId && current.itemsByList[listId] ? listId : current.activeListId;
-      const normalized = normalizeKey(trimmed);
+      const resolvedName = normalizedName || toTitleCase(trimmed).replace(/\s+/g, " ").trim();
       const currentItems = getItemsForList(current, safeListId);
       const hasDuplicate = currentItems.some(
-        (item) => item.normalized_key === normalized && !item.checked,
+        (item) => item.normalized_name === resolvedName && !item.checked,
       );
       if (hasDuplicate) return { ok: false, reason: "duplicate" };
 
-      const newItem = createListItem(trimmed, quantity, note);
+      const newItem = createListItem(trimmed, quantity, note, normalizedName);
       const now = new Date().toISOString();
       set((state) => ({
         dataByUser: {
@@ -264,7 +264,7 @@ export function buildShoppingListActions({
 
       const hasDuplicate = targetItems.some(
         (item) =>
-          item.normalized_key === sourceItem.normalized_key &&
+          item.normalized_name === sourceItem.normalized_name &&
           !item.checked,
       );
       if (hasDuplicate) return { ok: false, reason: "duplicate" };
@@ -302,7 +302,7 @@ export function buildShoppingListActions({
 
       const hasDuplicate = targetItems.some(
         (item) =>
-          item.normalized_key === sourceItem.normalized_key &&
+          item.normalized_name === sourceItem.normalized_name &&
           !item.checked,
       );
       if (hasDuplicate) return { ok: false, reason: "duplicate" };
