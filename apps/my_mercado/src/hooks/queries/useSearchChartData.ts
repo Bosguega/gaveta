@@ -3,7 +3,6 @@ import { parseBRL } from "../../utils/currency";
 import { parseToDate } from "../../utils/date";
 import { groupBy } from "../../utils/analytics";
 import type { PurchasedItem } from "../../types/ui";
-import type { CanonicalProduct } from "../../types/domain";
 
 interface UseSearchChartDataReturn {
   /** Dados agrupados por produto (para legenda do gráfico) */
@@ -21,33 +20,24 @@ interface UseSearchChartDataReturn {
  * - Mapear preços por data
  *
  * @param filteredItems - Items já filtrados e ordenados
- * @param canonicalProducts - Produtos canônicos para nomeação
  * @param showChart - Controle de exibição do gráfico
  *
  * @example
  * ```tsx
  * const { groupedItems, chartData } = useSearchChartData(
  *   filteredItems,
- *   canonicalProducts,
  *   showChart
  * );
  * ```
  */
 export function useSearchChartData(
   filteredItems: PurchasedItem[],
-  canonicalProducts: CanonicalProduct[],
   showChart: boolean
 ): UseSearchChartDataReturn {
   // Agrupar items por canonical ID ou nome
   const groupedItems = useMemo(() => {
-    return groupBy(filteredItems, (i) => {
-      if (i.canonical_product_id) {
-        const vip = canonicalProducts.find((cp) => cp.id === i.canonical_product_id);
-        return vip ? `💎 ${vip.name}` : (i.normalized_name || i.name);
-      }
-      return i.normalized_name || i.name;
-    });
-  }, [filteredItems, canonicalProducts]);
+    return groupBy(filteredItems, (i) => i.normalized_name || i.name);
+  }, [filteredItems]);
 
   // Calcular dados do gráfico
   const chartData = useMemo(() => {

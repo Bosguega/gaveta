@@ -6,7 +6,6 @@ import {
   LogOut,
   Database,
   BookOpen,
-  Package,
   ChevronRight,
   Wifi,
   RefreshCw,
@@ -16,7 +15,6 @@ import { logout } from "../services/authService";
 import {
   clearReceiptsAndItemsFromDB,
   clearDictionaryInDB,
-  clearCanonicalProductsInDB,
 } from "../services";
 import { syncShoppingListsWithCloud } from "../services/shoppingListCloudSyncService";
 import { useScannerStore } from "../stores/useScannerStore";
@@ -31,9 +29,6 @@ import { TabSkeleton as SubTabSkeleton } from "./Skeleton";
 import type { ConfirmDialogConfig } from "../types/ui";
 
 const DictionaryTab = lazy(() => import("./DictionaryTab"));
-const CanonicalProductsTab = lazy(() =>
-  import("./CanonicalProductsTab/index").then((module) => ({ default: module.CanonicalProductsTab })),
-);
 
 interface SettingsTabProps {
   onOpenAiConfig: () => void;
@@ -43,7 +38,7 @@ export default function SettingsTab({ onOpenAiConfig }: SettingsTabProps) {
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogConfig | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncListsEnabled, setSyncListsEnabled] = useState(() => isShoppingListCloudSyncEnabled());
-  const [activeSubTab, setActiveSubTab] = useState<"main" | "dictionary" | "products">("main");
+  const [activeSubTab, setActiveSubTab] = useState<"main" | "dictionary">("main");
 
   const resetScannerState = useScannerStore((state) => state.resetScannerState);
   const sessionUserId = useReceiptsSessionStore((state) => state.sessionUserId);
@@ -102,25 +97,6 @@ export default function SettingsTab({ onOpenAiConfig }: SettingsTabProps) {
     });
   };
 
-  const handleClearCanonicalProducts = async () => {
-    setConfirmDialog({
-      title: "Limpar produtos canônicos?",
-      message: "Esta ação não pode ser desfeita. Todos os produtos canônicos serão apagados.",
-      confirmText: "Limpar",
-      danger: true,
-      onConfirm: async () => {
-        setLoading(true);
-        try {
-          await clearCanonicalProductsInDB();
-          notify.success("Produtos canônicos limpos com sucesso!");
-        } catch {
-          notify.errorByKey("SETTINGS_CLEAR_PRODUCTS_FAILED");
-        } finally {
-          setLoading(false);
-        }
-      },
-    });
-  };
 
   const handleTestConnection = async () => {
     setLoading(true);
@@ -203,21 +179,6 @@ export default function SettingsTab({ onOpenAiConfig }: SettingsTabProps) {
       );
     }
 
-    if (activeSubTab === "products") {
-      return (
-        <Suspense fallback={<SubTabSkeleton />}>
-          <div className="relative">
-            <button
-              onClick={() => setActiveSubTab("main")}
-              className="btn btn-secondary flex items-center gap-2 mb-4"
-            >
-              Voltar para Configuracoes
-            </button>
-            <CanonicalProductsTab />
-          </div>
-        </Suspense>
-      );
-    }
 
     return null;
   };
@@ -260,16 +221,6 @@ export default function SettingsTab({ onOpenAiConfig }: SettingsTabProps) {
             <ChevronRight size={18} />
           </button>
 
-          <button
-            onClick={() => setActiveSubTab("products")}
-            className="btn btn-secondary flex items-center justify-between"
-          >
-            <span className="flex items-center gap-2">
-              <Package size={18} />
-              Produtos Canonicos
-            </span>
-            <ChevronRight size={18} />
-          </button>
 
           <button
             onClick={handleClearHistory}
@@ -295,17 +246,6 @@ export default function SettingsTab({ onOpenAiConfig }: SettingsTabProps) {
             <ChevronRight size={18} />
           </button>
 
-          <button
-            onClick={handleClearCanonicalProducts}
-            className="btn btn-danger flex items-center justify-between"
-            disabled={loading}
-          >
-            <span className="flex items-center gap-2">
-              <Trash2 size={18} />
-              Limpar Produtos Canonicos
-            </span>
-            <ChevronRight size={18} />
-          </button>
         </div>
       </section>
 

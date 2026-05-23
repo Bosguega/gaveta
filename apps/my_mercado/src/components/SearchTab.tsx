@@ -5,7 +5,6 @@ import { PeriodSelector, PeriodDatePickers } from "./PeriodSelector";
 import type { SearchSortBy } from "../types/ui";
 import { useUiStore } from "../stores/useUiStore";
 import { useAllReceiptsQuery } from "../hooks/queries/useReceiptsQuery";
-import { useCanonicalProductsQuery } from "../hooks/queries/useCanonicalProductsQuery";
 import { useSearchItems } from "../hooks/queries/useSearchItems";
 import { useFilteredSearchItems } from "../hooks/queries/useFilteredSearchItems";
 import { useSearchChartData } from "../hooks/queries/useSearchChartData";
@@ -25,7 +24,6 @@ const ChartSkeleton = () => (
 
 function SearchTab() {
   const { data: savedReceipts = [], isLoading: loading } = useAllReceiptsQuery();
-  const { data: canonicalProducts = [] } = useCanonicalProductsQuery();
 
   const searchQuery = useUiStore((state) => state.searchQuery);
   const setSearchQuery = useUiStore((state) => state.setSearchQuery);
@@ -40,7 +38,7 @@ function SearchTab() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const showSkeleton = loading && savedReceipts.length === 0;
 
-  const { items: allItems } = useSearchItems(savedReceipts, canonicalProducts);
+  const { items: allItems } = useSearchItems(savedReceipts);
   const { items: filteredItems, totalCount } = useFilteredSearchItems({
     items: allItems,
     searchQuery,
@@ -61,7 +59,6 @@ function SearchTab() {
 
   const { groupedItems, chartData } = useSearchChartData(
     filteredItems,
-    canonicalProducts,
     showChart,
   );
 

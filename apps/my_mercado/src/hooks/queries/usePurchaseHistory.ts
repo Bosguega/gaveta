@@ -3,7 +3,7 @@ import { parseToDate } from "../../utils/date";
 import { logger } from "../../utils/logger";
 import { toText } from "../../utils/shoppingList";
 import { normalizeKey } from "../../utils/normalize";
-import type { Receipt, ReceiptItem, CanonicalProduct } from "../../types/domain";
+import type { Receipt, ReceiptItem } from "../../types/domain";
 
 export type PurchaseHistoryEntry = {
   key: string;
@@ -21,7 +21,7 @@ export type PurchaseSuggestion = {
   label: string;
   count: number;
   category?: string;
-  canonical_name?: string;
+
   /** Último preço unitário pago (para exibir no autocomplete) */
   lastPrice?: number;
   /** Último mercado onde foi comprado */
@@ -49,7 +49,7 @@ interface UsePurchaseHistoryReturn {
  *
  * @example
  * ```tsx
- * const { historyByKey, suggestions } = usePurchaseHistory(savedReceipts, canonicalProducts);
+ * const { historyByKey, suggestions } = usePurchaseHistory(savedReceipts);
  *
  * // Buscar histórico de um item
  * const history = historyByKey.get(normalizedKey);
@@ -60,7 +60,6 @@ interface UsePurchaseHistoryReturn {
  */
 export function usePurchaseHistory(
   savedReceipts: Receipt[],
-  canonicalProducts: CanonicalProduct[] = [],
 ): UsePurchaseHistoryReturn {
   return useMemo(() => {
     const map = new Map<string, PurchaseHistoryEntry[]>();
@@ -71,7 +70,7 @@ export function usePurchaseHistory(
         count: number;
         lastTimestamp: number;
         category?: string;
-        canonical_name?: string;
+
         /** Último preço unitário registrado */
         lastPrice?: number;
         /** Último mercado registrado */
@@ -116,11 +115,7 @@ export function usePurchaseHistory(
 
           if (name) {
             const prev = labels.get(key);
-            const vip = current.canonical_product_id
-              ? canonicalProducts.find((p) => p.id === current.canonical_product_id)
-              : null;
-            const category = current.category || vip?.category || "";
-            const canonical_name = vip?.name || "";
+            const category = current.category || "";
 
             if (prev) {
               prev.count += 1;
@@ -131,14 +126,13 @@ export function usePurchaseHistory(
                 prev.lastStore = store;
               }
               if (!prev.category) prev.category = category;
-              if (!prev.canonical_name) prev.canonical_name = canonical_name;
+              if (!prev.category) prev.category = category;
             } else {
               labels.set(key, {
                 label: name,
                 count: 1,
                 lastTimestamp: timestamp,
                 category,
-                canonical_name,
                 lastPrice: unitPrice,
                 lastStore: store,
               });
@@ -147,27 +141,7 @@ export function usePurchaseHistory(
         }
       }
 
-      // Incluir produtos canônicos que talvez não tenham sido comprados ainda
-      for (const product of canonicalProducts) {
-        const name = toText(product.name).trim();
-        const key = normalizeKey(name);
-        if (!key) continue;
 
-        const prev = labels.get(key);
-        if (prev) {
-          prev.label = name;
-          if (!prev.category) prev.category = product.category;
-          if (!prev.canonical_name) prev.canonical_name = product.name;
-        } else {
-          labels.set(key, {
-            label: name,
-            count: 0,
-            lastTimestamp: 0,
-            category: product.category,
-            canonical_name: product.name,
-          });
-        }
-      }
 
       // Ordenar histórico por data (mais recente primeiro)
       for (const [, entries] of map) {
@@ -181,7 +155,6 @@ export function usePurchaseHistory(
           label: value.label,
           count: value.count,
           category: value.category,
-          canonical_name: value.canonical_name,
           lastTimestamp: value.lastTimestamp,
           lastPrice: value.lastPrice,
           lastStore: value.lastStore,
@@ -193,12 +166,11 @@ export function usePurchaseHistory(
             a.label.localeCompare(b.label),
         )
         .slice(0, 1000)
-        .map(({ key, label, count, category, canonical_name, lastPrice, lastStore }) => ({
+        .map(({ key, label, count, category, lastPrice, lastStore }) => ({
           key,
           label,
           count,
           category,
-          canonical_name,
           lastPrice,
           lastStore,
         }));
@@ -208,5 +180,5 @@ export function usePurchaseHistory(
       logger.error("PurchaseHistory", "Falha ao montar historico de compras para a lista", err);
       return { historyByKey: new Map<string, PurchaseHistoryEntry[]>(), suggestions: [] };
     }
-  }, [savedReceipts, canonicalProducts]);
+  }, [savedReceipts]);
 }

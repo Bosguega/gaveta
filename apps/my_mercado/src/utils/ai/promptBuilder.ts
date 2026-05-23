@@ -25,17 +25,15 @@ REGRAS:
 3. Converta abreviacoes comuns para o nome completo (ex: "CERV" -> "Cerveja", "LTA" -> "Lata", "BISC" -> "Biscoito", "REFR" -> "Refrigerante").
 4. Use Title Case (Primeira Letra Maiuscula).
 5. Categorize em: ${categoriesList}.
-6. IDENTIFIQUE a marca (Brand) se houver (ex: Nestlé, Brahma). Se não houver, use null.
-7. GERE um slug único simplificado (ex: arroz_tio_joao_5kg).
 
 EXEMPLOS:
-- "CERV BRAHMA LTA 350ML" -> {"key": "...", "normalized_name": "Cerveja Brahma Lata 350ml", "category": "Bebidas", "brand": "Brahma", "slug": "cerveja_brahma_350ml"}
-- "LEITE PIRACANJUBA INT 1L" -> {"key": "...", "normalized_name": "Leite Piracanjuba Integral 1L", "category": "Laticinios", "brand": "Piracanjuba", "slug": "leite_piracanjuba_integral_1l"}
+- "CERV BRAHMA LTA 350ML" -> {"key": "...", "normalized_name": "Cerveja Brahma Lata 350ml", "category": "Bebidas"}
+- "LEITE PIRACANJUBA INT 1L" -> {"key": "...", "normalized_name": "Leite Piracanjuba Integral 1L", "category": "Laticinios"}
 
 Itens para processar:
 ${list}
 
-Responda SOMENTE com o JSON array no formato: [{"key": "...", "normalized_name": "...", "category": "...", "brand": "...", "slug": "..."}], sem explicacoes.`;
+Responda SOMENTE com o JSON array no formato: [{"key": "...", "normalized_name": "...", "category": "..."}], sem explicacoes.`;
 }
 
 /**
@@ -55,8 +53,6 @@ export function parseAiJsonResponse(text: string) {
           key: String(value.key ?? ""),
           normalized_name: String(value.normalized_name ?? ""),
           category: String(value.category ?? "Outros"),
-          brand: value.brand ? String(value.brand) : undefined,
-          slug: value.slug ? String(value.slug) : undefined,
         };
       }
 

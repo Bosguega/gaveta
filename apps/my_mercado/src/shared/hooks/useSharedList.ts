@@ -207,13 +207,13 @@ export function useSharedList(code: string): UseSharedListResult {
                 ),
             );
 
-            const success = await toggleSharedItem(itemId, code, checked);
+            const success = await toggleSharedItem(itemId, checked);
             if (!success && mountedRef.current) {
                 // Rollback
                 setItems(previousItems);
             }
         },
-        [code, items],
+        [items],
     );
 
     const addItemFn = useCallback(

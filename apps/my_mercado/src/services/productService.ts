@@ -1,4 +1,4 @@
-import { getDictionary, updateDictionary, getCanonicalProducts, createCanonicalProduct } from ".";
+import { getDictionary, updateDictionary } from ".";
 import { callAI } from "../utils/ai";
 import { normalizeKey } from "../utils/normalize";
 import { stripVariableInfo, cleanAIName } from "../utils/stringUtils";
@@ -37,9 +37,6 @@ export async function processItemsPipeline(
   onProgress?: (step: "verifying_dict" | "calling_ai" | "saving_vips") => void
 ): Promise<ReceiptItem[]> {
   if (!rawItems.length) return [];
-
-  // Carregar produtos VIP existentes para o Auto-Match
-  const canonicalProducts = await getCanonicalProducts();
 
   const itemsWithKey: ItemWithKey[] = rawItems.map((item) => {
     const nameForKey = stripVariableInfo(item.name, item.unit, item.qty);
@@ -99,9 +96,7 @@ export async function processItemsPipeline(
       const cleaned: AiNormalizationResult[] = response.map((r) => ({
         key: r.key,
         normalized_name: cleanAIName(r.normalized_name),
-        category: r.category || "Outros",
-        brand: r.brand,
-        slug: r.slug,
+        category: String(r.category || "Outros"),
       }));
 
       aiResults = [...aiResults, ...cleaned];
@@ -118,39 +113,7 @@ export async function processItemsPipeline(
     }
   }
 
-  // MODO PREGUIÇOSO ATIVADO: Auto-criar Produtos VIP
   if (aiResults.length) {
-    if (onProgress) onProgress("saving_vips");
-    for (const r of aiResults) {
-      if (!r.canonical_product_id) {
-        // 1. Tentar match por slug ou nome exato
-        const match = canonicalProducts.find(
-          (cp) =>
-            (r.slug && cp.slug === r.slug) ||
-            (r.normalized_name && cp.name.toLowerCase() === r.normalized_name.toLowerCase()),
-        );
-
-        if (match) {
-          r.canonical_product_id = match.id;
-        } else if (r.slug && r.normalized_name) {
-          // 2. Senão existir, criar automaticamente
-          try {
-            if (isDev) logger.debug('ProductPipeline', `Criando Produto VIP: ${r.normalized_name}`);
-            const newCp = await createCanonicalProduct({
-              slug: r.slug,
-              name: r.normalized_name,
-              category: r.category,
-              brand: r.brand || "Outros",
-            });
-            r.canonical_product_id = newCp.id;
-            // Adicionar à lista local para não criar duplicados na mesma nota
-            canonicalProducts.push(newCp);
-          } catch (err) {
-            logger.error('ProductPipeline', 'Erro ao criar produto VIP automático', err);
-          }
-        }
-      }
-    }
     await updateDictionary(aiResults);
   }
 
@@ -170,7 +133,6 @@ export async function processItemsPipeline(
       normalized_key: item.normalized_key,
       normalized_name: dictEntry?.normalized_name || item.name,
       category: dictEntry?.category || "Outros",
-      canonical_product_id: dictEntry?.canonical_product_id,
       quantity,
       unit: item.unit || "UN",
       price,

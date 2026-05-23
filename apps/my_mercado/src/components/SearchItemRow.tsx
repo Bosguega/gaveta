@@ -1,11 +1,11 @@
 import React from "react";
-import { Package } from "lucide-react";
+
 import { parseBRL } from "../utils/currency";
 import { formatToBR } from "../utils/date";
 import type { PurchasedItem } from "../types/ui";
 
 interface SearchItemRowProps {
-  item: PurchasedItem & { canonical_name?: string };
+  item: PurchasedItem;
 }
 
 export const SearchItemRow: React.FC<SearchItemRowProps> = ({ item }) => {
@@ -14,15 +14,8 @@ export const SearchItemRow: React.FC<SearchItemRowProps> = ({ item }) => {
       <div className="flex-1">
         <div className="flex items-center gap-2">
           <div className="item-name">
-            {item.canonical_name || item.normalized_name || item.name}
+            {item.normalized_name || item.name}
           </div>
-          {item.canonical_product_id && (
-            <span
-              className="text-[0.65rem] bg-amber-500/10 px-1.5 py-0.5 rounded text-amber-500 flex items-center gap-1 font-bold"
-            >
-              <Package size={12} /> VIP
-            </span>
-          )}
           {item.category && (
             <span
               className="text-[0.65rem] bg-blue-500/10 px-1.5 py-0.5 rounded text-[var(--primary)]"

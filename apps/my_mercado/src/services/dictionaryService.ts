@@ -6,12 +6,11 @@ interface DbDictionaryRow {
   key: string;
   normalized_name: string;
   category?: string | null;
-  canonical_product_id?: string | null;
 }
 
 export type DictionaryUpdateEntry = Pick<
   DictionaryEntry,
-  "key" | "normalized_name" | "category" | "canonical_product_id"
+  "key" | "normalized_name" | "category"
 >;
 
 // =========================
@@ -40,8 +39,7 @@ export async function getFullDictionaryFromDB(): Promise<DictionaryEntry[]> {
 export async function updateDictionaryEntryInDB(
   key: string,
   normalizedName: string,
-  category: string,
-  canonicalProductId?: string | null
+  category: string
 ): Promise<boolean> {
   const { client, user } = await getAuthenticatedSupabaseContext();
 
@@ -50,7 +48,6 @@ export async function updateDictionaryEntryInDB(
     .update({
       normalized_name: normalizedName,
       category,
-      canonical_product_id: canonicalProductId,
     })
     .eq("user_id", user.id)
     .eq("key", key);
@@ -134,7 +131,7 @@ export async function getDictionary(keys: string[]): Promise<DictionaryMap> {
 
   const { data, error } = await client
     .from("product_dictionary")
-    .select("key, normalized_name, category, canonical_product_id")
+    .select("key, normalized_name, category")
     .eq("user_id", user.id)
     .in("key", keys);
 
@@ -145,7 +142,6 @@ export async function getDictionary(keys: string[]): Promise<DictionaryMap> {
     acc[row.key] = {
       normalized_name: row.normalized_name,
       category: row.category || undefined,
-      canonical_product_id: row.canonical_product_id || undefined,
     };
     return acc;
   }, {});
@@ -166,7 +162,6 @@ export async function updateDictionary(
     key: e.key,
     normalized_name: e.normalized_name,
     category: e.category || "Outros",
-    canonical_product_id: e.canonical_product_id,
   }));
 
   const { error } = await client
@@ -176,24 +171,3 @@ export async function updateDictionary(
   if (error) throw error;
 }
 
-// =========================
-// DICTIONARY - CANONICAL PRODUCT ASSOCIATION
-// =========================
-
-/**
- * Associa uma entrada do dicionário a um produto canônico
- */
-export async function associateDictionaryToCanonicalProduct(
-  key: string,
-  canonicalProductId: string | null
-): Promise<void> {
-  const { client, user } = await getAuthenticatedSupabaseContext();
-
-  const { error } = await client
-    .from("product_dictionary")
-    .update({ canonical_product_id: canonicalProductId })
-    .eq("user_id", user.id)
-    .eq("key", key);
-
-  if (error) throw error;
-}

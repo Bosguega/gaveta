@@ -109,14 +109,14 @@ describe("promptBuilder", () => {
       expect(() => parseAiJsonResponse(jsonText)).toThrow("Resposta da IA nao e um JSON valido.");
     });
 
-    it("deve lidar com brand null ou undefined", () => {
+    it("deve lidar com JSON sem brand", () => {
       const jsonText = JSON.stringify([
-        { key: "item1", normalized_name: "Test", category: "Outros", brand: null },
+        { key: "item1", normalized_name: "Item Normal", category: "Categoria" },
       ]);
 
       const result = parseAiJsonResponse(jsonText);
 
-      expect(result[0].brand).toBeUndefined();
+      expect(result[0].normalized_name).toBe("Item Normal");
     });
   });
 });

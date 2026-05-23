@@ -232,7 +232,6 @@ export async function unpublishList(
  */
 export async function toggleSharedItem(
     itemId: string,
-    listCode: string,
     checked: boolean,
 ): Promise<boolean> {
     const client = requireConfig();

@@ -1,10 +1,10 @@
 import { useMemo } from "react";
 import type { PurchasedItem } from "../../types/ui";
-import type { Receipt, ReceiptItem, CanonicalProduct } from "../../types/domain";
+import type { Receipt, ReceiptItem } from "../../types/domain";
 
 interface UseSearchItemsReturn {
-  /** Todos os items achatados de receipts com merge de canonical products */
-  items: (PurchasedItem & { canonical_name?: string })[];
+  /** Todos os items achatados de receipts */
+  items: PurchasedItem[];
   /** Estado de carregamento */
   isLoading: boolean;
 }
@@ -22,37 +22,31 @@ interface UseSearchItemsReturn {
  *
  * @example
  * ```tsx
- * const { items: allItems, isLoading } = useSearchItems(savedReceipts, canonicalProducts);
+ * const { items: allItems, isLoading } = useSearchItems(savedReceipts);
  * ```
  */
 export function useSearchItems(
   receipts: Receipt[],
-  canonicalProducts: CanonicalProduct[]
 ): UseSearchItemsReturn {
   const isLoading = receipts.length === 0;
 
   const items = useMemo(() => {
-    const allItems: (PurchasedItem & { canonical_name?: string })[] = [];
+    const allItems: PurchasedItem[] = [];
 
     receipts.forEach((receipt: Receipt) => {
       if (receipt && Array.isArray(receipt.items)) {
         receipt.items.forEach((item: ReceiptItem) => {
-          const vip = item.canonical_product_id
-            ? canonicalProducts.find((p) => p.id === item.canonical_product_id)
-            : null;
-
           allItems.push({
             ...item,
             purchasedAt: receipt.date,
             store: receipt.establishment,
-            canonical_name: vip?.name || undefined,
           });
         });
       }
     });
 
     return allItems;
-  }, [receipts, canonicalProducts]);
+  }, [receipts]);
 
   return {
     items,

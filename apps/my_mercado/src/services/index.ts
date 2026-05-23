@@ -20,20 +20,8 @@ export {
     clearDictionaryInDB,
     getDictionary,
     updateDictionary,
-    associateDictionaryToCanonicalProduct,
 } from "./dictionaryService";
 
-// Canonical product service
-export {
-    getCanonicalProducts,
-    getCanonicalProduct,
-    createCanonicalProduct,
-    updateCanonicalProduct,
-    deleteCanonicalProduct,
-    mergeCanonicalProducts,
-    clearCanonicalProductsInDB,
-    associateItemToCanonicalProduct,
-} from "./canonicalProductService";
 
 // Storage fallback service
 export {

@@ -18,15 +18,6 @@ export { useRestoreReceipts } from './useReceiptsQuery';
 export { receiptKeys } from './useReceiptsQuery';
 export { allReceiptsKeys } from './useAllReceiptsQuery';
 
-// Canonical Products
-export {
-  useCanonicalProductsQuery,
-  useCreateCanonicalProduct,
-  useUpdateCanonicalProduct,
-  useDeleteCanonicalProduct,
-  useMergeCanonicalProducts,
-  canonicalProductKeys,
-} from './useCanonicalProductsQuery';
 
 // Dictionary
 export {

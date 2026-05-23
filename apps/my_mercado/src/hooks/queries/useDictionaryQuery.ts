@@ -30,23 +30,20 @@ export function useUpdateDictionaryEntry() {
       key,
       normalizedName,
       category,
-      canonicalProductId,
     }: {
       key: string;
       normalizedName: string;
       category: string;
-      canonicalProductId?: string | null;
     }) => {
       await updateDictionaryEntryInDB(
         key,
         normalizedName,
         category,
-        canonicalProductId,
       );
 
-      return { key, normalizedName, category, canonicalProductId };
+      return { key, normalizedName, category };
     },
-    onSuccess: ({ key, normalizedName, category, canonicalProductId }) => {
+    onSuccess: ({ key, normalizedName, category }) => {
       queryClient.setQueryData(
         dictionaryKeys.list(),
         (old: DictionaryEntry[] | undefined) => {
@@ -57,7 +54,6 @@ export function useUpdateDictionaryEntry() {
                   ...entry,
                   normalized_name: normalizedName,
                   category,
-                  canonical_product_id: canonicalProductId ?? undefined,
                 }
               : entry,
           );

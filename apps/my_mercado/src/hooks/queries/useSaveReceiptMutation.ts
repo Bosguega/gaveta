@@ -7,7 +7,6 @@ import {
 
 import { getReceiptIdCandidates, toUserScopedReceiptId } from "../../utils/receiptId";
 import { logger } from "../../utils/logger";
-import { canonicalProductKeys } from "./useCanonicalProductsQuery";
 import type { Receipt } from "../../types/domain";
 
 const LOCAL_STORAGE_KEY = "@MyMercado:receipts";
@@ -97,10 +96,7 @@ export function useSaveReceiptMutation() {
                     return newList;
                 });
 
-                // Invalidar queries relacionadas
                 queryClient.invalidateQueries({ queryKey: ["receipts"] });
-                // Invalidar cache de produtos canônicos (caso tenham sido auto-criados)
-                queryClient.invalidateQueries({ queryKey: canonicalProductKeys.all });
             }
         },
         onError: (err) => {

@@ -25,7 +25,6 @@ export interface ReceiptItem {
   normalized_key?: string;
   normalized_name?: string;
   category?: string;
-  canonical_product_id?: string;
   quantity: number;
   unit?: string;
   price: number;
@@ -50,7 +49,6 @@ export interface DictionaryEntry {
   key: string;
   normalized_name: string;
   category?: string;
-  canonical_product_id?: string;
   user_id?: string;
   created_at?: string;
 }
@@ -63,24 +61,9 @@ export type DictionaryMap = Record<
   {
     normalized_name?: string;
     category?: string;
-    canonical_product_id?: string;
   }
 >;
 
-/**
- * Produto canônico (agrupa variações do mesmo produto)
- */
-export interface CanonicalProduct {
-  id: string;
-  slug: string;
-  name: string;
-  category?: string;
-  brand?: string;
-  user_id?: string;
-  merge_count?: number;
-  created_at?: string;
-  updated_at?: string;
-}
 
 export type ShoppingListMemberRole = "owner" | "editor" | "viewer";
 

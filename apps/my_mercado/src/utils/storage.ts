@@ -19,7 +19,6 @@ const STORAGE_PREFIX = "@MyMercado:";
 export type StorageKey =
   | "receipts"
   | "dictionary"
-  | "canonical_products"
   | "settings"
   | "backup";
 
@@ -40,7 +39,6 @@ const DB_VERSION = 1;
 interface DBSchema {
   receipts: { id: string; value: unknown; timestamp: number };
   dictionary: { id: string; value: unknown; timestamp: number };
-  canonical_products: { id: string; value: unknown; timestamp: number };
   settings: { id: string; value: unknown; timestamp: number };
   backup: { id: string; value: unknown; timestamp: number };
 }
@@ -81,7 +79,6 @@ async function getDB(): Promise<IDBDatabase> {
       const stores: (keyof DBSchema)[] = [
         "receipts",
         "dictionary",
-        "canonical_products",
         "settings",
         "backup",
       ];
@@ -456,12 +453,6 @@ export function createDictionaryStorage() {
   return new UnifiedStorage("dictionary");
 }
 
-/**
- * Cria storage unificado para produtos canônicos
- */
-export function createCanonicalProductsStorage() {
-  return new UnifiedStorage("canonical_products");
-}
 
 /**
  * Cria storage unificado para settings
@@ -492,7 +483,6 @@ export async function migrateLocalStorageToIndexedDB(): Promise<{
   const stores: (keyof DBSchema)[] = [
     "receipts",
     "dictionary",
-    "canonical_products",
     "settings",
   ];
 

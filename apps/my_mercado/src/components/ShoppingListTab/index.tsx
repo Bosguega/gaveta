@@ -10,7 +10,6 @@ import { useLocalShoppingListActions } from "../../hooks/shoppingList/useLocalSh
 import { useSortedShoppingItems } from "../../hooks/queries/useSortedShoppingItems";
 import { usePurchaseHistory } from "../../hooks/queries/usePurchaseHistory";
 import type { PurchaseHistoryEntry, PurchaseSuggestion } from "../../hooks/queries/usePurchaseHistory";
-import { useCanonicalProductsQuery } from "../../hooks/queries/useCanonicalProductsQuery";
 import { sanitizeShoppingList, toText } from "../../utils/shoppingList";
 import { normalizeKey } from "../../utils/normalize";
 import { filterBySearch } from "../../utils/filters";
@@ -41,7 +40,6 @@ type ListInputDialogState =
 export default function ShoppingListTab() {
   const sessionUserId = useReceiptsSessionStore((state) => state.sessionUserId);
   const { data: savedReceipts = [] } = useAllReceiptsQuery();
-  const { data: canonicalProducts = [] } = useCanonicalProductsQuery();
 
   const lists = useShoppingListStore((state) => state.getLists(sessionUserId));
   const activeListId = useShoppingListStore((state) => state.getActiveListId(sessionUserId));
@@ -61,12 +59,11 @@ export default function ShoppingListTab() {
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [shareCode, setShareCode] = useState<string | null>(null);
 
-  // Buscar dados de histórico
-  const { historyByKey, suggestions: allSuggestions } = usePurchaseHistory(savedReceipts, canonicalProducts);
+  const { historyByKey, suggestions: allSuggestions } = usePurchaseHistory(savedReceipts);
 
   const suggestions = useMemo(() => {
     if (!itemName.trim()) return allSuggestions.slice(0, 50);
-    return filterBySearch(allSuggestions, itemName, ["label", "category", "canonical_name"]).slice(0, 50);
+    return filterBySearch(allSuggestions, itemName, ["label", "category"]).slice(0, 50);
   }, [allSuggestions, itemName]);
 
   const actions = useLocalShoppingListActions(sessionUserId);
@@ -266,7 +263,7 @@ export default function ShoppingListTab() {
                       <div className="flex items-center justify-between">
                         <div className="flex flex-col min-w-0 flex-1">
                           <span className="font-medium truncate">
-                            {suggestion.canonical_name || suggestion.label}
+                            {suggestion.label}
                           </span>
                           <div className="flex items-center gap-2 text-[0.7rem] text-slate-400 mt-0.5">
                             {suggestion.category && (

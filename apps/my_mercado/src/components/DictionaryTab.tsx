@@ -12,7 +12,6 @@ import { filterBySearch, sortItems, SEARCH_CONFIG } from "../utils/filters";
 import type { ConfirmDialogConfig, SortDirection } from "../types/ui";
 import type { DictionaryEntry } from "../types/domain";
 import { useAllReceiptsQuery } from "../hooks/queries/useReceiptsQuery";
-import { useCanonicalProductsQuery } from "../hooks/queries/useCanonicalProductsQuery";
 import {
   useApplyDictionaryEntryToSavedItems,
   useClearDictionary,
@@ -24,7 +23,6 @@ import {
 function DictionaryTab() {
   const PAGE_SIZE = 100;
   const { refetch: refetchReceipts } = useAllReceiptsQuery();
-  const { data: products = [] } = useCanonicalProductsQuery();
   const { data: dictionary = [], isLoading: loading } = useDictionaryQuery();
   const updateDictionaryEntry = useUpdateDictionaryEntry();
   const deleteDictionaryEntry = useDeleteDictionaryEntry();
@@ -40,7 +38,6 @@ function DictionaryTab() {
   const [editForm, setEditForm] = useState({
     normalized_name: "",
     category: "",
-    canonical_product_id: "",
   });
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogConfig | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
@@ -96,7 +93,6 @@ function DictionaryTab() {
     setEditForm({
       normalized_name: item.normalized_name || "",
       category: item.category || "Outros",
-      canonical_product_id: item.canonical_product_id || "",
     });
   };
 
@@ -108,18 +104,15 @@ function DictionaryTab() {
 
       const nextNormalizedName = (editForm.normalized_name ?? "").trim();
       const nextCategory = (editForm.category ?? "Outros").trim();
-      const nextCanonicalId = editForm.canonical_product_id || null;
 
       const shouldOfferApplyToSaved =
         previousNormalizedName !== nextNormalizedName ||
-        previousCategory !== nextCategory ||
-        (previous?.canonical_product_id ?? null) !== nextCanonicalId;
+        previousCategory !== nextCategory;
 
       await updateDictionaryEntry.mutateAsync({
         key,
         normalizedName: nextNormalizedName,
         category: nextCategory,
-        canonicalProductId: nextCanonicalId,
       });
 
       setEditingKey(null);
@@ -341,20 +334,7 @@ function DictionaryTab() {
                             </option>
                           ))}
                         </select>
-                        <select
-                          className="search-input bg-[var(--bg-color)]"
-                          value={editForm.canonical_product_id}
-                          onChange={(e) =>
-                            setEditForm({ ...editForm, canonical_product_id: e.target.value })
-                          }
-                        >
-                          <option value="">Nao vinculado a Produto Canonico</option>
-                          {products.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} ({p.brand || "Sem marca"})
-                            </option>
-                          ))}
-                        </select>
+
                         <div className="flex gap-2">
                           <button
                             className="btn btn-success flex-1"
@@ -376,7 +356,6 @@ function DictionaryTab() {
                       item={item}
                       onEdit={handleStartEdit}
                       onDelete={handleDeleteEntry}
-                      products={products}
                     />
                   )}
                 </div>

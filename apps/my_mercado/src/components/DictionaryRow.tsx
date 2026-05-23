@@ -1,24 +1,17 @@
 import React from "react";
-import { Edit3, Trash2, Package } from "lucide-react";
+import { Edit3, Trash2 } from "lucide-react";
 import type { DictionaryEntry } from "../types/domain";
-import type { CanonicalProduct } from "../types/domain";
-
 interface DictionaryRowProps {
   item: DictionaryEntry;
   onEdit: (item: DictionaryEntry) => void;
   onDelete: (key: string) => void;
-  products: CanonicalProduct[];
 }
 
 export const DictionaryRow: React.FC<DictionaryRowProps> = ({
   item,
   onEdit,
   onDelete,
-  products,
 }) => {
-  const linkedProduct = item.canonical_product_id
-    ? products.find((p) => p.id === item.canonical_product_id)
-    : null;
 
   return (
     <div className="glass-card animated-item mb-0 p-4">
@@ -35,12 +28,7 @@ export const DictionaryRow: React.FC<DictionaryRowProps> = ({
           <div className="text-xs text-slate-500 italic">
             ID: {item.key}
           </div>
-          {item.canonical_product_id && (
-            <div className="text-xs text-amber-400 mt-0.5 flex items-center gap-1">
-              <Package size={12} />
-              Vínculo VIP: {linkedProduct?.name || "Produto Carregando..."}
-            </div>
-          )}
+
         </div>
         <div className="flex gap-2">
           <button

@@ -6,7 +6,7 @@
 
 import { parseToDate } from "./date";
 import { parseBRL } from "./currency";
-import type { Receipt, CanonicalProduct, DictionaryEntry } from "../types/domain";
+import type { Receipt, DictionaryEntry } from "../types/domain";
 import type { HistoryFilters, SearchFilters } from "../types/ui";
 import { startOfMonth, endOfMonth, subMonths, isWithinInterval } from "date-fns";
 import { filterObjectsByTokens } from "./search";
@@ -14,11 +14,9 @@ import { filterObjectsByTokens } from "./search";
 // Configuração centralizada de campos pesquisáveis por entidade
 export const SEARCH_CONFIG: {
   receipt: (keyof Receipt)[];
-  canonicalProduct: (keyof CanonicalProduct)[];
   dictionary: (keyof DictionaryEntry)[];
 } = {
   receipt: ["establishment"],
-  canonicalProduct: ["name", "slug", "category", "brand"],
   dictionary: ["key", "normalized_name"],
 };
 

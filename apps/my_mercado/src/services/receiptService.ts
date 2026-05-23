@@ -13,7 +13,6 @@ interface DbItemRow {
   normalized_key?: string | null;
   normalized_name?: string | null;
   category?: string | null;
-  canonical_product_id?: string | null;
   quantity?: number | null;
   unit?: string | null;
   price?: number | null;
@@ -50,7 +49,6 @@ function mapDbItemToReceiptItem(item: DbItemRow): ReceiptItem {
     normalized_key: item.normalized_key ?? undefined,
     normalized_name: item.normalized_name ?? undefined,
     category: item.category ?? undefined,
-    canonical_product_id: item.canonical_product_id ?? undefined,
     quantity,
     unit: item.unit ?? undefined,
     price,
@@ -68,7 +66,6 @@ function mapReceiptItemToDb(item: ReceiptItem, receiptId: string) {
     normalized_key: item.normalized_key,
     normalized_name: item.normalized_name,
     category: item.category,
-    canonical_product_id: item.canonical_product_id,
     quantity: item.quantity,
     unit: item.unit || "un",
     price: item.price,
@@ -162,7 +159,6 @@ export async function getReceiptsPaginated(
         normalized_key,
         normalized_name,
         category,
-        canonical_product_id,
         quantity,
         unit,
         price
@@ -277,7 +273,6 @@ export async function getReceiptItemsFromDB(receiptId: string): Promise<ReceiptI
       normalized_key,
       normalized_name,
       category,
-      canonical_product_id,
       quantity,
       unit,
       price

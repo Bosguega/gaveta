@@ -10,7 +10,7 @@ interface UseFilteredSearchItemsReturn {
 }
 
 interface UseFilteredSearchItemsParams {
-  items: (PurchasedItem & { canonical_name?: string })[];
+  items: PurchasedItem[];
   searchQuery: string;
   sortOrder: SearchSortBy;
   sortDirection: SortDirection;
@@ -39,7 +39,6 @@ export function useFilteredSearchItems({
             "name",
             "normalized_name",
             "category",
-            "canonical_name",
           ]);
 
     const customSorters: Record<string, (a: PurchasedItem, b: PurchasedItem) => number> = {

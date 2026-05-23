@@ -127,7 +127,6 @@ export async function getDictionaryWithFallback(
         key,
         normalized_name: value.normalized_name!,
         category: value.category,
-        canonical_product_id: value.canonical_product_id,
       }));
     return { status: "supabase", data: entries };
   } catch (error) {

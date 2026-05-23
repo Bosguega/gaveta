@@ -6,7 +6,6 @@ const backupItemSchema = z.object({
   normalized_key: z.string().optional(),
   normalized_name: z.string().optional(),
   category: z.string().optional(),
-  canonical_product_id: z.string().optional(),
   quantity: z.number().nonnegative(),
   unit: z.string().optional(),
   price: z.number().nonnegative(),
