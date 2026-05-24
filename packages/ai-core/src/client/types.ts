@@ -18,7 +18,7 @@ export interface GenerateTextResult {
     provider: ProviderName
 }
 
-export type ProviderName = 'gemini' | 'openai'
+export type ProviderName = 'gemini' | 'openai' | 'ollama'
 
 export interface TestConnectionResult {
     success: boolean

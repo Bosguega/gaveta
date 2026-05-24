@@ -1,6 +1,9 @@
 export { generateText } from './generateText'
 export type { GenerateTextOptions, GenerateTextResult } from './generateText'
 
+export { generateEmbedding } from './generateEmbedding'
+export type { GenerateEmbeddingResult } from './generateEmbedding'
+
 export { listModels } from './listModels'
 export type { ModelInfo } from './listModels'
 

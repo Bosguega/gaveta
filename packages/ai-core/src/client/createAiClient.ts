@@ -10,6 +10,7 @@
  */
 
 import { createGeminiClient } from '../gemini/createGeminiClient'
+import { createOllamaClient, DEFAULT_OLLAMA_BASE_URL } from '../ollama'
 import { createOpenAiClient } from '../openai/createOpenAiClient'
 import { withRetry } from './retryWrapper'
 import { withFallback } from './fallbackWrapper'
@@ -24,6 +25,8 @@ export interface CreateAiClientOptions {
     provider?: ProviderName
     /** Modelo explícito. Se não informado, usa o salvo no storage. */
     model?: string
+    /** URL base para providers locais HTTP, como Ollama. */
+    baseUrl?: string
     /** ProviderClient primário para fallback (uso avançado). */
     primary?: ProviderClient
     /** ProviderClient secundário para fallback. */
@@ -44,11 +47,14 @@ export interface CreateAiClientOptions {
  *   4. Aplica fallback wrapper (se primary/secondary forem fornecidos)
  */
 export function createAiClient(options?: CreateAiClientOptions): ProviderClient {
-    const apiKey = options?.apiKey ?? getApiKeyCached()
+    const explicitProvider = options?.provider
+    const apiKey = explicitProvider === 'ollama'
+        ? options?.apiKey
+        : options?.apiKey ?? getApiKeyCached()
     const model = options?.model ?? getApiModelCached()
-    const provider = options?.provider ?? detectProvider(apiKey)
+    const provider = explicitProvider ?? detectProvider(apiKey)
 
-    if (!apiKey) {
+    if (provider !== 'ollama' && !apiKey) {
         throw new Error(
             'API Key não configurada. Acesse as configurações para informar sua chave.'
         )
@@ -62,9 +68,11 @@ export function createAiClient(options?: CreateAiClientOptions): ProviderClient 
         client = options.primary
     } else {
         if (provider === 'openai') {
-            client = createOpenAiClient(apiKey, model)
+            client = createOpenAiClient(apiKey ?? '', model)
         } else if (provider === 'gemini') {
-            client = createGeminiClient(apiKey, model)
+            client = createGeminiClient(apiKey ?? '', model)
+        } else if (provider === 'ollama') {
+            client = createOllamaClient(model, options?.baseUrl ?? DEFAULT_OLLAMA_BASE_URL)
         } else {
             throw new Error('Provider de IA nao suportado para a chave informada.')
         }

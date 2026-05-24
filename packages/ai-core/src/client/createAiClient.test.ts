@@ -59,6 +59,20 @@ describe('createAiClient', () => {
         }))
     })
 
+    it('creates an Ollama client without requiring an API key', () => {
+        const client = createAiClient({
+            provider: 'ollama',
+            model: 'llama3.2',
+            baseUrl: 'http://localhost:11434',
+            retry: false,
+        })
+
+        expect(client).toEqual(expect.objectContaining({
+            generateText: expect.any(Function),
+            testConnection: expect.any(Function),
+        }))
+    })
+
     it('rejects unknown providers', () => {
         expect(() => createAiClient({ apiKey: 'abc', model: 'model', retry: false }))
             .toThrow('Provider de IA nao suportado')

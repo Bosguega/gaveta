@@ -116,13 +116,60 @@ body {
     flex-shrink: 0;
 }
 
-.shared-note {
+.shared-annotation {
     width: 100%;
     font-size: 0.8rem;
-    color: #888;
-    padding-left: 28px;
-    margin-top: -2px;
+    color: #555;
+    background: #f8f4ec;
+    padding: 6px 10px;
+    margin: 4px 0 2px 28px;
+    border-radius: 4px;
     white-space: pre-wrap;
+    border-left: 3px solid #d4c9b8;
+}
+
+.shared-history {
+    width: 100%;
+    padding-left: 28px;
+    margin-top: 2px;
+}
+
+.shared-history-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: #888;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 0;
+    font-family: inherit;
+}
+
+.shared-history-toggle:hover {
+    color: #666;
+}
+
+.arrow {
+    font-size: 0.65rem;
+    transition: transform 0.2s;
+    display: inline-block;
+}
+
+.arrow.expanded {
+    transform: rotate(90deg);
+}
+
+.shared-history-lines {
+    margin-top: 2px;
+    padding-left: 14px;
+}
+
+.shared-history-line {
+    font-size: 0.78rem;
+    color: #999;
+    line-height: 1.5;
 }
 
 .shared-empty {

@@ -5,6 +5,9 @@ export type {
     GenerateTextResult as GeminiGenerateTextResult,
 } from './gemini'
 
+export { generateEmbedding, generateEmbedding as geminiGenerateEmbedding } from './gemini'
+export type { GenerateEmbeddingResult as GeminiGenerateEmbeddingResult } from './gemini'
+
 export { listModels } from './gemini'
 export type { ModelInfo } from './gemini'
 
@@ -23,6 +26,19 @@ export {
     testConnection as openaiTestConnection,
 } from './openai'
 export type { TestConnectionResult as OpenAiTestConnectionResult } from './openai'
+
+// Ollama local HTTP API.
+export {
+    createOllamaClient,
+    DEFAULT_OLLAMA_BASE_URL,
+    generateText as ollamaGenerateText,
+    listModels as ollamaListModels,
+    testConnection as ollamaTestConnection,
+} from './ollama'
+export type {
+    OllamaModelInfo,
+    TestConnectionResult as OllamaTestConnectionResult,
+} from './ollama'
 
 // Client (ProviderClient, createAiClient, wrappers)
 export {

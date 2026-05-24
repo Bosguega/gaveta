@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gaveta de Bagunça — Teste</title>
+    <title>Gaveta de Bagunca - Teste AI Core</title>
     <style>
         * {
             box-sizing: border-box;
@@ -22,7 +22,7 @@
         }
 
         .container {
-            max-width: 640px;
+            max-width: 680px;
             width: 100%;
         }
 
@@ -125,15 +125,6 @@
             background: #16a34a;
         }
 
-        .btn-danger {
-            background: #ef4444;
-            color: #fff;
-        }
-
-        .btn-danger:hover:not(:disabled) {
-            background: #dc2626;
-        }
-
         .actions {
             display: flex;
             gap: 0.5rem;
@@ -191,32 +182,8 @@
             font-size: 0.75rem;
         }
 
-        .pill {
-            display: inline-block;
-            font-size: 0.6875rem;
-            padding: 0.125rem 0.5rem;
-            border-radius: 999px;
-            font-weight: 500;
-        }
-
-        .pill.active {
-            background: #dcfce7;
-            color: #166534;
-        }
-
-        .pill.inactive {
-            background: #f3f4f6;
-            color: #6b7280;
-        }
-
-        hr {
-            border: none;
-            border-top: 1px solid #e5e7eb;
-            margin: 1rem 0;
-        }
-
         .tag {
-            font-size: 0.6875rem;
+            font-size: 0.75rem;
             color: #6b7280;
             margin-top: 0.25rem;
         }
@@ -225,39 +192,52 @@
 
 <body>
     <div class="container">
-        <h1>🧰 Gaveta de Bagunça</h1>
-        <p class="subtitle">Teste de integração com o core <code>@bosguega/gaveta-de-bagunca</code></p>
+        <h1>Gaveta de Bagunca</h1>
+        <p class="subtitle">Teste de integracao com <code>@bosguega/ai-core</code></p>
 
         <div class="card">
-            <label for="apiKey">🔑 API Key</label>
-            <input type="password" id="apiKey" placeholder="AIza..." />
-            <div class="tag">A chave fica apenas na memória da página. Não é enviada para nenhum outro servidor além da
-                API Gemini.</div>
+            <label for="providerSelect">Provider</label>
+            <select id="providerSelect">
+                <option value="gemini">Gemini</option>
+                <option value="ollama">Ollama local</option>
+            </select>
+
+            <div id="apiKeyField">
+                <label for="apiKey">API Key</label>
+                <input type="password" id="apiKey" placeholder="AIza..." />
+            </div>
+
+            <div id="baseUrlField" hidden>
+                <label for="baseUrl">Ollama URL</label>
+                <input type="text" id="baseUrl" placeholder="http://localhost:11434" />
+            </div>
+
+            <div id="providerHint" class="tag"></div>
 
             <div class="actions">
-                <button id="btnTestConnection" class="btn-primary">🔄 Testar Conexão</button>
-                <button id="btnListModels" class="btn-secondary">📋 Listar Modelos</button>
+                <button id="btnTestConnection" class="btn-primary">Testar Conexao</button>
+                <button id="btnListModels" class="btn-secondary">Listar Modelos</button>
             </div>
 
             <div id="connectionStatus" class="status"></div>
         </div>
 
         <div class="card">
-            <label for="modelSelect">🧠 Modelo</label>
+            <label for="modelSelect">Modelo</label>
             <div class="row">
                 <div class="field">
                     <select id="modelSelect" disabled>
-                        <option value="">— clique em "Listar Modelos" —</option>
+                        <option value="">- clique em "Listar Modelos" -</option>
                     </select>
                 </div>
-                <button id="btnSendPrompt" class="btn-success" disabled>▶ Enviar</button>
+                <button id="btnSendPrompt" class="btn-success" disabled>Enviar</button>
             </div>
 
             <div id="modelListContainer" class="model-list"></div>
         </div>
 
         <div class="card">
-            <label for="promptResult">💬 Resposta</label>
+            <label for="promptResult">Resposta</label>
             <div id="promptResult" style="font-size:0.875rem; white-space:pre-wrap; min-height:2rem;"></div>
         </div>
     </div>

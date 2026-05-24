@@ -1,19 +1,42 @@
-import { generateText, listModels, testConnection, AiApiError } from '@bosguega/ai-core'
+import {
+    AiApiError,
+    createAiClient,
+    DEFAULT_OLLAMA_BASE_URL,
+    listModels as listGeminiModels,
+    ollamaListModels,
+    type ProviderName,
+} from '@bosguega/ai-core'
 
-// DOM refs
+type TestProvider = Extract<ProviderName, 'gemini' | 'ollama'>
+
 const $ = (id: string) => document.getElementById(id)!
 
+const providerSelect = $('providerSelect') as HTMLSelectElement
 const apiKeyInput = $('apiKey') as HTMLInputElement
+const baseUrlInput = $('baseUrl') as HTMLInputElement
 const modelSelect = $('modelSelect') as HTMLSelectElement
 const modelListContainer = $('modelListContainer')
 const connectionStatus = $('connectionStatus')
 const promptResult = $('promptResult')
+const apiKeyField = $('apiKeyField')
+const baseUrlField = $('baseUrlField')
+const providerHint = $('providerHint')
 
 const btnTestConnection = $('btnTestConnection') as HTMLButtonElement
 const btnListModels = $('btnListModels') as HTMLButtonElement
 const btnSendPrompt = $('btnSendPrompt') as HTMLButtonElement
 
-// ------ Helpers ------
+function currentProvider(): TestProvider {
+    return providerSelect.value === 'ollama' ? 'ollama' : 'gemini'
+}
+
+function currentBaseUrl(): string {
+    return baseUrlInput.value.trim() || DEFAULT_OLLAMA_BASE_URL
+}
+
+function currentModel(): string {
+    return modelSelect.value.trim()
+}
 
 function setStatus(type: 'success' | 'error' | 'loading', message: string) {
     connectionStatus.className = `status visible ${type}`
@@ -28,39 +51,129 @@ function clearStatus() {
 function setButtonsLoading(loading: boolean) {
     btnTestConnection.disabled = loading
     btnListModels.disabled = loading
-    btnSendPrompt.disabled = loading || modelSelect.disabled || !modelSelect.value
+    btnSendPrompt.disabled = loading || !currentModel()
 }
 
-// ------ Testar Conexão ------
+function setModelOptions(models: Array<{ id: string; name: string; size?: number }>) {
+    modelSelect.innerHTML = models
+        .map((model) => {
+            const size = model.size ? ` (${formatBytes(model.size)})` : ''
+            return `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name)}${size}</option>`
+        })
+        .join('')
+    modelSelect.disabled = models.length === 0
+    btnSendPrompt.disabled = models.length === 0
+}
 
-btnTestConnection.addEventListener('click', async () => {
-    const key = apiKeyInput.value.trim()
-    if (!key) {
-        setStatus('error', 'Informe uma API Key primeiro.')
-        return
+function resetModels(message: string) {
+    modelSelect.innerHTML = `<option value="">${message}</option>`
+    modelSelect.disabled = true
+    btnSendPrompt.disabled = true
+    modelListContainer.innerHTML = ''
+    promptResult.textContent = ''
+}
+
+function escapeHtml(value: string): string {
+    return value
+        .split('&').join('&amp;')
+        .split('<').join('&lt;')
+        .split('>').join('&gt;')
+        .split('"').join('&quot;')
+}
+
+function formatBytes(bytes: number): string {
+    if (!Number.isFinite(bytes) || bytes <= 0) return ''
+    const units = ['B', 'KB', 'MB', 'GB']
+    let value = bytes
+    let unitIndex = 0
+    while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024
+        unitIndex += 1
+    }
+    return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
+}
+
+function createClient() {
+    const provider = currentProvider()
+    const model = currentModel()
+
+    if (!model) {
+        throw new Error('Selecione um modelo primeiro.')
     }
 
-    setButtonsLoading(true)
-    setStatus('loading', 'Testando conexão com Gemini...')
+    if (provider === 'ollama') {
+        return createAiClient({
+            provider,
+            model,
+            baseUrl: currentBaseUrl(),
+            retry: false,
+        })
+    }
 
-    const model = modelSelect.value || 'gemini-2.0-flash'
+    const apiKey = apiKeyInput.value.trim()
+    if (!apiKey) {
+        throw new Error('Informe uma API Key primeiro.')
+    }
 
-    const result = await testConnection(key, model)
+    return createAiClient({
+        provider,
+        apiKey,
+        model,
+        retry: false,
+    })
+}
 
-    setButtonsLoading(false)
+function renderProviderMode() {
+    const provider = currentProvider()
+    const isOllama = provider === 'ollama'
 
-    if (result.success) {
-        setStatus('success', `✅ Conexão estabelecida com sucesso usando "${model}"!`)
+    apiKeyField.hidden = isOllama
+    baseUrlField.hidden = !isOllama
+    providerHint.textContent = isOllama
+        ? 'Ollama usa o servidor local. Mantenha o app Ollama aberto e carregue modelos ja instalados.'
+        : 'Gemini usa a API Key informada e lista modelos do Google AI Studio.'
+
+    resetModels(isOllama ? '- clique em "Listar Modelos" -' : '- clique em "Listar Modelos" -')
+    clearStatus()
+}
+
+async function handleError(err: unknown, fallback: string) {
+    promptResult.textContent = ''
+    if (err instanceof AiApiError) {
+        setStatus('error', err.message)
+    } else if (err instanceof Error) {
+        setStatus('error', err.message)
     } else {
-        setStatus('error', `❌ Falha na conexão: ${result.error}`)
+        setStatus('error', fallback)
+    }
+}
+
+btnTestConnection.addEventListener('click', async () => {
+    try {
+        const provider = currentProvider()
+        const client = createClient()
+
+        setButtonsLoading(true)
+        setStatus('loading', `Testando conexao com ${provider}...`)
+
+        const result = await client.testConnection()
+
+        if (result.success) {
+            setStatus('success', `Conexao estabelecida usando "${currentModel()}".`)
+        } else {
+            setStatus('error', `Falha na conexao: ${result.error}`)
+        }
+    } catch (err) {
+        await handleError(err, 'Erro desconhecido ao testar conexao.')
+    } finally {
+        setButtonsLoading(false)
     }
 })
 
-// ------ Listar Modelos ------
-
 async function fetchAndPopulateModels() {
-    const key = apiKeyInput.value.trim()
-    if (!key) {
+    const provider = currentProvider()
+
+    if (provider === 'gemini' && !apiKeyInput.value.trim()) {
         setStatus('error', 'Informe uma API Key primeiro.')
         return
     }
@@ -70,96 +183,80 @@ async function fetchAndPopulateModels() {
     modelListContainer.innerHTML = ''
 
     try {
-        const models = await listModels(key)
-
-        setButtonsLoading(false)
+        const models = provider === 'ollama'
+            ? await ollamaListModels(currentBaseUrl())
+            : await listGeminiModels(apiKeyInput.value.trim())
 
         if (models.length === 0) {
-            setStatus('error', 'Nenhum modelo com generateContent encontrado.')
+            resetModels('- nenhum modelo encontrado -')
+            setStatus('error', 'Nenhum modelo encontrado.')
             return
         }
 
-        // Preencher select
-        modelSelect.innerHTML = models
-            .map(m => `<option value="${m.id}">${m.name} (${m.id})</option>`)
-            .join('')
-        modelSelect.disabled = false
-        btnSendPrompt.disabled = false
-
-        // Lista visível
+        setModelOptions(models)
         modelListContainer.innerHTML = `
             <ul>
-                ${models.map(m => `<li><code>${m.id}</code> — ${m.name}</li>`).join('')}
+                ${models.map((model) => {
+                    const size = 'size' in model && typeof model.size === 'number'
+                        ? ` - ${formatBytes(model.size)}`
+                        : ''
+                    return `<li><code>${escapeHtml(model.id)}</code>${size}</li>`
+                }).join('')}
             </ul>
         `
 
-        setStatus('success', `✅ ${models.length} modelos encontrados. Selecione um e clique em "Enviar".`)
+        setStatus('success', `${models.length} modelos encontrados.`)
     } catch (err) {
+        await handleError(err, 'Erro desconhecido ao listar modelos.')
+    } finally {
         setButtonsLoading(false)
-        if (err instanceof AiApiError) {
-            setStatus('error', `❌ ${err.message}`)
-        } else if (err instanceof Error) {
-            setStatus('error', `❌ ${err.message}`)
-        } else {
-            setStatus('error', '❌ Erro desconhecido ao listar modelos')
-        }
     }
 }
 
 btnListModels.addEventListener('click', fetchAndPopulateModels)
 
-// ------ Enviar Prompt ------
-
 btnSendPrompt.addEventListener('click', async () => {
-    const key = apiKeyInput.value.trim()
-    const model = modelSelect.value
-
-    if (!key) {
-        setStatus('error', 'Informe uma API Key primeiro.')
-        return
-    }
-
-    if (!model) {
-        setStatus('error', 'Selecione um modelo primeiro.')
-        return
-    }
-
-    setButtonsLoading(true)
-    clearStatus()
-    promptResult.textContent = '⏳ Aguardando resposta...'
-
     try {
-        const result = await generateText(
-            'Me responda em português: "Gaveta de Bagunça funcionando perfeitamente! 🎉"',
-            key,
-            model,
-            { temperature: 0.7 }
-        )
+        const client = createClient()
+
+        setButtonsLoading(true)
+        clearStatus()
+        promptResult.textContent = 'Aguardando resposta...'
+
+        const result = await client.generateText({
+            userPrompt: 'Me responda em portugues: "Gaveta de Bagunca funcionando perfeitamente!"',
+            temperature: 0.7,
+            maxTokens: 256,
+        })
 
         promptResult.textContent = result.text
-        setStatus('success', `✅ Resposta recebida de "${model}"`)
+        setStatus('success', `Resposta recebida de "${result.provider}" com "${result.model}".`)
     } catch (err) {
-        promptResult.textContent = ''
-        if (err instanceof AiApiError) {
-            setStatus('error', `❌ ${err.message}`)
-        } else if (err instanceof Error) {
-            setStatus('error', `❌ ${err.message}`)
-        } else {
-            setStatus('error', '❌ Erro desconhecido')
-        }
+        await handleError(err, 'Erro desconhecido ao enviar prompt.')
     } finally {
         setButtonsLoading(false)
     }
 })
 
-// ------ Inicialização ------
-
-// Carregar key salva (evitar recarregar)
-const savedKey = sessionStorage.getItem('gemini_test_key')
-if (savedKey) {
-    apiKeyInput.value = savedKey
-}
+providerSelect.addEventListener('change', () => {
+    sessionStorage.setItem('ai_test_provider', currentProvider())
+    renderProviderMode()
+})
 
 apiKeyInput.addEventListener('input', () => {
     sessionStorage.setItem('gemini_test_key', apiKeyInput.value.trim())
 })
+
+baseUrlInput.addEventListener('input', () => {
+    sessionStorage.setItem('ollama_test_base_url', currentBaseUrl())
+})
+
+const savedProvider = sessionStorage.getItem('ai_test_provider')
+if (savedProvider === 'ollama' || savedProvider === 'gemini') {
+    providerSelect.value = savedProvider
+}
+
+apiKeyInput.value = sessionStorage.getItem('gemini_test_key') ?? ''
+baseUrlInput.value = sessionStorage.getItem('ollama_test_base_url') ?? DEFAULT_OLLAMA_BASE_URL
+
+renderProviderMode()

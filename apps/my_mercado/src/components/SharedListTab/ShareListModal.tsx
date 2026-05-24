@@ -1,10 +1,11 @@
-import { useState } from "react";
-import { X } from "lucide-react";
-import { publishList, unpublishList, updateSharedListItems } from "../../services/sharedListService.ts";
+import { useState, useEffect } from "react";
+import { X, Trash2 } from "lucide-react";
+import { publishList, unpublishList, updateSharedListItems, getSharedListsByOwner } from "../../services/sharedListService.ts";
 import { normalizeKey } from "../../utils/normalize";
 import { notify } from "../../utils/notifications.ts";
 import type { ShoppingListItem } from "../../types/ui.ts";
 import type { PurchaseHistoryEntry } from "../../hooks/queries/usePurchaseHistory";
+import type { SharedList } from "../../services/sharedListService";
 
 type ShareListModalProps = {
     isOpen: boolean;
@@ -46,8 +47,8 @@ function enrichNote(
 
 /**
  * Modal de compartilhamento de lista.
- * Permite criar/renovar/remover o link de compartilhamento.
- * O compartilhamento enriquece os notes dos itens com o histórico de compras.
+ * Permite criar/renovar/remover o link de compartilhamento,
+ * e gerenciar (listar/apagar) todas as listas compartilhadas do usuário.
  */
 export function ShareListModal({
     isOpen,
@@ -63,6 +64,15 @@ export function ShareListModal({
     const [publishing, setPublishing] = useState(false);
     const [unpublishing, setUnpublishing] = useState(false);
     const [updating, setUpdating] = useState(false);
+    const [sharedLists, setSharedLists] = useState<SharedList[]>([]);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+
+    // Carrega listas compartilhadas ao abrir o modal
+    useEffect(() => {
+        if (isOpen && ownerId) {
+            getSharedListsByOwner(ownerId).then(setSharedLists).catch(() => { });
+        }
+    }, [isOpen, ownerId]);
 
     if (!isOpen) return null;
 
@@ -86,6 +96,9 @@ export function ShareListModal({
                 items: enrichItemsForPublish(),
             });
             setCode(result.code);
+            // Recarrega a lista de compartilhadas
+            const updated = await getSharedListsByOwner(ownerId);
+            setSharedLists(updated);
             notify.success("Lista compartilhada com sucesso!");
         } catch (err) {
             notify.error("Erro ao compartilhar lista.");
@@ -100,6 +113,9 @@ export function ShareListModal({
         try {
             await unpublishList(code, ownerId);
             setCode(null);
+            // Recarrega a lista de compartilhadas
+            const updated = await getSharedListsByOwner(ownerId);
+            setSharedLists(updated);
             notify.success("Compartilhamento removido.");
         } catch (err) {
             notify.error("Erro ao remover compartilhamento.");
@@ -121,19 +137,27 @@ export function ShareListModal({
         }
     };
 
-    const handleCopyLink = async () => {
-        if (!shareLink) return;
+    const handleDeleteSharedList = async (targetCode: string) => {
+        setDeletingId(targetCode);
         try {
-            await navigator.clipboard.writeText(shareLink);
-            notify.success("Link copiado!");
+            await unpublishList(targetCode, ownerId);
+            const updated = await getSharedListsByOwner(ownerId);
+            setSharedLists(updated);
+            // Se apagou a lista ativa, limpa o código
+            if (targetCode === code) {
+                setCode(null);
+            }
+            notify.success("Lista compartilhada apagada.");
         } catch {
-            notify.error("Erro ao copiar link.");
+            notify.error("Erro ao apagar lista.");
+        } finally {
+            setDeletingId(null);
         }
     };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="glass-card max-w-md w-full p-6 relative">
+            <div className="glass-card max-w-md w-full p-6 relative max-h-[90vh] overflow-y-auto">
                 {/* Close */}
                 <button
                     onClick={onClose}
@@ -162,7 +186,12 @@ export function ShareListModal({
                                     className="flex-1 bg-slate-800/60 border border-white/10 rounded-lg px-3 py-2 text-slate-200 text-sm outline-none"
                                 />
                                 <button
-                                    onClick={handleCopyLink}
+                                    onClick={() => {
+                                        if (shareLink) {
+                                            navigator.clipboard.writeText(shareLink);
+                                            notify.success("Link copiado!");
+                                        }
+                                    }}
                                     className="bg-blue-500/20 border-none rounded-lg p-2 text-blue-400 hover:bg-blue-500/30 cursor-pointer"
                                     title="Copiar link"
                                 >
@@ -175,7 +204,7 @@ export function ShareListModal({
                         </div>
 
                         {/* Ações */}
-                        <div className="flex flex-col gap-2">
+                        <div className="flex flex-col gap-2 mb-4">
                             <button
                                 onClick={handleUpdateItems}
                                 disabled={updating}
@@ -211,12 +240,63 @@ export function ShareListModal({
                         <button
                             onClick={handlePublish}
                             disabled={publishing}
-                            className="btn bg-blue-500/20 border-blue-500/30 text-blue-300 w-full flex items-center justify-center gap-2 hover:bg-blue-500/30 disabled:opacity-50"
+                            className="btn bg-blue-500/20 border-blue-500/30 text-blue-300 w-full flex items-center justify-center gap-2 hover:bg-blue-500/30 disabled:opacity-50 mb-4"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={publishing ? "animate-pulse" : ""}><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" /></svg>
                             {publishing ? "Publicando..." : "Criar link de compartilhamento"}
                         </button>
                     </>
+                )}
+
+                {/* Lista de listas compartilhadas */}
+                {sharedLists.length > 0 && (
+                    <div className="border-t border-white/10 pt-4 mt-2">
+                        <h3 className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-3">
+                            Minhas listas compartilhadas ({sharedLists.length})
+                        </h3>
+                        <div className="flex flex-col gap-2">
+                            {sharedLists.map((sl) => {
+                                const isActive = code === sl.code;
+                                return (
+                                    <div
+                                        key={sl.id}
+                                        className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm ${isActive
+                                            ? "bg-blue-500/10 border border-blue-500/20"
+                                            : "bg-slate-900/40"
+                                            }`}
+                                    >
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-slate-200 truncate font-medium">
+                                                {sl.name}
+                                                {isActive && (
+                                                    <span className="ml-2 text-[0.6rem] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-full">
+                                                        Ativa
+                                                    </span>
+                                                )}
+                                            </p>
+                                            <p className="text-[0.65rem] text-slate-500 font-mono truncate">
+                                                {baseUrl}/s/{sl.code}
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={() => handleDeleteSharedList(sl.code)}
+                                            disabled={deletingId === sl.code}
+                                            className="bg-red-500/10 border-none rounded-lg w-7 h-7 flex items-center justify-center text-red-400 hover:bg-red-500/20 shrink-0 disabled:opacity-40 cursor-pointer"
+                                            title="Apagar lista compartilhada"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {sharedLists.length === 0 && code === null && (
+                    <p className="text-center text-slate-600 text-xs mt-2">
+                        Nenhuma lista compartilhada ainda.
+                    </p>
                 )}
 
                 <p className="text-center text-slate-600 text-xs mt-4">
