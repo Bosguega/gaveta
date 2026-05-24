@@ -60,8 +60,6 @@ describe("promptBuilder", () => {
         key: "item1",
         normalized_name: "Arroz Branco 5kg",
         category: "Grãos",
-        brand: "Tio João",
-        slug: "arroz_branco_5kg",
       });
     });
 
@@ -85,8 +83,6 @@ describe("promptBuilder", () => {
         key: "item1",
         normalized_name: "",
         category: "Outros",
-        brand: undefined,
-        slug: undefined,
       });
     });
 
