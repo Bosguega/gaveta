@@ -2,20 +2,16 @@
  * AI Client - Unified Entry Point (Adapter)
  *
  * Ponto de entrada unificado para chamadas de IA.
- * Delega toda a orquestração para @bosguega/ai-core.
+ * Delega toda a orquestracao para @bosguega/ai-core.
  *
- * @deprecated Importe '@bosguega/ai-core' e use createAiClient() em novos códigos.
+ * @deprecated Importe '@bosguega/ai-core' e use createAiClient() em novos codigos.
  */
 
-import { createAiClient } from '@bosguega/ai-core'
+import { createAiClient, type AIProvider, type AIMode } from '@bosguega/ai-core'
 import { buildNormalizationPrompt, parseAiJsonResponse } from './promptBuilder'
 import { logger } from '../logger'
 import type { AiNormalizationInput, AiNormalizationResult } from '../../types/ai'
 
-/**
- * Chama o provedor de IA para normalizar uma lista de itens.
- * O retry automático com backoff exponencial é gerenciado pelo core.
- */
 export async function callAI(
   items: AiNormalizationInput[],
 ): Promise<AiNormalizationResult[]> {
@@ -28,7 +24,6 @@ export async function callAI(
     })
     return parseAiJsonResponse(result.text)
   } catch (err) {
-    // Fallback: retorna itens sem normalização
     logger.error('AI', 'Falha ao chamar IA, usando fallback', err)
     return items.map((item) => ({
       key: item.key,
@@ -38,18 +33,43 @@ export async function callAI(
   }
 }
 
-/**
- * Testa conexão com a IA.
- * Usa o client do core que gerencia provider internamente.
- */
+export type AiConnectionStatus =
+  | 'idle'
+  | 'offline'
+  | 'checking'
+  | 'connected'
+  | 'loading_model'
+  | 'generating'
+  | 'error'
+
+export interface TestAiConnectionOptions {
+  mode: AIMode
+  provider: AIProvider
+  apiKey?: string
+  baseUrl?: string
+  model: string
+  onStatus?: (status: AiConnectionStatus) => void
+}
+
 export async function testAiConnection(
-  apiKey: string,
-  model: string,
+  options: TestAiConnectionOptions,
 ): Promise<{ success: boolean; error?: string }> {
-  if (!apiKey) return { success: false, error: 'API Key não informada' }
+  if (options.mode === 'online' && !options.apiKey) {
+    return { success: false, error: 'API Key nao informada' }
+  }
 
   try {
-    const ai = createAiClient({ apiKey, model })
+    options.onStatus?.('checking')
+    const ai = createAiClient({
+      provider: options.provider,
+      apiKey: options.apiKey,
+      model: options.model,
+      baseUrl: options.baseUrl,
+    })
+    if (options.mode === 'local') {
+      options.onStatus?.('loading_model')
+    }
+    options.onStatus?.('generating')
     return await ai.testConnection()
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido'

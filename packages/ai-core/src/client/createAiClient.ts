@@ -14,7 +14,13 @@ import { createOllamaClient, DEFAULT_OLLAMA_BASE_URL } from '../ollama'
 import { createOpenAiClient } from '../openai/createOpenAiClient'
 import { withRetry } from './retryWrapper'
 import { withFallback } from './fallbackWrapper'
-import { getApiKeyCached, getApiModelCached } from '../storage/cache'
+import {
+    getAiBaseUrlCached,
+    getAiModeCached,
+    getAiProviderCached,
+    getApiKeyCached,
+    getApiModelCached,
+} from '../storage/cache'
 import { detectProvider } from '../storage/aiConfig'
 import type { ProviderClient, ProviderName } from './types'
 
@@ -48,11 +54,18 @@ export interface CreateAiClientOptions {
  */
 export function createAiClient(options?: CreateAiClientOptions): ProviderClient {
     const explicitProvider = options?.provider
-    const apiKey = explicitProvider === 'ollama'
+    const mode = explicitProvider
+        ? (explicitProvider === 'ollama' ? 'local' : 'online')
+        : getAiModeCached()
+    const cachedProvider = mode === 'local' ? getAiProviderCached() : undefined
+    const provider = explicitProvider ?? cachedProvider ?? detectProvider(options?.apiKey ?? getApiKeyCached())
+    const apiKey = provider === 'ollama'
         ? options?.apiKey
         : options?.apiKey ?? getApiKeyCached()
     const model = options?.model ?? getApiModelCached()
-    const provider = explicitProvider ?? detectProvider(apiKey)
+    const baseUrl = provider === 'ollama'
+        ? options?.baseUrl ?? (explicitProvider ? DEFAULT_OLLAMA_BASE_URL : getAiBaseUrlCached())
+        : undefined
 
     if (provider !== 'ollama' && !apiKey) {
         throw new Error(
@@ -72,7 +85,7 @@ export function createAiClient(options?: CreateAiClientOptions): ProviderClient 
         } else if (provider === 'gemini') {
             client = createGeminiClient(apiKey ?? '', model)
         } else if (provider === 'ollama') {
-            client = createOllamaClient(model, options?.baseUrl ?? DEFAULT_OLLAMA_BASE_URL)
+            client = createOllamaClient(model, baseUrl || DEFAULT_OLLAMA_BASE_URL)
         } else {
             throw new Error('Provider de IA nao suportado para a chave informada.')
         }

@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   initializeAiConfig,
   invalidateAiConfigCache,
+  setAiMode as coreSetAiMode,
+  setAiProvider as coreSetAiProvider,
   setApiKey as coreSetApiKey,
   setConfigStore,
   type ConfigStore,
@@ -9,6 +11,9 @@ import {
 } from '@bosguega/ai-core'
 import {
   detectProvider,
+  getAiMode,
+  getAiProvider,
+  hasAiConfig,
   getApiKey,
   isPersistenceEnabled,
   setApiKey,
@@ -64,5 +69,16 @@ describe('app aiConfig adapter', () => {
 
     expect(isPersistenceEnabled()).toBe(true)
     expect(getApiKey()).toBe('AIza-test')
+  })
+
+  it('reads mode/provider labels from the core cache', async () => {
+    await coreSetAiMode('local')
+    await coreSetAiProvider('ollama')
+    invalidateAiConfigCache()
+    await initializeAiConfig()
+
+    expect(getAiMode()).toBe('local')
+    expect(getAiProvider()).toBe('ollama')
+    expect(hasAiConfig()).toBe(true)
   })
 })

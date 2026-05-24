@@ -157,8 +157,20 @@ export interface LoginProps {
 export interface ApiKeyModalProps {
   isOpen: boolean;
   onClose: () => void;
+  aiConfig?: {
+    mode: 'online' | 'local';
+    setMode: (mode: 'online' | 'local') => void | Promise<void>;
+    providerInternal: 'gemini' | 'openai' | 'ollama';
+    setProvider: (provider: 'gemini' | 'openai' | 'ollama') => void | Promise<void>;
+    apiKey: string | null;
+    setApiKey: (key: string | null | undefined) => void | Promise<void>;
+    model: string;
+    setModel: (model: string) => void | Promise<void>;
+    baseUrl: string;
+    setBaseUrl: (baseUrl: string) => void | Promise<void>;
+  };
   currentKey?: string;
-  onSave: (key: string) => void | Promise<void>;
+  onSave: (key?: string) => void | Promise<void>;
   persistKey?: boolean;
   onPersistChange?: (persist: boolean) => void | Promise<void>;
 }

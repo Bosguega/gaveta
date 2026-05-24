@@ -8,19 +8,35 @@ export {
     clearApiKey,
     getApiModel,
     setApiModel,
+    getAiMode,
+    setAiMode,
+    getAiProvider,
+    setAiProvider,
+    getAiBaseUrl,
+    setAiBaseUrl,
     detectProvider,
     hasApiKey,
+    hasAiConfig,
     browserStore,
+    DEFAULT_AI_BASE_URL,
+    DEFAULT_AI_MODE,
+    DEFAULT_AI_MODEL,
+    DEFAULT_AI_PROVIDER,
 } from './aiConfig'
 
-export type { ConfigStore, KeyValueStore, Provider } from './types'
+export type { AIProvider, AIMode, ConfigStore, KeyValueStore, Provider } from './types'
 
 export {
     initializeAiConfig,
+    getAiBaseUrlCached,
+    getAiModeCached,
+    getAiProviderCached,
     getApiKeyCached,
     getApiModelCached,
+    getEffectiveProviderCached,
     isPersistenceEnabledCached,
     detectProviderCached,
     hasApiKeyCached,
+    hasAiConfigCached,
     invalidateAiConfigCache,
 } from './cache'

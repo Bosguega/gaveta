@@ -217,10 +217,11 @@ function App() {
   }, [receiptsError, setError]);
 
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
-  const { apiKey, setApiKey, hasKey, persistApiKey, setPersistApiKey } = useApiKey();
+  const aiConfig = useApiKey();
+  const { apiKey, hasAiConfig, persistApiKey, setPersistApiKey } = aiConfig;
 
   useEffect(() => {
-    if (!hasKey) {
+    if (!hasAiConfig) {
       setShowApiKeyModal(true);
     }
 
@@ -228,10 +229,9 @@ function App() {
     if (import.meta.env.DEV) {
       logPWADebugInfo();
     }
-  }, [hasKey]);
+  }, [hasAiConfig]);
 
-  const handleSaveApiKey = async (newKey: string) => {
-    await setApiKey(newKey);
+  const handleSaveAiConfig = async () => {
     setShowApiKeyModal(false);
   };
 
@@ -375,8 +375,9 @@ function App() {
       <ApiKeyModal
         isOpen={showApiKeyModal}
         onClose={() => setShowApiKeyModal(false)}
+        aiConfig={aiConfig}
         currentKey={apiKey ?? undefined}
-        onSave={handleSaveApiKey}
+        onSave={handleSaveAiConfig}
         persistKey={persistApiKey}
         onPersistChange={setPersistApiKey}
       />

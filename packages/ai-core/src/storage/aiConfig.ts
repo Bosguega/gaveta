@@ -9,7 +9,8 @@
  * Framework-agnostic — funciona em qualquer app.
  */
 
-import type { ConfigStore, Provider } from './types'
+import { DEFAULT_OLLAMA_BASE_URL } from '../ollama'
+import type { AIProvider, AIMode, ConfigStore, Provider } from './types'
 import { browserStore } from './browserStore'
 
 export type { ConfigStore, Provider }
@@ -22,7 +23,13 @@ let currentStore: ConfigStore = browserStore
 const STORAGE_KEY_KEY = 'ai_key'
 const STORAGE_KEY_MODEL = 'ai_model'
 const STORAGE_KEY_PERSIST = 'ai_key_persist'
+const STORAGE_KEY_MODE = 'ai_mode'
+const STORAGE_KEY_PROVIDER = 'ai_provider'
+const STORAGE_KEY_BASE_URL = 'ai_base_url'
 export const DEFAULT_AI_MODEL = 'gemini-1.5-flash-lite'
+export const DEFAULT_AI_MODE: AIMode = 'online'
+export const DEFAULT_AI_PROVIDER: AIProvider = 'gemini'
+export const DEFAULT_AI_BASE_URL = DEFAULT_OLLAMA_BASE_URL
 
 /**
  * Substitui o ConfigStore ativo.
@@ -108,6 +115,39 @@ export async function setApiModel(model: string): Promise<void> {
     await currentStore.preferences.set(STORAGE_KEY_MODEL, model)
 }
 
+export async function getAiMode(): Promise<AIMode> {
+    const val = await currentStore.preferences.get(STORAGE_KEY_MODE)
+    return val === 'local' ? 'local' : DEFAULT_AI_MODE
+}
+
+export async function setAiMode(mode: AIMode): Promise<void> {
+    await currentStore.preferences.set(STORAGE_KEY_MODE, mode)
+}
+
+export async function getAiProvider(): Promise<AIProvider> {
+    const val = await currentStore.preferences.get(STORAGE_KEY_PROVIDER)
+    if (val === 'gemini' || val === 'openai' || val === 'ollama') return val
+    return DEFAULT_AI_PROVIDER
+}
+
+export async function setAiProvider(provider: AIProvider): Promise<void> {
+    await currentStore.preferences.set(STORAGE_KEY_PROVIDER, provider)
+}
+
+export async function getAiBaseUrl(): Promise<string> {
+    const val = await currentStore.preferences.get(STORAGE_KEY_BASE_URL)
+    return val?.trim() || DEFAULT_AI_BASE_URL
+}
+
+export async function setAiBaseUrl(baseUrl: string | null | undefined): Promise<void> {
+    const trimmed = baseUrl?.trim() ?? ''
+    if (trimmed) {
+        await currentStore.preferences.set(STORAGE_KEY_BASE_URL, trimmed)
+    } else {
+        await currentStore.preferences.remove(STORAGE_KEY_BASE_URL)
+    }
+}
+
 // ------ Detecção de provedor ------
 
 export function detectProvider(key: string | null | undefined): Provider {
@@ -123,4 +163,15 @@ export function detectProvider(key: string | null | undefined): Provider {
 export async function hasApiKey(): Promise<boolean> {
     const key = await getApiKey()
     return !!key && key.length > 0
+}
+
+export async function hasAiConfig(): Promise<boolean> {
+    const mode = await getAiMode()
+    if (mode === 'local') {
+        const provider = await getAiProvider()
+        const model = await getApiModel()
+        return provider === 'ollama' && model.trim().length > 0
+    }
+
+    return hasApiKey()
 }

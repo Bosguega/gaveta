@@ -27,5 +27,11 @@ export interface ConfigStore {
     preferences: KeyValueStore
 }
 
+/** Modo canonico de conexao, sem rotulos de UI. */
+export type AIMode = 'online' | 'local'
+
 /** Provider ids canonicos, sem rotulos de UI. */
-export type Provider = 'gemini' | 'openai' | 'none' | 'unknown'
+export type AIProvider = 'gemini' | 'openai' | 'ollama'
+
+/** Resultado de deteccao por chave, incluindo estados sem provider valido. */
+export type Provider = AIProvider | 'none' | 'unknown'

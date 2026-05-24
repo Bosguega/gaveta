@@ -11,13 +11,28 @@
  *   const key = getApiKeyCached()  // sync!
  */
 
-import { DEFAULT_AI_MODEL, detectProvider, getApiKey, getApiModel, isPersistenceEnabled } from './aiConfig'
-import type { Provider } from './types'
+import {
+    DEFAULT_AI_BASE_URL,
+    DEFAULT_AI_MODE,
+    DEFAULT_AI_MODEL,
+    DEFAULT_AI_PROVIDER,
+    detectProvider,
+    getAiBaseUrl,
+    getAiMode,
+    getAiProvider,
+    getApiKey,
+    getApiModel,
+    isPersistenceEnabled,
+} from './aiConfig'
+import type { AIProvider, AIMode, Provider } from './types'
 
 // ------ Estado interno ------
 
 let _key: string | null = null
 let _model: string | null = null
+let _mode: AIMode | null = null
+let _provider: AIProvider | null = null
+let _baseUrl: string | null = null
 let _persist = false
 let _initialized = false
 
@@ -31,6 +46,9 @@ export async function initializeAiConfig(): Promise<void> {
     if (_initialized) return
     _key = await getApiKey()
     _model = await getApiModel()
+    _mode = await getAiMode()
+    _provider = await getAiProvider()
+    _baseUrl = await getAiBaseUrl()
     _persist = await isPersistenceEnabled()
     _initialized = true
 }
@@ -55,6 +73,21 @@ export function getApiModelCached(): string {
     return _model ?? DEFAULT_AI_MODEL
 }
 
+export function getAiModeCached(): AIMode {
+    assertInitialized()
+    return _mode ?? DEFAULT_AI_MODE
+}
+
+export function getAiProviderCached(): AIProvider {
+    assertInitialized()
+    return _provider ?? DEFAULT_AI_PROVIDER
+}
+
+export function getAiBaseUrlCached(): string {
+    assertInitialized()
+    return _baseUrl ?? DEFAULT_AI_BASE_URL
+}
+
 export function isPersistenceEnabledCached(): boolean {
     assertInitialized()
     return _persist
@@ -69,6 +102,14 @@ export function detectProviderCached(): Provider {
     return detectProvider(_key)
 }
 
+export function getEffectiveProviderCached(): Provider {
+    assertInitialized()
+    if ((_mode ?? DEFAULT_AI_MODE) === 'local') {
+        return _provider ?? DEFAULT_AI_PROVIDER
+    }
+    return detectProvider(_key)
+}
+
 /**
  * Verifica se há chave configurada.
  * Requer que initializeAiConfig() tenha sido chamado antes.
@@ -76,6 +117,14 @@ export function detectProviderCached(): Provider {
 export function hasApiKeyCached(): boolean {
     assertInitialized()
     return !!_key && _key.length > 0
+}
+
+export function hasAiConfigCached(): boolean {
+    assertInitialized()
+    if ((_mode ?? DEFAULT_AI_MODE) === 'local') {
+        return (_provider ?? DEFAULT_AI_PROVIDER) === 'ollama' && getApiModelCached().trim().length > 0
+    }
+    return hasApiKeyCached()
 }
 
 // ------ Invalidação de cache ------
@@ -87,6 +136,9 @@ export function hasApiKeyCached(): boolean {
 export function invalidateAiConfigCache(): void {
     _key = null
     _model = null
+    _mode = null
+    _provider = null
+    _baseUrl = null
     _persist = false
     _initialized = false
 }
