@@ -1,9 +1,10 @@
 ﻿# My Mercado - Arquitetura
 
-**Data da última atualização:** 13 de maio de 2026
+**Data da última atualização:** 24 de maio de 2026
 **Status da arquitetura:** ✅ Conforme (React Query = Dados, Zustand = UI, Hooks = Orquestração)
 **Status da refatoração:** ✅ Serviços modularizados + Componentes reestruturados + Stores fatoradas
 **Status da qualidade:** ✅ 0 erros TypeScript | ✅ 0 erros ESLint | ✅ Build OK | ✅ 90+ testes
+**Produtos canônicos:** ❌ Removido (migration 002_remove_canonical_products.sql + código eliminado)
 
 **My Mercado** é um PWA para gerenciamento de compras de supermercado.
 O usuário escaneia QR Code de NFC-e, consulta histórico e compara preços ao longo do tempo.
@@ -36,40 +37,38 @@ Persistência principal: Supabase (PostgreSQL + Auth + RLS), com **fallback loca
 14. [Módulo de IA](#módulo-de-ia)
 15. [Módulo de Scanner](#módulo-de-scanner)
 16. [Serviços Modularizados](#serviços-modularizados)
-17. [Sistema de Produtos Canônicos](#sistema-de-produtos-canônicos)
-18. [Módulo de Listas de Compras Colaborativas](#módulo-de-listas-de-compras-colaborativas)
-19. [Módulo de NFC-e Edge Fetch](#módulo-de-nfc-e-edge-fetch)
-20. [Sistema de Error Handling Unificado](#sistema-de-error-handling-unificado)
+17. [Módulo de Listas de Compras Colaborativas](#módulo-de-listas-de-compras-colaborativas)
+18. [Módulo de NFC-e Edge Fetch](#módulo-de-nfc-e-edge-fetch)
+19. [Sistema de Error Handling Unificado](#sistema-de-error-handling-unificado)
 
 ### Parte V - Componentes Reestruturados
-21. [ScannerTab](#scannertab)
-22. [HistoryTab](#historytab)
-23. [CanonicalProductsTab](#canonicalproductstab)
-24. [ShoppingListTab](#shoppinglisttab)
-25. [SearchTab](#searchtab)
-26. [DictionaryTab](#dictionarytab)
-27. [Componentes Reutilizáveis](#componentes-reutilizáveis)
+20. [ScannerTab](#scannertab)
+21. [HistoryTab](#historytab)
+22. [ShoppingListTab](#shoppinglisttab)
+23. [SearchTab](#searchtab)
+24. [DictionaryTab](#dictionarytab)
+25. [Componentes Reutilizáveis](#componentes-reutilizáveis)
 
 ### Parte VI - Gestão de Estado
-28. [Stores Fatoradas (Zustand)](#stores-fatoradas-zustand)
-29. [Queries e Mutations (React Query)](#queries-e-mutations-react-query)
+26. [Stores Fatoradas (Zustand)](#stores-fatoradas-zustand)
+27. [Queries e Mutations (React Query)](#queries-e-mutations-react-query)
 
 ### Parte VII - Qualidade
-30. [Error Handling](#error-handling)
-31. [Testes](#testes)
-32. [Acessibilidade](#acessibilidade)
+28. [Error Handling](#error-handling)
+29. [Testes](#testes)
+30. [Acessibilidade](#acessibilidade)
 
 ### Parte VIII - Performance
-33. [Otimizações de Performance](#otimizações-de-performance)
-34. [PWA e Service Worker](#pwa-e-service-worker)
-35. [Testes de Performance](#testes-de-performance)
+31. [Otimizações de Performance](#otimizações-de-performance)
+32. [PWA e Service Worker](#pwa-e-service-worker)
+33. [Testes de Performance](#testes-de-performance)
 
 ### Parte IX - Deploy
-36. [Build e Deploy](#build-e-deploy)
-37. [Monitoramento](#monitoramento)
+34. [Build e Deploy](#build-e-deploy)
+35. [Monitoramento](#monitoramento)
 
 ### Parte X - Estado Atual
-38. [Evolução Recente e Estado Atual](#evolução-recente-e-estado-atual)
+36. [Evolução Recente e Estado Atual](#evolução-recente-e-estado-atual)
 
 ---
 
@@ -325,7 +324,6 @@ export async function getAllReceiptsFromDBWithFallback(): Promise<Receipt[]> {
 
 **Schema-based validation com Zod:**
 - `src/utils/validation.ts`
-- `src/utils/validation/canonicalProduct.ts` — Schemas específicos para produtos canônicos
 
 **Schemas:**
 - `receiptItemSchema` - Validação de itens
@@ -333,8 +331,6 @@ export async function getAllReceiptsFromDBWithFallback(): Promise<Receipt[]> {
 - `manualReceiptFormSchema` - Formulário manual
 - `nfcUrlSchema` - URL de NFC-e
 - `apiKeySchema` - API Key
-- `canonicalProductSchema` — Criação de produto canônico
-- `updateCanonicalProductSchema` — Atualização de produto canônico
 
 ### 5. Storage Unificado
 
@@ -366,7 +362,7 @@ const all = await storage.getAll<Receipt>();
 ### 7. Cache e Performance
 
 - **React Query:** `src/providers/QueryProvider.tsx`
-- **Hooks de query:** `src/hooks/queries/` (17 arquivos)
+- **Hooks de query:** `src/hooks/queries/` (16 arquivos)
 - **Web Worker:** `src/workers/receiptParser.worker.ts`
 - **PWA Update:** `src/hooks/usePWAUpdate.ts`
 
@@ -387,9 +383,6 @@ my_mercado/
 |-- src/
 |   |-- components/
 |   |   |-- ApiKeyModal.tsx
-|   |   |-- CanonicalProductsTab/          # NOVO
-|   |   |   ├── index.tsx
-|   |   |   └── ...
 |   |   |-- ConfirmDialog.tsx
 |   |   |-- DictionaryRow.tsx
 |   |   |-- DictionaryTab.tsx
@@ -401,12 +394,12 @@ my_mercado/
 |   |   |   ├── SummaryCard.tsx
 |   |   |   ├── EmptyState.tsx
 |   |   |   └── ReceiptList.tsx
-|   |   |-- InputDialog.tsx                # NOVO
-|   |   |-- InputDialog.test.tsx           # Teste
+|   |   |-- InputDialog.tsx
+|   |   |-- InputDialog.test.tsx
 |   |   |-- Login.tsx
 |   |   |-- PerformancePanel.tsx
-|   |   |-- PeriodSelector.tsx             # NOVO
-|   |   |-- PriceChart.tsx                 # NOVO
+|   |   |-- PeriodSelector.tsx
+|   |   |-- PriceChart.tsx
 |   |   |-- PWAUpdateNotification.tsx
 |   |   |-- ReceiptCard.tsx
 |   |   |-- ScannerTab/
@@ -425,16 +418,19 @@ my_mercado/
 |   |   |   └── modals/
 |   |   |       └── DuplicateModal.tsx
 |   |   |-- SearchItemRow.tsx
-|   |   |-- SearchItemSkeleton.tsx          # NOVO
+|   |   |-- SearchItemSkeleton.tsx
 |   |   |-- SearchTab.tsx
 |   |   |-- SettingsTab.tsx
+|   |   |-- SharedListTab/
+|   |   |   └── ShareListModal.tsx
 |   |   |-- ShoppingListItem.tsx
-|   |   |-- ShoppingListTab.tsx             # Refatorado
-|   |   |-- ShoppingListTab/               # NOVO (componentes extraídos)
+|   |   |-- ShoppingListTab.tsx
+|   |   |-- ShoppingListTab/
 |   |   |   ├── index.tsx
+|   |   |   ├── ShoppingListTab.types.ts
 |   |   |   └── ...
 |   |   |-- Skeleton.tsx
-|   |   |-- UniversalSearchBar.tsx         # NOVO
+|   |   |-- UniversalSearchBar.tsx
 |   |   |-- UniversalSearchBar.test.tsx
 |   |   |-- ui/
 |   |   |   ├── Button.tsx
@@ -443,33 +439,35 @@ my_mercado/
 |   |   |   └── Modal.tsx
 |   |   |
 |   |   |-- hooks/
-|   |   |   |-- canonicalProduct/           # NOVO
-|   |   |   |   ├── useCanonicalProductsForm.ts
-|   |   |   |   └── useCanonicalProductsUI.ts
-|   |   |   |-- shoppingList/               # NOVO
+|   |   |   |-- shoppingList/
+|   |   |   |   ├── useLocalShoppingListActions.ts
 |   |   |   |   ├── usePurchaseHistory.ts
 |   |   |   |   └── useSortedShoppingItems.ts
-|   |   |   |-- queries/                    # NOVO (17 hooks)
+|   |   |   |-- queries/
 |   |   |   |   ├── index.ts
 |   |   |   |   ├── useAllReceiptsQuery.ts
-|   |   |   |   ├── useCanonicalProductsQuery.ts
 |   |   |   |   ├── useCollaborativeShoppingListsQuery.ts
 |   |   |   |   ├── useDeleteReceiptMutation.ts
 |   |   |   |   ├── useDictionaryQuery.ts
-|   |   |   |   ├── useHistoryReceiptsQuery.ts
+|   |   |   |   ├── useFilteredSearchItems.ts
+|   |   |   |   ├── useFilteredSearchItems.test.tsx
+|   |   |   |   ├── useHistoryReceipts.ts
 |   |   |   |   ├── usePurchaseHistoryQuery.ts
+|   |   |   |   ├── usePurchaseHistory.test.tsx
 |   |   |   |   ├── useReceiptsQuery.ts
 |   |   |   |   ├── useReceiptsSearchQuery.ts
 |   |   |   |   ├── useRestoreReceiptsMutation.ts
 |   |   |   |   ├── useSaveReceiptMutation.ts
-|   |   |   |   └── ... (mais hooks)
+|   |   |   |   ├── useSearchChartData.ts
+|   |   |   |   ├── useSearchItems.ts
+|   |   |   |   └── useSortedShoppingItems.test.tsx
 |   |   |   |-- useApiKey.ts
-|   |   |   |-- useApiKey.test.ts           # Teste
+|   |   |   |-- useApiKey.test.ts
 |   |   |   |-- useCameraScanner.ts
 |   |   |   |-- useConfirmDialog.ts
-|   |   |   |-- useErrorHandler.ts          # NOVO
+|   |   |   |-- useErrorHandler.ts
 |   |   |   |-- useImageQrScanner.ts
-|   |   |   |-- useManualReceipt.ts         # NOVO
+|   |   |   |-- useManualReceipt.ts
 |   |   |   |-- useNativeBarcodeScanner.ts
 |   |   |   |-- usePerformanceMonitor.ts
 |   |   |   |-- usePWAUpdate.ts
@@ -478,7 +476,7 @@ my_mercado/
 |   |   |   |-- useSupabaseSession.ts
 |   |   |
 |   |   |-- stores/
-|   |   |   |-- shoppingListStore/          # NOVO (fatorado)
+|   |   |   |-- shoppingListStore/
 |   |   |   |   ├── types.ts
 |   |   |   |   ├── core.ts
 |   |   |   |   ├── mutations.ts
@@ -488,21 +486,20 @@ my_mercado/
 |   |   |   |-- useReceiptsSessionStore.ts
 |   |   |   |-- useScannerStore.ts
 |   |   |   |-- useShoppingListStore.test.ts
-|   |   |   |-- useShoppingListStore.ts     # Re-export da store fatorada
+|   |   |   |-- useShoppingListStore.ts
 |   |   |   |-- useUiStore.ts
 |   |   |
 |   |   |-- services/
 |   |   |   |-- authService.ts
-|   |   |   |-- canonicalProductService.ts
-|   |   |   |-- canonicalProductService.test.ts
-|   |   |   |-- collaborativeShoppingListService.ts  # NOVO
+|   |   |   |-- collaborativeShoppingListService.ts
 |   |   |   |-- dictionaryService.ts
 |   |   |   |-- index.ts
-|   |   |   |-- nfceEdgeFetch.test.ts      # NOVO
-|   |   |   |-- nfceEdgeFetch.ts           # NOVO
+|   |   |   |-- nfceEdgeFetch.test.ts
+|   |   |   |-- nfceEdgeFetch.ts
 |   |   |   |-- productService.ts
 |   |   |   |-- receiptParser.ts
 |   |   |   |-- receiptService.ts
+|   |   |   |-- sharedListService.ts
 |   |   |   |-- shoppingListCloudSyncService.ts
 |   |   |   |-- shoppingListCloudSyncService.test.ts
 |   |   |   |-- storageFallbackService.ts
@@ -511,9 +508,10 @@ my_mercado/
 |   |   |
 |   |   |-- utils/
 |   |   |   |-- ai/
-|   |   |   |   ├── aiConfig.ts            # NOVO
-|   |   |   |   ├── index.ts              # NOVO
-|   |   |   |   └── promptBuilder.ts      # NOVO
+|   |   |   |   ├── aiConfig.ts
+|   |   |   |   ├── index.ts
+|   |   |   |   ├── promptBuilder.ts
+|   |   |   |   └── promptBuilder.test.ts
 |   |   |   |-- analytics/
 |   |   |   |   ├── aggregate.ts
 |   |   |   |   ├── filters.ts
@@ -521,19 +519,19 @@ my_mercado/
 |   |   |   |   ├── index.ts
 |   |   |   |   └── timeSeries.ts
 |   |   |   |-- validation/
-|   |   |   |   └── canonicalProduct.ts   # NOVO
+|   |   |   |   └── backupSchema.ts
 |   |   |   |-- aiClient.ts
 |   |   |   |-- backupRegistry.ts
 |   |   |   |-- currency.ts
 |   |   |   |-- currency.test.ts
 |   |   |   |-- date.ts
 |   |   |   |-- dbDebug.ts
-|   |   |   |-- errorCodes.ts             # NOVO
-|   |   |   |-- errorMessages.ts          # NOVO
+|   |   |   |-- errorCodes.ts
+|   |   |   |-- errorMessages.ts
 |   |   |   |-- filters.test.ts
 |   |   |   |-- filters.ts
-|   |   |   |-- idGenerator.ts            # NOVO
-|   |   |   |-- idGenerator.test.ts       # NOVO
+|   |   |   |-- idGenerator.ts
+|   |   |   |-- idGenerator.test.ts
 |   |   |   |-- logger.ts
 |   |   |   |-- logger.test.ts
 |   |   |   |-- normalize.ts
@@ -541,18 +539,18 @@ my_mercado/
 |   |   |   |-- notifications.ts
 |   |   |   |-- pwaDebug.ts
 |   |   |   |-- receiptId.ts
-|   |   |   |-- search.ts                 # NOVO
-|   |   |   |-- search.test.ts            # NOVO
-|   |   |   |-- shoppingHistoryMatch.ts   # NOVO
-|   |   |   |-- shoppingHistoryMatch.test.ts # NOVO
+|   |   |   |-- search.ts
+|   |   |   |-- search.test.ts
+|   |   |   |-- shoppingHistoryMatch.ts
+|   |   |   |-- shoppingHistoryMatch.test.ts
 |   |   |   |-- shoppingList.ts
 |   |   |   |-- shoppingListCloudMerge.ts
 |   |   |   |-- shoppingListCloudMerge.test.ts
-|   |   |   |-- shoppingListCloudSync.ts  # NOVO
+|   |   |   |-- shoppingListCloudSync.ts
 |   |   |   |-- storage.ts
 |   |   |   |-- stringUtils.ts
-|   |   |   |-- supabaseError.test.ts     # NOVO
-|   |   |   |-- supabaseError.ts          # NOVO
+|   |   |   |-- supabaseError.test.ts
+|   |   |   |-- supabaseError.ts
 |   |   |   |-- supabaseTest.ts
 |   |   |   |-- validation.ts
 |   |   |
@@ -565,15 +563,15 @@ my_mercado/
 |   |   |-- types/
 |   |   |   |-- ai.ts
 |   |   |   |-- domain.ts
-|   |   |   |-- history.ts                # NOVO
+|   |   |   |-- history.ts
 |   |   |   |-- scanner.ts
 |   |   |   |-- ui.ts
 |   |   |
 |   |   |-- constants/
-|   |   |   |-- domain.ts                 # NOVO
+|   |   |   |-- domain.ts
 |   |   |
 |   |   |-- tests/
-|   |   |   |-- setup.ts                  # NOVO
+|   |   |   |-- setup.ts
 |   |   |
 |   |   |-- App.tsx
 |   |   |-- config.ts
@@ -593,8 +591,8 @@ my_mercado/
 |   |-- eslint.config.js
 |   |-- index.html
 |   |-- package.json
-|   |-- tailwind.config.js                # NOVO
-|   |-- postcss.config.js                 # NOVO
+|   |-- tailwind.config.js
+|   |-- postcss.config.js
 |   |-- tsconfig.json
 |   |-- vite.config.js
 |   |-- vitest.config.ts
@@ -636,9 +634,6 @@ graph TD
     SearchTab --> searchUtils["utils/search.ts"]
     SearchTab --> PriceChart["components/PriceChart.tsx"]
 
-    CanonicalProductsTab --> canonicalProductsQuery["hooks/queries/useCanonicalProductsQuery.ts"]
-    CanonicalProductsTab --> canonicalProductUI["hooks/canonicalProduct/"]
-
     DictionaryTab --> dictionaryQuery["hooks/queries/useDictionaryQuery.ts"]
 
     ShoppingListTab --> shoppingListStore
@@ -658,7 +653,6 @@ graph TD
     productService --> stringUtils["utils/stringUtils.ts"]
 
     QueryProvider --> receiptsQuery
-    QueryProvider --> canonicalProductsQuery
     QueryProvider --> dictionaryQuery
     QueryProvider --> collabLists
 
@@ -690,7 +684,6 @@ create table public.items (
   normalized_key text,
   normalized_name text,
   category text,
-  canonical_product_id uuid references canonical_products(id),
   quantity numeric,
   unit text,
   price numeric
@@ -701,22 +694,8 @@ create table public.product_dictionary (
   key text primary key,
   normalized_name text,
   category text,
-  canonical_product_id uuid references canonical_products(id),
   user_id uuid references auth.users(id) default auth.uid() not null,
   created_at timestamp with time zone default now() not null
-);
-
--- Produtos canônicos (identidade única de produto)
-create table public.canonical_products (
-  id uuid primary key default gen_random_uuid(),
-  slug text not null unique,
-  name text not null,
-  category text,
-  brand text,
-  user_id uuid references auth.users(id) default auth.uid() not null,
-  merge_count integer default 1,
-  created_at timestamp with time zone default now(),
-  updated_at timestamp with time zone default now()
 );
 
 -- Listas de compras colaborativas
@@ -747,29 +726,6 @@ create table public.shopping_list_items (
 );
 ```
 
-### Sistema de Produtos Canônicos
-
-O sistema de produtos canônicos resolve o problema de fragmentação de dados onde o mesmo produto aparece com variações de nome (ex: "Coca-Cola 2L", "Coca Cola 2 litros", "Coca cola pet 2l").
-
-**Como funciona:**
-1. Cada produto canônico tem um `slug` único (ex: `coca_cola_2l`)
-2. Itens e dicionário podem ser associados a um produto canônico via `canonical_product_id`
-3. Analytics usam `canonical_product_id` para agrupar dados consistentemente
-4. Usuário gerencia produtos canônicos via UI (criar, editar, mesclar)
-
-**Hooks disponíveis (em `hooks/queries/useCanonicalProductsQuery.ts`):**
-- `useCanonicalProductsQuery()` - Listar produtos
-- `useCanonicalProductQuery()` - Buscar por ID
-- `useCreateCanonicalProduct()` - Criar novo
-- `useUpdateCanonicalProduct()` - Atualizar
-- `useDeleteCanonicalProduct()` - Deletar (com verificação de segurança)
-- `useMergeCanonicalProducts()` - Mesclar produtos similares
-- `useAssociateItemToCanonicalProduct()` - Associar item
-
-**Hooks de UI (em `hooks/canonicalProduct/`):**
-- `useCanonicalProductsForm()` - Lógica de formulário (schema Zod, estados)
-- `useCanonicalProductsUI()` - Lógica de UI (diálogos, edição inline, confirmações)
-
 ---
 
 ## Matriz de Tarefas
@@ -781,16 +737,13 @@ O sistema de produtos canônicos resolve o problema de fragmentação de dados o
 | Estado de abas/filtros | `src/stores/useUiStore.ts` | `src/components/*Tab.tsx` |
 | Estado de sessão (user ID) | `src/stores/useReceiptsSessionStore.ts` | `src/App.tsx`, `src/components/*Tab.tsx` |
 | Dicionário manual | `src/components/DictionaryTab.tsx` | `src/services/dictionaryService.ts`, `src/utils/validation.ts` |
-| Produtos canônicos | `src/hooks/queries/useCanonicalProductsQuery.ts` | `src/services/canonicalProductService.ts`, `src/hooks/canonicalProduct/`, `src/utils/validation/canonicalProduct.ts` |
-| UI de produtos canônicos | `src/components/CanonicalProductsTab/` | `src/hooks/canonicalProduct/` |
 | Tendência de preços | `src/components/SearchTab.tsx` | `src/utils/analytics/`, `src/utils/search.ts`, `src/components/PriceChart.tsx` |
 | Parse da NFC-e | `src/services/receiptParser.ts` | `src/workers/receiptParser.worker.ts`, `src/services/nfceEdgeFetch.ts` |
 | Proxy CORS NFC-e | `src/services/nfceEdgeFetch.ts` | Cloudflare Workers (Supabase Edge Functions) |
 | Pipeline de normalização/IA | `src/services/productService.ts` | `src/utils/normalize.ts`, `src/utils/aiClient.ts`, `src/utils/stringUtils.ts` |
-| Cache de queries | `src/providers/QueryProvider.tsx` | `src/hooks/queries/` (17 hooks) |
+| Cache de queries | `src/providers/QueryProvider.tsx` | `src/hooks/queries/` (16 hooks) |
 | Paginação infinita | `src/hooks/queries/useReceiptsQuery.ts` | `src/services/receiptService.ts` |
 | Validação de formulários | `src/utils/validation.ts` | Zod schemas |
-| Validação de produtos canônicos | `src/utils/validation/canonicalProduct.ts` | Zod schemas |
 | Storage local | `src/utils/storage.ts` | IndexedDB API |
 | Filtros e ordenação | `src/utils/filters.ts` | `src/components/HistoryTab/index.tsx` |
 | Busca textual | `src/utils/search.ts` | `src/components/SearchTab.tsx` |
@@ -975,7 +928,6 @@ useShoppingListStore (fatorada em stores/shoppingListStore/)
 | **Filtros SearchTab** | ✅ `searchFilters` (período) | ❌ |
 | **Scanner** | ✅ `useScannerStore` | ❌ |
 | **Lista de compras (local)** | ✅ `useShoppingListStore` (local-first, fatorado) | ❌ |
-| **Produtos canônicos** | ❌ | ✅ `useCanonicalProductsQuery` + mutations |
 | **Dicionário** | ❌ | ✅ `useDictionaryQuery` + mutations |
 | **Listas colaborativas** | ❌ | ✅ `useCollaborativeShoppingListsQuery` |
 
@@ -1030,7 +982,6 @@ class UnifiedStorage {
 // Factories
 createReceiptsStorage()
 createDictionaryStorage()
-createCanonicalProductsStorage()
 createSettingsStorage()
 
 // Utils
@@ -1079,24 +1030,6 @@ apiKeySchema = z.string().refine((key) =>
 );
 ```
 
-**Arquivo:** `src/utils/validation/canonicalProduct.ts`
-
-```typescript
-// Criação de produto canônico
-canonicalProductSchema = z.object({
-  name: z.string().min(1, "Nome é obrigatório"),
-  category: z.string().optional(),
-  brand: z.string().optional(),
-});
-
-// Atualização de produto canônico
-updateCanonicalProductSchema = z.object({
-  name: z.string().min(1).optional(),
-  category: z.string().optional(),
-  brand: z.string().nullable().optional(),
-});
-```
-
 ### Funções de Validação
 
 ```typescript
@@ -1123,7 +1056,8 @@ src/utils/
 └── ai/
     ├── aiConfig.ts              # Configuração refinada de IA
     ├── index.ts                 # Barrel exports
-    └── promptBuilder.ts         # Construção de prompts para IA
+    ├── promptBuilder.ts         # Construção de prompts para IA
+    └── promptBuilder.test.ts   # Testes do prompt builder
 ```
 
 ### Providers Suportados
@@ -1231,15 +1165,14 @@ src/services/
 ├── authService.ts                     # Autenticação e usuário
 ├── receiptService.ts                  # CRUD de recibos e itens
 ├── dictionaryService.ts               # CRUD de dicionário de produtos
-├── canonicalProductService.ts         # CRUD de produtos canônicos
-├── canonicalProductService.test.ts    # Testes
 ├── storageFallbackService.ts          # Fallback local (IndexedDB/LocalStorage)
 ├── syncService.ts                     # Sincronização e status
 ├── productService.ts                  # Pipeline de normalização
 ├── receiptParser.ts                   # Parse de NFC-e (proxies CORS)
-├── nfceEdgeFetch.ts                   # Edge Fetch para NFC-e (NOVO)
+├── nfceEdgeFetch.ts                   # Edge Fetch para NFC-e
 ├── nfceEdgeFetch.test.ts              # Testes do Edge Fetch
-├── collaborativeShoppingListService.ts # Listas colaborativas (NOVO)
+├── collaborativeShoppingListService.ts # Listas colaborativas
+├── sharedListService.ts               # Listas compartilhadas (legado)
 ├── shoppingListCloudSyncService.ts    # Sync de lista na nuvem
 ├── shoppingListCloudSyncService.test.ts
 ├── auth.ts                            # Auth helper (legado)
@@ -1248,7 +1181,7 @@ src/services/
 
 ### Serviços
 
-#### `nfceEdgeFetch.ts` (NOVO)
+#### `nfceEdgeFetch.ts`
 **Responsabilidade:** Proxy CORS para NFC-e via Cloudflare Workers
 
 **Funções:**
@@ -1256,7 +1189,7 @@ src/services/
 - Utiliza `@bosguega/supabase` para `invoke` da função
 - Retorna HTML parseado da Sefaz
 
-#### `collaborativeShoppingListService.ts` (NOVO)
+#### `collaborativeShoppingListService.ts`
 **Responsabilidade:** CRUD de listas colaborativas com membros e permissões
 
 **Funções:**
@@ -1273,60 +1206,6 @@ src/services/
 - `getCloudSnapshot(userId)` - Snapshot da nuvem
 - `applyCloudSnapshot(data)` - Aplicar snapshot local
 - Sincronização manual, no login e autosync com debounce
-
----
-
-## Sistema de Produtos Canônicos
-
-### Visão Geral
-
-O sistema de produtos canônicos resolve o problema de fragmentação de dados onde o mesmo produto aparece com variações de nome.
-
-### Serviço
-
-**Arquivo:** `src/services/canonicalProductService.ts`
-
-**Funções:**
-- `getCanonicalProducts()` - Lista produtos
-- `getCanonicalProduct(id)` - Busca por ID
-- `createCanonicalProduct(data)` - Cria novo produto
-- `updateCanonicalProduct(id, data)` - Atualiza produto
-- `deleteCanonicalProduct(id)` - Deleta produto (com verificação de segurança)
-- `mergeCanonicalProducts(keepId, removeId)` - Mescla produtos (transfere associações)
-- `clearCanonicalProductsInDB()` - Limpa produtos
-- `associateItemToCanonicalProduct(itemId, canonicalProductId)` - Associa item
-
-### Queries (React Query)
-
-**Arquivo:** `src/hooks/queries/useCanonicalProductsQuery.ts`
-
-**Hooks:**
-- `useCanonicalProductsQuery()` - Listar todos
-- `useCanonicalProductQuery(id)` - Buscar por ID
-- `useCreateCanonicalProduct()` - Mutation de criação
-- `useUpdateCanonicalProduct()` - Mutation de atualização
-- `useDeleteCanonicalProduct()` - Mutation de deleção (com verificação de segurança)
-- `useMergeCanonicalProducts()` - Mutation de merge
-- `useAssociateItemToCanonicalProduct()` - Mutation de associação
-
-### Hooks de UI
-
-**Arquivo:** `src/hooks/canonicalProduct/useCanonicalProductsForm.ts`
-- Schema Zod para criação/edição
-- Estados de formulário (nome, categoria, marca)
-
-**Arquivo:** `src/hooks/canonicalProduct/useCanonicalProductsUI.ts`
-- Diálogo de confirmação para merge/deleção
-- Edição inline com autofocus
-- Tooltip de dependentes
-
-### Componente
-
-**Arquivo:** `src/components/CanonicalProductsTab/index.tsx`
-- Aba de gerenciamento de produtos canônicos
-- Lista com ações (editar, mesclar, deletar)
-- Criação de novo produto
-- Merge de produtos similares
 
 ---
 
@@ -1520,7 +1399,7 @@ export function useErrorHandler() {
 
 ### ScannerTab
 
-**Data da atualização:** 13 de maio de 2026
+**Data da atualização:** 24 de maio de 2026
 
 **Estrutura:**
 ```
@@ -1573,20 +1452,6 @@ src/components/HistoryTab/
 
 **Hooks:**
 - `useHistoryReceipts()` - Orquestra query, filtros e estado
-
-### CanonicalProductsTab (NOVO)
-
-**Arquivo:** `src/components/CanonicalProductsTab/index.tsx`
-
-**Funcionalidades:**
-- Lista de produtos canônicos com ações (editar, mesclar, deletar)
-- Criação de novo produto canônico
-- Merge de produtos similares
-- Tooltip de dependentes (itens associados)
-
-**Hooks:**
-- `useCanonicalProductsForm()` - Schema Zod, estados de formulário
-- `useCanonicalProductsUI()` - Diálogos, edição inline, confirmações
 
 ### ShoppingListTab
 
@@ -1715,17 +1580,21 @@ touchUserData(data)            // Atualiza updatedAt
 hooks/queries/
 ├── index.ts                                    # Barrel exports
 ├── useAllReceiptsQuery.ts                      # Todas as notas
-├── useCanonicalProductsQuery.ts                # CRUD produtos canônicos
 ├── useCollaborativeShoppingListsQuery.ts       # Listas colaborativas
 ├── useDeleteReceiptMutation.ts                 # Delete receipt
 ├── useDictionaryQuery.ts                       # Dicionário
-├── useHistoryReceiptsQuery.ts                  # Histórico de receipts
+├── useFilteredSearchItems.ts                   # Busca filtrada de items
+├── useFilteredSearchItems.test.tsx             # Testes
+├── useHistoryReceipts.ts                       # Histórico paginado
 ├── usePurchaseHistoryQuery.ts                  # Histórico de compras
+├── usePurchaseHistory.test.tsx                 # Testes
 ├── useReceiptsQuery.ts                         # Receipts paginados
 ├── useReceiptsSearchQuery.ts                   # Busca de receipts
 ├── useRestoreReceiptsMutation.ts               # Restaurar backup
 ├── useSaveReceiptMutation.ts                   # Salvar receipt
-└── ...                                         # Demais hooks
+├── useSearchChartData.ts                       # Dados para gráfico
+├── useSearchItems.ts                           # Busca de items
+└── useSortedShoppingItems.test.tsx             # Testes
 ```
 
 ### Query Keys
@@ -1738,13 +1607,6 @@ const receiptKeys = {
   list: (filters: ReceiptFilters) => [...receiptKeys.lists(), filters] as const,
   details: () => [...receiptKeys.all, "detail"] as const,
   detail: (id: string) => [...receiptKeys.details(), id] as const,
-};
-
-const canonicalProductKeys = {
-  all: ["canonicalProducts"] as const,
-  lists: () => [...canonicalProductKeys.all, "list"] as const,
-  details: () => [...canonicalProductKeys.all, "detail"] as const,
-  detail: (id: string) => [...canonicalProductKeys.details(), id] as const,
 };
 ```
 
@@ -1762,7 +1624,7 @@ const deleteReceiptMutation = useDeleteReceipt();
 
 ## Utilitários Centralizados
 
-### search.ts (NOVO)
+### search.ts
 
 **Arquivo:** `src/utils/search.ts`
 
@@ -1774,7 +1636,7 @@ extractAllItems(receipts)                    // Extrai todos os items
 buildChartData(items, query)                 // Prepara dados para gráfico
 ```
 
-### idGenerator.ts (NOVO)
+### idGenerator.ts
 
 **Arquivo:** `src/utils/idGenerator.ts`
 
@@ -1784,7 +1646,7 @@ buildChartData(items, query)                 // Prepara dados para gráfico
 generateId(prefix?)                          // Gera ID único (nanoid-like)
 ```
 
-### shoppingHistoryMatch.ts (NOVO)
+### shoppingHistoryMatch.ts
 
 **Arquivo:** `src/utils/shoppingHistoryMatch.ts`
 
@@ -1795,7 +1657,7 @@ scoreHistoryKeyMatch(itemKey, historyEntryKey)  // Score de similaridade entre t
 matchItemToHistory(items, history)              // Match item → histórico
 ```
 
-### errorCodes.ts + errorMessages.ts + supabaseError.ts (NOVOS)
+### errorCodes.ts + errorMessages.ts + supabaseError.ts
 
 Ver seção [Sistema de Error Handling Unificado](#sistema-de-error-handling-unificado).
 
@@ -1897,15 +1759,18 @@ export default defineConfig({
 | `src/utils/idGenerator.test.ts` | 100% | Geração de IDs |
 | `src/utils/shoppingHistoryMatch.test.ts` | 100% | Match de histórico |
 | `src/utils/shoppingListCloudMerge.test.ts` | 100% | Merge de snapshots |
-| `src/services/canonicalProductService.test.ts` | 100% | CRUD produtos canônicos |
 | `src/services/nfceEdgeFetch.test.ts` | 100% | Edge Fetch NFC-e |
 | `src/services/shoppingListCloudSyncService.test.ts` | 100% | Sync de listas |
 | `src/stores/useShoppingListStore.test.ts` | 100% | Store de lista de compras |
 | `src/hooks/useApiKey.test.ts` | 100% | Hook de API Key |
 | `src/components/InputDialog.test.tsx` | 100% | Input dialog |
 | `src/components/UniversalSearchBar.test.tsx` | 100% | Search bar |
+| `src/hooks/queries/useFilteredSearchItems.test.tsx` | 100% | Busca filtrada |
+| `src/hooks/queries/usePurchaseHistory.test.tsx` | 100% | Histórico de compras |
+| `src/hooks/queries/useSortedShoppingItems.test.tsx` | 100% | Items ordenados |
+| `src/utils/ai/promptBuilder.test.ts` | 100% | Prompt builder |
 
-**Total:** ~90+ testes passando (16+ arquivos de teste)
+**Total:** ~90+ testes passando (19+ arquivos de teste)
 
 ### Comandos
 
@@ -2221,9 +2086,9 @@ import.meta.env.DEV && debugDatabaseConnection();
 
 Estado atual da arquitetura:
 
-- React Query como fonte principal de dados remotos e cache (17 hooks de query);
+- React Query como fonte principal de dados remotos e cache (16 hooks de query);
 - Zustand para estado de UI/sessão/scanner e domínio local-first da lista de compras (store fatorada em types/core/mutations/selectors);
-- Pipeline de processamento de itens com normalização, dicionário e produtos canônicos;
+- Pipeline de processamento de itens com normalização e dicionário;
 - Scanner modular com fluxo idle-first e fechamento explícito;
 - Sincronização opcional de listas locais com nuvem;
 - Listas colaborativas relacionais no Supabase com realtime por item;
@@ -2231,19 +2096,21 @@ Estado atual da arquitetura:
 - Sistema unificado de error handling com códigos, mensagens em pt-BR e parsing de erros Supabase;
 - TailwindCSS como framework CSS utilitário;
 - Store de lista de compras fatorada em múltiplos arquivos (types, core, mutations, selectors, store);
-- 90+ testes automatizados em 16+ arquivos de teste.
+- 90+ testes automatizados em 19+ arquivos de teste;
+- **Sistema de produtos canônicos removido** (migration 002 + código eliminado).
 
 ### Qualidade Técnica Atual
 
 | Métrica | Status atual |
 |---|---|
-| Testes automatizados | **90+ testes passando** (16+ arquivos) |
+| Testes automatizados | **90+ testes passando** (19+ arquivos) |
 | Build de produção | **OK** |
 | Arquitetura de estado | **Consolidada (React Query + Zustand)** |
 | Sync de listas | **Ativo (opcional, com merge estrutural)** |
 | Listas colaborativas | **Ativo (relacional, com papéis)** |
 | Error handling | **Unificado (error codes + mensagens pt-BR)** |
 | NFC-e Fetch | **Edge Functions (Cloudflare Workers)** |
+| Produtos canônicos | **Removido** |
 
 ### Estado Atual por Módulo
 
@@ -2261,7 +2128,7 @@ Estado atual da arquitetura:
 - Fonte em `useAllReceiptsQuery`;
 - Filtros centralizados (`applyReceiptFilters`) por período, busca e ordenação;
 - Paginação visível na UI;
-- Hook `useHistoryReceiptsQuery` dedicado.
+- Hook `useHistoryReceipts` dedicado.
 
 #### 3. Preços (Search)
 
@@ -2276,15 +2143,7 @@ Estado atual da arquitetura:
 - Edição, exclusão, limpeza e aplicação retroativa para itens salvos;
 - Invalidação de cache de receipts após aplicação retroativa.
 
-#### 5. Itens Canônicos
-
-- CRUD e merge por serviço dedicado;
-- Validação de criação/edição por schema (`src/utils/validation/canonicalProduct.ts`);
-- Hooks de UI (`useCanonicalProductsForm`, `useCanonicalProductsUI`);
-- Cobertura de teste para merge de serviço;
-- Tab dedicada (`CanonicalProductsTab`).
-
-#### 6. Listas de Compras
+#### 5. Listas de Compras
 
 - Modelo com múltiplas listas por usuário:
   - `lists`, `activeListId`, `itemsByList`, `updatedAt`;
@@ -2307,13 +2166,13 @@ Estado atual da arquitetura:
   - Atualização em tempo real dos itens compartilhados;
   - Exibição de `checked_by_user_id` para indicar quem marcou o item.
 
-#### 7. Error Handling
+#### 6. Error Handling
 
 - Sistema unificado com `errorCodes.ts`, `errorMessages.ts`, `supabaseError.ts`;
 - Hook `useErrorHandler` para componentes;
 - Logger estruturado (dev only).
 
-#### 8. NFC-e Edge Fetch
+#### 7. NFC-e Edge Fetch
 
 - Proxy CORS via Cloudflare Workers (Supabase Edge Functions);
 - Serviço `nfceEdgeFetch.ts` com testes.
@@ -2323,7 +2182,6 @@ Estado atual da arquitetura:
 - `src/App.tsx`
 - `src/hooks/queries/useReceiptsQuery.ts`
 - `src/hooks/queries/useDictionaryQuery.ts`
-- `src/hooks/queries/useCanonicalProductsQuery.ts`
 - `src/hooks/queries/useCollaborativeShoppingListsQuery.ts`
 - `src/stores/shoppingListStore/`
 - `src/services/collaborativeShoppingListService.ts`
@@ -2339,18 +2197,16 @@ Estado atual da arquitetura:
 - `src/hooks/useReceiptScanner.ts`
 - `src/components/ScannerTab/index.tsx`
 - `src/components/ShoppingListTab.tsx`
-- `src/components/CanonicalProductsTab/index.tsx`
 
 ### Próximas Evoluções Arquiteturais (Pendentes)
 
 1. Agregação diária no gráfico de preços (média/mediana por produto-dia).
 2. Política de merge por item dentro da mesma lista no sync local-cloud.
 3. Perfil público de colaborador (nome/email) para UI de membros.
-4. Governança avançada de catálogo canônico (revisão de auto-criados e prevenção de duplicatas).
-5. Expansão de cobertura de testes para ~120+ testes.
+4. Expansão de cobertura de testes para ~120+ testes.
 
 ---
 
 **My Mercado - Arquitetura Documentada e Atualizada**
 
-*Última atualização: 13 de maio de 2026*
+*Última atualização: 24 de maio de 2026*
