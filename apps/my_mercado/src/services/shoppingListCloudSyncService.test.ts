@@ -43,7 +43,7 @@ function makeSnapshot(partial: Partial<ShoppingListsCloudSnapshot> = {}): Shoppi
         {
           id: "item-1",
           name: "Arroz",
-          normalized_key: "ARROZ",
+          normalized_name: "Arroz",
           checked: false,
           created_at: "2026-04-01T12:00:00.000Z",
         },

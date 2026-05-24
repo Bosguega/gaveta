@@ -30,14 +30,14 @@ export function sanitizeListItem(item: unknown): ShoppingListItem | null {
   const name = toText(raw.name).trim();
   if (!name) return null;
 
-  const normalizedKey =
-    toText(raw.normalized_key).trim() || normalizeKey(name);
+  const normalizedName =
+    toText(raw.normalized_name).trim() || normalizeKey(name);
 
   return {
     ...(raw as ShoppingListItem),
     id: toText(raw.id) || `${Date.now()}_${Math.random().toString(16).slice(2)}`,
     name,
-    normalized_key: normalizedKey,
+    normalized_name: normalizedName,
     quantity: raw.quantity ? toText(raw.quantity).trim() : undefined,
     checked: Boolean(raw.checked),
     created_at: toText(raw.created_at) || new Date().toISOString(),

@@ -13,6 +13,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 function runHook(savedReceipts: Receipt[]) {
   let captured: ReturnType<typeof usePurchaseHistory> = {
     historyByKey: new Map(),
+    historyByName: new Map(),
     suggestions: [],
   };
   const container = document.createElement("div");

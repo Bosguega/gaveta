@@ -34,7 +34,7 @@ describe("shoppingListCloudMerge", () => {
           {
             id: "i-1",
             name: "Arroz",
-            normalized_key: "arroz",
+            normalized_name: "Arroz",
             checked: false,
             created_at: "2026-03-01T00:00:00.000Z",
           },
@@ -56,7 +56,7 @@ describe("shoppingListCloudMerge", () => {
           {
             id: "i-2",
             name: "Banana",
-            normalized_key: "banana",
+            normalized_name: "Banana",
             checked: false,
             created_at: "2026-03-02T00:00:00.000Z",
           },
@@ -85,7 +85,7 @@ describe("shoppingListCloudMerge", () => {
           {
             id: "i-1",
             name: "Macarrao",
-            normalized_key: "macarrao",
+            normalized_name: "Macarrao",
             checked: false,
             created_at: "2026-03-03T00:00:00.000Z",
           },
@@ -107,7 +107,7 @@ describe("shoppingListCloudMerge", () => {
           {
             id: "i-9",
             name: "Cafe",
-            normalized_key: "cafe",
+            normalized_name: "Cafe",
             checked: false,
             created_at: "2026-03-04T00:00:00.000Z",
           },

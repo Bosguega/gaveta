@@ -39,14 +39,14 @@ describe("useSortedShoppingItems", () => {
       {
         id: "1",
         name: "A",
-        normalized_key: "A",
+        normalized_name: "A",
         checked: true,
         created_at: now,
       },
       {
         id: "2",
         name: "B",
-        normalized_key: "B",
+        normalized_name: "B",
         checked: false,
         created_at: now,
       },
@@ -61,14 +61,14 @@ describe("useSortedShoppingItems", () => {
       {
         id: "old",
         name: "Old",
-        normalized_key: "OLD",
+        normalized_name: "OLD",
         checked: false,
         created_at: "2026-01-01T00:00:00.000Z",
       },
       {
         id: "new",
         name: "New",
-        normalized_key: "NEW",
+        normalized_name: "NEW",
         checked: false,
         created_at: "2026-02-01T00:00:00.000Z",
       },
