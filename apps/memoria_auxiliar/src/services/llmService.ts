@@ -1,5 +1,6 @@
-import { createAiClient, getApiKey, getApiModel } from '@bosguega/ai-core';
+import { createAiClient, getApiKey, getApiModel, getAiMode, getAiBaseUrl } from '@bosguega/ai-core';
 import type { SearchResult } from '../types';
+import { logger } from '../utils/logger';
 
 const MAX_NOTE_LENGTH = 5000;
 const MAX_QUESTION_LENGTH = 2000;
@@ -17,11 +18,19 @@ const DANGEROUS_TOKENS = [
 ];
 
 async function createConfiguredClient() {
-  const apiKey = await getApiKey();
-  if (!apiKey) {
-    throw new Error('Configure a chave da API nas Configuracoes.');
+  const mode = await getAiMode();
+
+  if (mode === 'local') {
+    logger.log('LLM', 'Modo local: usando Ollama');
+    return createAiClient();
   }
 
+  const apiKey = await getApiKey();
+  if (!apiKey) {
+    throw new Error('Configure a chave da API nas Configurações.');
+  }
+
+  logger.log('LLM', 'Modo online: usando ' + (apiKey.startsWith('AIza') ? 'Gemini' : 'OpenAI'));
   return createAiClient({
     apiKey,
     model: await getApiModel(),
@@ -87,8 +96,8 @@ export async function generateAnswer(question: string, results: SearchResult[]):
   const sanitizedQuestion = sanitizePromptInput(question, MAX_QUESTION_LENGTH);
   const context = formattedNotes.length
     ? formattedNotes
-        .map((note) => sanitizePromptInput(note, MAX_NOTE_LENGTH))
-        .join('\n')
+      .map((note) => sanitizePromptInput(note, MAX_NOTE_LENGTH))
+      .join('\n')
     : 'Nenhuma nota relevante encontrada.';
 
   const prompt = `Voce e uma memoria auxiliar pessoal.
