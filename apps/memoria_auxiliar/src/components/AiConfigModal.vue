@@ -22,6 +22,7 @@ import {
   initializeAiConfig,
 } from '@bosguega/ai-core';
 import type { AIMode, AIProvider, TestConnectionResult } from '@bosguega/ai-core';
+import { testOllamaEmbedding } from '../services/embeddingService';
 
 type ConnectionStatus = 'idle' | 'checking' | 'connected' | 'error' | 'offline';
 
@@ -66,6 +67,9 @@ const fetchingModels = ref(false);
 const persist = ref(false);
 const loading = ref(true);
 
+const testingEmbedding = ref(false);
+const embeddingConnectionStatus = ref<ConnectionStatus>('idle');
+
 // Computed provider
 const onlineProvider = computed(() => {
   const detected = detectProvider(key.value || null);
@@ -102,6 +106,12 @@ const models = computed(() => {
     all.push(selectedModel.value);
   }
   return all;
+});
+
+const isBgeM3Installed = computed(() => {
+  if (mode.value !== 'local') return true;
+  if (fetchedModels.value.length === 0) return true;
+  return fetchedModels.value.some((name) => name.toLowerCase().includes('bge-m3'));
 });
 
 const canFetchModels = computed(() => mode.value === 'local' || !!key.value.trim());
@@ -184,9 +194,17 @@ async function fetchModels() {
       const names = models.map((m: { id: string }) => m.id);
       fetchedModels.value = names;
       if (!selectedModel.value && names.length > 0) {
-        selectedModel.value = names[0];
+        // Evita auto-selecionar o bge-m3 ou outros modelos de embedding para a LLM
+        const chatModels = names.filter(
+          (name) => !name.toLowerCase().includes('embed') && !name.toLowerCase().includes('bge')
+        );
+        if (chatModels.length > 0) {
+          selectedModel.value = chatModels[0];
+        } else {
+          selectedModel.value = names[0];
+        }
       }
-      connectionStatus.value = 'connected';
+      connectionStatus.value = 'idle';
       return;
     }
 
@@ -242,6 +260,30 @@ async function handleTest() {
     connectionStatus.value = mode.value === 'local' ? 'offline' : 'error';
   } finally {
     testing.value = false;
+  }
+}
+
+async function handleTestEmbedding() {
+  testingEmbedding.value = true;
+  embeddingConnectionStatus.value = 'checking';
+
+  try {
+    const result = await testOllamaEmbedding(baseUrl.value || DEFAULT_AI_BASE_URL);
+    embeddingConnectionStatus.value = result.success ? 'connected' : 'offline';
+    
+    // Se obteve sucesso e não há modelos cacheados, popula a lista silenciosamente
+    if (result.success && fetchedModels.value.length === 0) {
+      try {
+        const models = await ollamaListModels(baseUrl.value || DEFAULT_AI_BASE_URL);
+        fetchedModels.value = models.map((m: { id: string }) => m.id);
+      } catch {
+        // Silencioso
+      }
+    }
+  } catch {
+    embeddingConnectionStatus.value = 'offline';
+  } finally {
+    testingEmbedding.value = false;
   }
 }
 
@@ -317,16 +359,6 @@ function handleClose() {
           <span class="provider-value">{{ providerLabel }}</span>
         </div>
 
-        <!-- URL base (local only) -->
-        <div v-if="mode === 'local'" class="field">
-          <label>URL local:</label>
-          <input
-            v-model="baseUrl"
-            :placeholder="DEFAULT_AI_BASE_URL"
-            @input="connectionStatus = 'idle'"
-          />
-        </div>
-
         <!-- Model selector -->
         <div class="field">
           <div class="model-header">
@@ -377,6 +409,47 @@ function handleClose() {
           <input type="checkbox" v-model="persist" />
           <span>Manter configurações salvas</span>
         </label>
+      </div>
+
+      <!-- Seção dedicada de Embeddings (Ollama bge-m3) -->
+      <div class="config-card embedding-section">
+        <div class="provider-row">
+          <span class="label">Serviço de Embeddings:</span>
+          <span class="provider-value">Ollama (bge-m3)</span>
+        </div>
+
+        <div class="field">
+          <label>URL do Ollama (Embeddings):</label>
+          <div class="input-with-btn">
+            <input
+              v-model="baseUrl"
+              :placeholder="DEFAULT_AI_BASE_URL"
+              @input="embeddingConnectionStatus = 'idle'"
+            />
+            <button
+              type="button"
+              class="btn-test-embed"
+              :class="{
+                'status-success': embeddingConnectionStatus === 'connected',
+                'status-error': embeddingConnectionStatus === 'error' || embeddingConnectionStatus === 'offline',
+              }"
+              :disabled="testingEmbedding"
+              @click="handleTestEmbedding"
+            >
+              <span v-if="testingEmbedding">🔄</span>
+              <span v-else-if="embeddingConnectionStatus === 'connected'">✓ OK</span>
+              <span v-else-if="embeddingConnectionStatus === 'offline' || embeddingConnectionStatus === 'error'">✗ Erro</span>
+              <span v-else>Testar</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Alerta de bge-m3 ausente para busca vetorial local -->
+        <div v-if="!isBgeM3Installed" class="embedding-warning">
+          ⚠️ O modelo de embeddings <strong>bge-m3</strong> não foi detectado no seu Ollama.
+          Execute no seu terminal para que a busca vetorial funcione:
+          <code>ollama pull bge-m3</code>
+        </div>
       </div>
 
       <!-- Actions -->
@@ -726,5 +799,66 @@ function handleClose() {
 
 .btn-primary:hover {
   background: var(--accent-hover);
+}
+
+.embedding-warning {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 0.8rem;
+  color: #f59e0b;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.embedding-warning code {
+  display: block;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 4px 8px;
+  border-radius: 6px;
+  margin-top: 6px;
+  font-family: monospace;
+  color: #fbbf24;
+  font-size: 0.75rem;
+}
+
+.input-with-btn {
+  display: flex;
+  gap: 8px;
+}
+
+.input-with-btn input {
+  flex: 1;
+}
+
+.btn-test-embed {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 16px;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-test-embed:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-test-embed.status-success {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: #10b981;
+  color: #10b981;
+}
+
+.btn-test-embed.status-error {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: var(--error);
+  color: var(--error);
 }
 </style>
