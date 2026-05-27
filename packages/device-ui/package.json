@@ -1,0 +1,11 @@
+{
+    "name": "@bosguega/device-ui",
+    "version": "0.0.1",
+    "private": true,
+    "description": "Troca simples de UI por plataforma (mobile/tablet/desktop)",
+    "scripts": {
+        "build:core": "pnpm --filter @bosguega/device-ui-core build",
+        "build:vue": "pnpm --filter @bosguega/device-ui-vue build",
+        "build": "pnpm build:core && pnpm build:vue"
+    }
+}

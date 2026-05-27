@@ -1,0 +1,14 @@
+{
+    "name": "@bosguega/device-ui-core",
+    "version": "0.1.0",
+    "private": true,
+    "description": "Core state manager for device-ui — agnostic, framework-free",
+    "main": "src/index.ts",
+    "types": "src/index.ts",
+    "scripts": {
+        "build": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "typescript": "^5.7.0"
+    }
+}

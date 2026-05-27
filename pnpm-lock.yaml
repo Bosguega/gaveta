@@ -179,6 +179,27 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  packages/device-ui: {}
+
+  packages/device-ui/packages/core:
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/device-ui/packages/vue:
+    dependencies:
+      '@bosguega/device-ui-core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vue:
+        specifier: ^3.4.0
+        version: 3.5.34(typescript@5.9.3)
+
   packages/eslint-config:
     dependencies:
       '@eslint/js':

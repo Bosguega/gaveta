@@ -1,5 +1,6 @@
 packages:
   - "packages/*"
+  - "packages/device-ui/packages/*"
   - "apps/*"
 allowBuilds:
   esbuild: true
