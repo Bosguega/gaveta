@@ -18,6 +18,7 @@ import { useAllReceiptsQuery } from './hooks/queries/useReceiptsQuery'
 import { isShoppingListCloudSyncEnabled } from './utils/shoppingListCloudSync'
 import { MobileLayout } from './layouts/MobileLayout'
 import { DesktopLayout } from './layouts/DesktopLayout'
+import { DeviceToolbar } from './components/DeviceToolbar'
 import { logPWADebugInfo } from './utils/pwaDebug'
 import { debugDatabaseConnection } from './utils/dbDebug'
 import type { AppTab } from './types/ui'
@@ -25,7 +26,7 @@ import './index.css'
 
 function App() {
   const { sessionUser, setSessionUser, authLoading } = useSupabaseSession()
-  const { mode } = useDeviceUI()
+  const { resolvedMode } = useDeviceUI()
 
   const setSessionUserId = useReceiptsSessionStore((state) => state.setSessionUserId)
   const setError = useReceiptsSessionStore((state) => state.setError)
@@ -216,7 +217,7 @@ function App() {
   }
 
   // ── App principal ──
-  const isDesktop = mode === 'desktop' || mode === 'tablet'
+  const isDesktop = resolvedMode === 'desktop' || resolvedMode === 'tablet'
 
   return (
     <>
@@ -263,6 +264,7 @@ function App() {
       />
 
       <PerformancePanel />
+      <DeviceToolbar />
     </>
   )
 }
