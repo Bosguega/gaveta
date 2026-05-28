@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@bosguega/ai-core": "workspace:*",
+    "@bosguega/device-ui-core": "workspace:*",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-shell": "^2.3.5",
     "vue": "^3.5.0"

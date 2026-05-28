@@ -32,6 +32,9 @@ importers:
       '@bosguega/ai-core':
         specifier: workspace:*
         version: link:../../packages/ai-core
+      '@bosguega/device-ui-core':
+        specifier: workspace:*
+        version: link:../../packages/device-ui
       '@tauri-apps/api':
         specifier: ^2.0.0
         version: 2.11.0
