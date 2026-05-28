@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@bosguega/ai-core": "workspace:*",
+    "@bosguega/device-ui-core": "workspace:*",
     "@bosguega/supabase": "workspace:*",
     "@supabase/supabase-js": "^2.99.3",
     "@tanstack/react-query": "^5.95.2",

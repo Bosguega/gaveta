@@ -1,0 +1,75 @@
+/* ========================================
+   Desktop Layout — sidebar + content
+   ======================================== */
+
+.desktop-layout {
+    display: flex;
+    min-height: 100vh;
+    background: var(--bg-primary);
+}
+
+.desktop-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    background: rgba(15, 23, 42, 0.95);
+    border-right: 1px solid var(--card-border);
+    padding: var(--space-5);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+}
+
+.desktop-sidebar-header h1 {
+    font-size: 1.4rem;
+    font-weight: var(--weight-bold);
+    letter-spacing: -1px;
+    background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.1rem;
+}
+
+.desktop-sidebar-header p {
+    color: var(--text-tertiary);
+    font-size: 0.8rem;
+}
+
+.desktop-nav {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.desktop-nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: all var(--duration-normal) var(--ease-out);
+    font-size: 0.9rem;
+    text-align: left;
+    width: 100%;
+}
+
+.desktop-nav-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #e2e8f0;
+}
+
+.desktop-nav-item.active {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--primary);
+}
+
+.desktop-content {
+    flex: 1;
+    padding: var(--space-5) var(--space-6);
+    overflow-y: auto;
+    max-width: 1000px;
+}

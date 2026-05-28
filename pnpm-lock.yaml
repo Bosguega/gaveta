@@ -66,6 +66,9 @@ importers:
       '@bosguega/ai-core':
         specifier: workspace:*
         version: link:../../packages/ai-core
+      '@bosguega/device-ui-core':
+        specifier: workspace:*
+        version: link:../../packages/device-ui
       '@bosguega/supabase':
         specifier: workspace:*
         version: link:../../packages/supabase
