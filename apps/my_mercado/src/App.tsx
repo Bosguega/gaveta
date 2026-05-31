@@ -195,7 +195,7 @@ function App() {
             <ol style={{ paddingLeft: '1.25rem', margin: 0 }}>
               <li>GitHub → Settings → Secrets and variables → Actions → New repository secret</li>
               <li>Crie <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_ANON_KEY</code></li>
-              <li>Vá em Actions e aguarde o workflow "Deploy to GitHub Pages" rodar novamente</li>
+              <li>Vá em Actions e aguarde o workflow &ldquo;Deploy to GitHub Pages&rdquo; rodar novamente</li>
               <li>Depois, limpe o cache do site (Application → Clear storage) se ainda ficar em branco</li>
             </ol>
           </div>

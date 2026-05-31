@@ -100,7 +100,7 @@ export function ShareListModal({
             const updated = await getSharedListsByOwner(ownerId);
             setSharedLists(updated);
             notify.success("Lista compartilhada com sucesso!");
-        } catch (err) {
+        } catch (_err) {
             notify.error("Erro ao compartilhar lista.");
         } finally {
             setPublishing(false);
@@ -117,7 +117,7 @@ export function ShareListModal({
             const updated = await getSharedListsByOwner(ownerId);
             setSharedLists(updated);
             notify.success("Compartilhamento removido.");
-        } catch (err) {
+        } catch (_err) {
             notify.error("Erro ao remover compartilhamento.");
         } finally {
             setUnpublishing(false);
@@ -130,7 +130,7 @@ export function ShareListModal({
         try {
             await updateSharedListItems(code, ownerId, enrichItemsForPublish());
             notify.success("Lista compartilhada atualizada!");
-        } catch (err) {
+        } catch (_err) {
             notify.error("Erro ao atualizar lista compartilhada.");
         } finally {
             setUpdating(false);
