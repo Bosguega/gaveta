@@ -2,7 +2,8 @@
     "name": "gaveta-workspace",
     "private": true,
     "scripts": {
-        "dev": "pnpm --filter @bosguega/ai-core build && pnpm --filter app-teste dev"
+        "dev": "pnpm --filter @bosguega/ai-core build && pnpm --filter app-teste dev",
+        "ci:local": "pnpm --filter @bosguega/ai-core build && pnpm --filter my_mercado typecheck && pnpm --filter my_mercado lint && pnpm --filter my_mercado test:run"
     },
     "pnpm": {
         "onlyBuiltDependencies": [
