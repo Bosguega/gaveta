@@ -1,6 +1,6 @@
 import type { DeviceMode, DeviceStore, DeviceStoreOptions } from './types'
 
-const DEFAULT_STORAGE_KEY = '@bosguega/device-ui:mode'
+const DEFAULT_STORAGE_KEY = '@bosguega/device-mode:mode'
 
 function load(key: string, fallback: DeviceMode): DeviceMode {
     try {

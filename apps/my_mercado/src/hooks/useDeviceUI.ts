@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { createDeviceStore } from '@bosguega/device-ui-core'
-import type { DeviceMode } from '@bosguega/device-ui-core'
+import { createDeviceStore } from '@bosguega/device-mode-core'
+import type { DeviceMode } from '@bosguega/device-mode-core'
 
-const store = createDeviceStore()
+const store = createDeviceStore({ storageKey: '@my-mercado/device-mode' })
 
 function resolveAutoMode(): boolean {
     return window.matchMedia('(min-width: 768px)').matches

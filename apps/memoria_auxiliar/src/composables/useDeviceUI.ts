@@ -1,8 +1,8 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { createDeviceStore } from '@bosguega/device-ui-core'
-import type { DeviceMode } from '@bosguega/device-ui-core'
+import { createDeviceStore } from '@bosguega/device-mode-core'
+import type { DeviceMode } from '@bosguega/device-mode-core'
 
-const store = createDeviceStore()
+const store = createDeviceStore({ storageKey: '@memoria-auxiliar/device-mode' })
 
 export function useDeviceUI() {
     const mode = ref<DeviceMode>(store.getMode())
@@ -14,7 +14,7 @@ export function useDeviceUI() {
 
     onMounted(() => {
         // Escuta mudanças no store (modo manual via toolbar)
-        unsub = store.subscribe((m) => {
+        unsub = store.subscribe((m: DeviceMode) => {
             mode.value = m
         })
 

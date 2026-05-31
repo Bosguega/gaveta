@@ -1,6 +1,6 @@
-# @bosguega/device-ui-core
+# @bosguega/device-mode-core
 
-**device-ui não é uma solução de responsividade.**
+**device-mode-core não é uma solução de responsividade.**
 
 É um state manager minimalista que permite ter **layouts diferentes por plataforma** (mobile/tablet/desktop) enquanto compartilha a lógica do app.
 
@@ -23,14 +23,14 @@ O core só responde a uma pergunta: **"Qual modo foi escolhido?"**
 ## Instalação
 
 ```bash
-pnpm add @bosguega/device-ui-core
+pnpm add @bosguega/device-mode-core
 ```
 
 ## API
 
 ```ts
-import { createDeviceStore } from '@bosguega/device-ui-core'
-import type { DeviceMode } from '@bosguega/device-ui-core'
+import { createDeviceStore } from '@bosguega/device-mode-core'
+import type { DeviceMode } from '@bosguega/device-mode-core'
 
 const store = createDeviceStore()
 
@@ -50,10 +50,12 @@ O modo `'auto'` é apenas um valor — o core não o interpreta. Quem define o q
 
 ```ts
 createDeviceStore({
-  defaultMode: 'desktop',     // padrão: 'auto'
-  storageKey: 'meu-app:mode', // padrão: '@bosguega/device-ui:mode'
+  defaultMode: 'desktop',              // padrão: 'auto'
+  storageKey: '@meu-app/device-mode',  // padrão: '@bosguega/device-mode:mode'
 })
 ```
+
+> **⚠️ Colisão de localStorage:** Se múltiplos apps rodam no mesmo domínio (ex: subpaths do GitHub Pages), todos compartilham o mesmo `localStorage`. Sempre defina um `storageKey` único por app para evitar que um sobrescreva o modo do outro.
 
 ---
 
@@ -63,10 +65,10 @@ Crie um hook de ~15 linhas no seu projeto:
 
 ```tsx
 // hooks/useDeviceUI.ts
-import { createDeviceStore } from '@bosguega/device-ui-core'
+import { createDeviceStore } from '@bosguega/device-mode-core'
 import { useState, useEffect } from 'react'
 
-const store = createDeviceStore()
+const store = createDeviceStore({ storageKey: '@meu-app/device-mode' })
 
 export function useDeviceUI() {
   const [mode, setMode] = useState(store.getMode())
@@ -145,10 +147,10 @@ function DeviceFrame({ widths = { mobile: 375, tablet: 768 }, children }) {
 
 ```ts
 // composables/useDeviceUI.ts
-import { createDeviceStore } from '@bosguega/device-ui-core'
+import { createDeviceStore } from '@bosguega/device-mode-core'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 
-const store = createDeviceStore()
+const store = createDeviceStore({ storageKey: '@meu-app/device-mode' })
 
 export function useDeviceUI() {
   const mode = ref(store.getMode())
@@ -205,7 +207,7 @@ O package faz uma coisa só. E faz pequena.
 
 ```bash
 pnpm install
-pnpm --filter @bosguega/device-ui-core build
+pnpm --filter @bosguega/device-mode-core build
 ```
 
 ## Licença
