@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react'
+import { Suspense } from 'react'
 import {
     Scan,
     History as HistoryIcon,
@@ -8,32 +8,7 @@ import {
 } from 'lucide-react'
 import type { AppTab } from '../types/ui'
 import { TabSkeleton } from '../components/Skeleton'
-
-const LAZY_RELOAD_KEY = '@MyMercado:lazy-reload-once'
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function lazyWithRetry<T extends { default: React.ComponentType<any> }>(
-    importer: () => Promise<T>,
-) {
-    return lazy(async () => {
-        try {
-            const module = await importer()
-            try {
-                sessionStorage.removeItem(LAZY_RELOAD_KEY)
-            } catch { /* noop */ }
-            return module
-        } catch (error) {
-            try {
-                const alreadyReloaded = sessionStorage.getItem(LAZY_RELOAD_KEY) === '1'
-                if (!alreadyReloaded) {
-                    sessionStorage.setItem(LAZY_RELOAD_KEY, '1')
-                    window.location.reload()
-                }
-            } catch { /* noop */ }
-            throw error
-        }
-    })
-}
+import { lazyWithRetry } from '../utils/lazyWithRetry'
 
 const ScannerTab = lazyWithRetry(() => import('../components/ScannerTab'))
 const ShoppingListTab = lazyWithRetry(() => import('../components/ShoppingListTab'))

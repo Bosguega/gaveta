@@ -1,12 +1,19 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { createDeviceStore } from '@bosguega/device-mode-core'
-import type { DeviceMode } from '@bosguega/device-mode-core'
+import {
+    createDeviceStore,
+    DEVICE_DESKTOP_MEDIA_QUERY,
+    resolveDeviceMode,
+    deriveDeviceFlags,
+    type DeviceMode,
+} from '@bosguega/device-mode-core'
 
 const store = createDeviceStore({ storageKey: '@memoria-auxiliar/device-mode' })
 
 export function useDeviceUI() {
     const mode = ref<DeviceMode>(store.getMode())
-    const isDesktopViewport = ref(window.matchMedia('(min-width: 768px)').matches)
+    const isDesktopViewport = ref(
+        window.matchMedia(DEVICE_DESKTOP_MEDIA_QUERY).matches,
+    )
 
     let unsub: (() => void) | null = null
     let mq: MediaQueryList | null = null
@@ -19,7 +26,7 @@ export function useDeviceUI() {
         })
 
         // Escuta mudanças no viewport real (para resolver 'auto')
-        mq = window.matchMedia('(min-width: 768px)')
+        mq = window.matchMedia(DEVICE_DESKTOP_MEDIA_QUERY)
         mqHandler = (e: MediaQueryListEvent) => {
             isDesktopViewport.value = e.matches
         }
@@ -33,23 +40,23 @@ export function useDeviceUI() {
         }
     })
 
-    const resolvedMode = computed<DeviceMode>(() => {
-        return mode.value === 'auto'
-            ? (isDesktopViewport.value ? 'desktop' : 'mobile')
-            : mode.value
-    })
+    const resolvedMode = computed<DeviceMode>(() =>
+        resolveDeviceMode(mode.value, isDesktopViewport.value),
+    )
 
-    const setMode = (m: DeviceMode) => store.setMode(m)
+    const flags = computed(() =>
+        deriveDeviceFlags(mode.value, resolvedMode.value),
+    )
 
     return {
         /** Valor bruto do store (auto | mobile | tablet | desktop) */
         mode,
         /** Valor resolvido: nunca é 'auto'. Se mode === 'auto', usa matchMedia */
         resolvedMode,
-        setMode,
-        isMobile: computed(() => resolvedMode.value === 'mobile'),
-        isTablet: computed(() => resolvedMode.value === 'tablet'),
-        isDesktop: computed(() => resolvedMode.value === 'desktop' || resolvedMode.value === 'tablet'),
-        isAuto: computed(() => mode.value === 'auto'),
+        setMode: (m: DeviceMode) => store.setMode(m),
+        isMobile: computed(() => flags.value.isMobile),
+        isTablet: computed(() => flags.value.isTablet),
+        isDesktop: computed(() => flags.value.isDesktop),
+        isAuto: computed(() => flags.value.isAuto),
     }
 }

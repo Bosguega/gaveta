@@ -48,15 +48,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import { notesStore } from '../store/notesStore'
+import { useErrorIcon } from '../composables/useErrorIcon'
 
-const errorIcon = computed(() => {
-    const code = notesStore.error?.code
-    if (code === 'INVALID_API_KEY') return '🔑'
-    if (code === 'RATE_LIMIT_EXCEEDED') return '⏳'
-    if (code === 'NETWORK_ERROR' || code === 'TIMEOUT') return '🌐'
-    if (code === 'SERVICE_UNAVAILABLE' || code === 'SERVER_ERROR') return '🔧'
-    return '⚠️'
-})
+const errorIcon = useErrorIcon(notesStore.error?.code)
 </script>
