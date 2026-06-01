@@ -66,6 +66,15 @@ export * from './hash'
 // Parsing
 export * from './parsing'
 
+// Models (domain rules — no UI)
+export {
+    ONLINE_DEFAULT_MODELS,
+    DEFAULT_MODEL_BY_PROVIDER,
+    mergeModelOptions,
+    isModelProviderMismatch,
+} from './models'
+export type { OnlineProvider } from './models'
+
 // Errors
 export {
     AiApiError,

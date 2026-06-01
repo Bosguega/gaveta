@@ -18,29 +18,17 @@ import {
   ollamaListModels,
   createAiClient,
   DEFAULT_AI_BASE_URL,
+  DEFAULT_MODEL_BY_PROVIDER,
+  ONLINE_DEFAULT_MODELS,
   invalidateAiConfigCache,
   initializeAiConfig,
+  isModelProviderMismatch,
+  mergeModelOptions,
 } from '@bosguega/ai-core';
 import type { AIMode, AIProvider, TestConnectionResult } from '@bosguega/ai-core';
 import { testOllamaEmbedding } from '../services/embeddingService';
 
 type ConnectionStatus = 'idle' | 'checking' | 'connected' | 'error' | 'offline';
-
-const ONLINE_DEFAULT_MODELS: Record<string, string[]> = {
-  gemini: [
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-lite',
-    'gemini-1.5-pro',
-    'gemini-1.0-pro',
-  ],
-  openai: ['gpt-3.5-turbo', 'gpt-4o-mini', 'gpt-4o'],
-};
-
-const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
-  gemini: 'gemini-1.5-flash-lite',
-  openai: 'gpt-4o-mini',
-  ollama: '',
-};
 
 const CONNECTION_LABELS: Record<ConnectionStatus, string> = {
   idle: 'Testar conexão',
@@ -101,11 +89,7 @@ const models = computed(() => {
       : effectiveProvider.value === 'gemini' || effectiveProvider.value === 'openai'
         ? ONLINE_DEFAULT_MODELS[effectiveProvider.value] ?? []
         : [];
-  const all = Array.from(new Set([...hardcoded, ...fetchedModels.value]));
-  if (selectedModel.value && !all.includes(selectedModel.value)) {
-    all.push(selectedModel.value);
-  }
-  return all;
+  return mergeModelOptions(hardcoded, fetchedModels.value, selectedModel.value);
 });
 
 const isBgeM3Installed = computed(() => {
@@ -162,13 +146,7 @@ watch(
       return;
     }
 
-    const isGoogle = selectedModel.value.startsWith('gemini-');
-    const isOpenAI = selectedModel.value.startsWith('gpt-');
-    const changed =
-      (effectiveProvider.value === 'gemini' && isOpenAI) ||
-      (effectiveProvider.value === 'openai' && isGoogle);
-
-    if (changed) {
+    if (isModelProviderMismatch(selectedModel.value, effectiveProvider.value)) {
       selectedModel.value = providerDefaultModel.value;
     }
   },

@@ -12,8 +12,12 @@ import {
 } from "lucide-react";
 import {
   DEFAULT_AI_BASE_URL,
+  DEFAULT_MODEL_BY_PROVIDER,
+  ONLINE_DEFAULT_MODELS,
   detectProvider as detectCoreProvider,
+  isModelProviderMismatch,
   listModels as listGeminiModels,
+  mergeModelOptions,
   ollamaListModels,
   type AIProvider,
   type AIMode,
@@ -24,22 +28,6 @@ import { testAiConnection, type AiConnectionStatus } from "../utils/ai";
 import { validateApiKey } from "../utils/validation";
 import { logger } from "../utils/logger";
 import type { ApiKeyModalProps } from "../types/ui";
-
-const ONLINE_DEFAULT_MODELS: Record<"gemini" | "openai", string[]> = {
-  gemini: [
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-lite",
-    "gemini-1.5-pro",
-    "gemini-1.0-pro",
-  ],
-  openai: ["gpt-3.5-turbo", "gpt-4o-mini", "gpt-4o"],
-};
-
-const DEFAULT_MODEL_BY_PROVIDER: Record<AIProvider, string> = {
-  gemini: "gemini-1.5-flash-lite",
-  openai: "gpt-4o-mini",
-  ollama: "",
-};
 
 const CONNECTION_LABELS: Record<AiConnectionStatus, string> = {
   idle: "Testar conexao",
@@ -107,11 +95,7 @@ export default function ApiKeyModal({
         ? ONLINE_DEFAULT_MODELS[effectiveProvider]
         : [];
 
-    const all = Array.from(new Set([...hardcoded, ...fetchedModels]));
-    if (selectedModel && !all.includes(selectedModel)) {
-      all.push(selectedModel);
-    }
-    return all;
+    return mergeModelOptions(hardcoded, fetchedModels, selectedModel);
   }, [effectiveProvider, fetchedModels, mode, selectedModel]);
 
   useEffect(() => {
@@ -127,13 +111,7 @@ export default function ApiKeyModal({
       return;
     }
 
-    const isGoogleModel = selectedModel.startsWith("gemini-");
-    const isOpenAIModel = selectedModel.startsWith("gpt-");
-    const providerChanged =
-      (effectiveProvider === "gemini" && isOpenAIModel) ||
-      (effectiveProvider === "openai" && isGoogleModel);
-
-    if (providerChanged) {
+    if (isModelProviderMismatch(selectedModel, effectiveProvider)) {
       setSelectedModel(providerDefaultModel);
     }
   }, [effectiveProvider, fetchedModels, mode, providerDefaultModel, selectedModel]);
