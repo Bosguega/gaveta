@@ -1,4 +1,4 @@
-import { History, Download, Upload, Save } from "lucide-react";
+import { History, Download, Upload, Save, BarChart3 } from "lucide-react";
 import type { HeaderSectionProps } from "./HistoryTab.types";
 
 export function HeaderSection({
@@ -9,6 +9,7 @@ export function HeaderSection({
   onBackup,
   onRestore,
   onExportCSV,
+  onOpenAnalysis,
 }: HeaderSectionProps) {
   return (
     <div className="flex justify-between items-start mb-5 gap-4">
@@ -22,6 +23,17 @@ export function HeaderSection({
         </div>
       </div>
       <div className="flex gap-2">
+        {onOpenAnalysis && (
+          <button
+            onClick={onOpenAnalysis}
+            className="btn px-3 py-2 bg-violet-500/10 border-none text-violet-400 rounded-lg flex items-center gap-1.5"
+            title="Análises"
+          >
+            <BarChart3 size={18} />
+            <span className="text-xs font-medium hidden sm:inline">Análises</span>
+          </button>
+        )}
+
         <button
           onClick={onRefresh}
           className="btn p-2 bg-slate-400/10 border-none text-slate-400 rounded-lg"

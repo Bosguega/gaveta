@@ -1,4 +1,4 @@
-import { useMemo, type ChangeEvent } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import { notify } from "../../utils/notifications";
 import { logger } from "../../utils/logger";
 import { parseBRL } from "../../utils/currency";
@@ -18,6 +18,7 @@ import { useConfirmDialog } from "../../hooks/useConfirmDialog";
 import type { Receipt } from "../../types/domain";
 import type { HistoryFilters } from "../../types/ui";
 import { parseBackupJson } from "../../utils/validation/backupSchema";
+import { AnalysisTab } from "../AnalysisTab/AnalysisTab";
 
 // =========================
 // CONSTANTES
@@ -30,6 +31,8 @@ const SORT_OPTIONS = [
 ];
 
 function HistoryTab() {
+  const [showAnalysis, setShowAnalysis] = useState(false);
+
   // Hook unificado para filtros e dados de receipts
   const {
     receipts: savedReceipts,
@@ -49,6 +52,9 @@ function HistoryTab() {
   const deleteReceiptMutation = useDeleteReceipt();
   const restoreReceiptsMutation = useRestoreReceipts();
 
+  // Voltar para o histórico
+  const handleCloseAnalysis = () => setShowAnalysis(false);
+
   // Estados do diálogo de confirmação
   const { dialog, isOpen, busy, open, close, run } = useConfirmDialog();
 
@@ -65,6 +71,12 @@ function HistoryTab() {
   // Handlers de backup
   const handleBackupJSON = () => backupToJSON(savedReceipts);
   const handleExportCSV = () => exportToCSV(filteredItems);
+
+  // Se estiver na tela de análises, mostrar apenas ela
+  // (após todos os hooks para evitar "Rendered fewer hooks than expected")
+  if (showAnalysis) {
+    return <AnalysisTab onClose={handleCloseAnalysis} />;
+  }
 
   const handleRestoreJSON = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -156,6 +168,7 @@ function HistoryTab() {
         onBackup={handleBackupJSON}
         onRestore={handleRestoreJSON}
         onExportCSV={handleExportCSV}
+        onOpenAnalysis={() => setShowAnalysis(true)}
       />
 
       {isEmpty && !loading ? (

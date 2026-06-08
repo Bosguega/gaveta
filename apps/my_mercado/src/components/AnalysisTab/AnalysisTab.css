@@ -1,0 +1,436 @@
+/* ========================================
+   Analysis Tab — Cards de Análises
+   ======================================== */
+
+.analysis-container {
+    padding: var(--space-4) 0;
+}
+
+.analysis-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-6);
+}
+
+.analysis-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.analysis-header-left h2 {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 1.25rem;
+    margin: 0;
+}
+
+.analysis-back-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--card-border);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.analysis-back-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+/* Grid de cards */
+.analysis-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-4);
+}
+
+.analysis-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: var(--space-5);
+    transition: border-color 0.2s;
+}
+
+.analysis-card:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.analysis-card-full {
+    grid-column: 1 / -1;
+}
+
+.analysis-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-4);
+}
+
+.analysis-card-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 0.9rem;
+    font-weight: var(--weight-semibold);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.analysis-card-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/* Card 1 — Resumo Mensal */
+.summary-month {
+    font-size: 2rem;
+    font-weight: var(--weight-bold);
+    color: var(--text-primary);
+    line-height: 1.1;
+    margin-bottom: var(--space-1);
+}
+
+.summary-period {
+    font-size: 0.85rem;
+    color: var(--text-tertiary);
+    margin-bottom: var(--space-4);
+}
+
+.summary-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3);
+}
+
+.summary-stat {
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 10px;
+    padding: var(--space-3);
+}
+
+.summary-stat-label {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    margin-bottom: var(--space-1);
+}
+
+.summary-stat-value {
+    font-size: 1.15rem;
+    font-weight: var(--weight-bold);
+    color: var(--text-primary);
+}
+
+.summary-stat-sub {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+}
+
+/* Card 2 — Categorias */
+.category-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+}
+
+.category-item+.category-item {
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.category-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.category-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.category-name {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    margin-bottom: var(--space-1);
+}
+
+.category-bar {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.category-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.6s ease;
+}
+
+.category-amount {
+    font-size: 0.85rem;
+    font-weight: var(--weight-semibold);
+    color: var(--text-primary);
+    text-align: right;
+    white-space: nowrap;
+}
+
+.category-percent {
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    text-align: right;
+}
+
+/* Card 3 — Produtos Mais Comprados */
+.product-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+}
+
+.product-item+.product-item {
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.product-rank {
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: var(--weight-bold);
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+}
+
+.product-rank.top-1 {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+}
+
+.product-rank.top-2 {
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+}
+
+.product-rank.top-3 {
+    background: rgba(180, 83, 9, 0.15);
+    color: #b45309;
+}
+
+.product-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.product-name {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.product-qty {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+}
+
+.product-total {
+    font-size: 0.85rem;
+    font-weight: var(--weight-semibold);
+    color: var(--text-primary);
+    text-align: right;
+}
+
+/* Card 4 — Evolução de Preços */
+.price-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-2);
+    height: 140px;
+    padding: var(--space-2) 0;
+}
+
+.price-bar-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    justify-content: flex-end;
+}
+
+.price-bar {
+    width: 100%;
+    max-width: 40px;
+    border-radius: 6px 6px 0 0;
+    min-height: 8px;
+    transition: height 0.6s ease;
+    position: relative;
+}
+
+.price-bar-label {
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    margin-top: var(--space-1);
+    text-align: center;
+    white-space: nowrap;
+}
+
+.price-bar-value {
+    font-size: 0.6rem;
+    color: var(--text-tertiary);
+    margin-bottom: 2px;
+    text-align: center;
+}
+
+/* Responsivo */
+@media (max-width: 640px) {
+    .analysis-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Seletor de mês */
+.analysis-month-selector {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
+}
+
+.analysis-month-selector label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    font-weight: var(--weight-semibold);
+}
+
+.month-select {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 0.5rem 2rem 0.5rem 0.75rem;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    min-width: 160px;
+}
+
+.month-select:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+/* Loading / Empty states */
+.analysis-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+    color: var(--text-tertiary);
+    font-size: 0.9rem;
+}
+
+.analysis-empty {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 80px;
+    color: var(--text-tertiary);
+    font-size: 0.85rem;
+}
+
+/* Nome do produto no card de evolução de preços */
+.price-evolution-product {
+    font-size: 0.9rem;
+    font-weight: var(--weight-semibold);
+    color: var(--text-primary);
+    margin-bottom: var(--space-1);
+}
+
+/* Scroll na lista de produtos */
+.products-scroll {
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.products-scroll::-webkit-scrollbar {
+    width: 4px;
+}
+
+.products-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.products-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+}
+
+/* Total geral no card de evolução de gastos */
+.total-evolution-summary {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.total-evolution-summary .label {
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+}
+
+.total-evolution-summary .value {
+    font-size: 1.1rem;
+    font-weight: var(--weight-bold);
+    color: var(--text-primary);
+}
+
+/* Utilitário de cor para cards */
+.text-primary-green {
+    color: #10b981;
+}
+
+.text-primary-blue {
+    color: #3b82f6;
+}
+
+.text-primary-purple {
+    color: #8b5cf6;
+}
+
+.text-primary-orange {
+    color: #f59e0b;
+}
+
+.text-primary-red {
+    color: #ef4444;
+}

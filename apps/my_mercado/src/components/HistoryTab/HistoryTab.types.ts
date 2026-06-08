@@ -44,6 +44,7 @@ export interface HeaderSectionProps {
   onBackup: () => void;
   onRestore: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onExportCSV: () => void;
+  onOpenAnalysis?: () => void;
 }
 
 export interface SummaryCardProps {
