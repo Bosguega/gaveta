@@ -1,17 +1,10 @@
+import type { ChangeEvent } from "react";
 import type { Receipt } from "../../types/domain";
-
-// =========================
-// FILTER RESULTS
-// =========================
 
 export interface FilteredReceipts {
   items: Receipt[];
   totalCount: number;
 }
-
-// =========================
-// CONFIRM DIALOG
-// =========================
 
 export interface ConfirmDialogState {
   title: string;
@@ -32,17 +25,13 @@ export interface UseConfirmDialogReturn {
   run: () => Promise<void>;
 }
 
-// =========================
-// COMPONENT PROPS
-// =========================
-
 export interface HeaderSectionProps {
   totalCount: number;
   filteredCount: number;
   isLoading: boolean;
   onRefresh: () => void;
   onBackup: () => void;
-  onRestore: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onRestore: (event: ChangeEvent<HTMLInputElement>) => void;
   onExportCSV: () => void;
   onOpenAnalysis?: () => void;
 }
@@ -52,9 +41,7 @@ export interface SummaryCardProps {
   filteredCount: number;
 }
 
-export interface EmptyStateProps {
-  onRestore: () => void;
-}
+export type EmptyStateProps = Record<string, never>;
 
 export interface ReceiptListProps {
   receipts: Receipt[];
@@ -65,10 +52,6 @@ export interface ReceiptListProps {
   isEmpty: boolean;
   hasNoResults: boolean;
 }
-
-// =========================
-// SORT OPTIONS
-// =========================
 
 export type SortByOption = "date" | "value" | "store";
 
@@ -82,10 +65,6 @@ export const SORT_OPTIONS: SortOption[] = [
   { value: "value", label: "Valor" },
   { value: "store", label: "Mercado" },
 ];
-
-// =========================
-// PERIOD OPTIONS
-// =========================
 
 export type PeriodOption = "all" | "this-month" | "last-3-months" | "custom";
 

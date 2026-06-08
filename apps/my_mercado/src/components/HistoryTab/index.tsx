@@ -20,10 +20,6 @@ import type { HistoryFilters } from "../../types/ui";
 import { parseBackupJson } from "../../utils/validation/backupSchema";
 import { AnalysisTab } from "../AnalysisTab/AnalysisTab";
 
-// =========================
-// CONSTANTES
-// =========================
-
 const SORT_OPTIONS = [
   { value: "date", label: "Data" },
   { value: "value", label: "Valor" },
@@ -33,7 +29,6 @@ const SORT_OPTIONS = [
 function HistoryTab() {
   const [showAnalysis, setShowAnalysis] = useState(false);
 
-  // Hook unificado para filtros e dados de receipts
   const {
     receipts: savedReceipts,
     items: visibleItems,
@@ -52,30 +47,34 @@ function HistoryTab() {
   const deleteReceiptMutation = useDeleteReceipt();
   const restoreReceiptsMutation = useRestoreReceipts();
 
-  // Voltar para o histórico
   const handleCloseAnalysis = () => setShowAnalysis(false);
 
-  // Estados do diálogo de confirmação
   const { dialog, isOpen, busy, open, close, run } = useConfirmDialog();
 
-  // Store de UI (apenas expandedReceipts)
   const expandedReceipts = useUiStore((state) => state.expandedReceipts);
   const setExpandedReceipts = useUiStore((state) => state.setExpandedReceipts);
 
-  // Calcular total gasto
   const totalSpent = useMemo(
     () => calculateTotalSpent(filteredItems, parseBRL),
     [filteredItems]
   );
 
-  // Handlers de backup
   const handleBackupJSON = () => backupToJSON(savedReceipts);
   const handleExportCSV = () => exportToCSV(filteredItems);
 
-  // Se estiver na tela de análises, mostrar apenas ela
-  // (após todos os hooks para evitar "Rendered fewer hooks than expected")
   if (showAnalysis) {
-    return <AnalysisTab onClose={handleCloseAnalysis} />;
+    const scopeLabel =
+      totalCount === savedReceipts.length
+        ? "Todas as notas do histórico"
+        : `${totalCount} de ${savedReceipts.length} notas filtradas`;
+
+    return (
+      <AnalysisTab
+        onClose={handleCloseAnalysis}
+        receipts={filteredItems}
+        scopeLabel={scopeLabel}
+      />
+    );
   }
 
   const handleRestoreJSON = (event: ChangeEvent<HTMLInputElement>) => {
@@ -202,7 +201,6 @@ function HistoryTab() {
             }
           />
 
-          {/* Date Pickers para Período Personalizado */}
           <PeriodDatePickers
             filters={historyFilters}
             onChange={setHistoryFilters}

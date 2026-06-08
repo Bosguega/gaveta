@@ -1,14 +1,13 @@
 import { useMemo } from 'react'
 import { useAllReceiptsQuery } from './queries/useReceiptsQuery'
 import type { Receipt, ReceiptItem } from '../types/domain'
-
-// =========================
-// Tipos de retorno
-// =========================
+import { parseBRL } from '../utils/currency'
+import { calculateItemTotal } from '../utils/analytics'
 
 export interface MonthlySummary {
     totalSpent: number
     totalItems: number
+    totalProductLines: number
     totalReceipts: number
     avgTicket: number
     periodLabel: string
@@ -52,10 +51,6 @@ export interface AnalysisData {
     priceEvolutionProduct: string | null
 }
 
-// =========================
-// Cores para categorias
-// =========================
-
 const CATEGORY_COLORS: Record<string, string> = {
     Alimentos: '#10b981',
     Limpeza: '#3b82f6',
@@ -80,29 +75,22 @@ function getCategoryColor(name: string): string {
     return CATEGORY_COLORS[name] || FALLBACK_COLORS[name.length % FALLBACK_COLORS.length]
 }
 
-// =========================
-// Utilitários de data
-// =========================
-
 function getYearMonth(dateStr: string): string | null {
     if (!dateStr) return null
 
-    // Tentar formato ISO "YYYY-MM-DD"
     const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/)
     if (isoMatch) {
         return `${isoMatch[1]}-${isoMatch[2]}`
     }
 
-    // Tentar formato BR "DD/MM/YYYY ..."
     const brMatch = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})/)
     if (brMatch) {
         return `${brMatch[3]}-${brMatch[2]}`
     }
 
-    // Fallback para Date()
-    const d = new Date(dateStr)
-    if (!isNaN(d.getTime())) {
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const date = new Date(dateStr)
+    if (!Number.isNaN(date.getTime())) {
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
     }
 
     return null
@@ -110,19 +98,19 @@ function getYearMonth(dateStr: string): string | null {
 
 function formatMonthLabel(yearMonth: string): string {
     const [year, month] = yearMonth.split('-')
-    const m = parseInt(month, 10)
+    const monthIndex = Number.parseInt(month, 10) - 1
     const months = [
         'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
         'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
     ]
-    return `${months[m - 1]}/${year}`
+    return `${months[monthIndex]}/${year}`
 }
 
 function formatShortMonth(yearMonth: string): string {
     const [year, month] = yearMonth.split('-')
-    const m = parseInt(month, 10)
+    const monthIndex = Number.parseInt(month, 10) - 1
     const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
-    return `${months[m - 1]}/${year.slice(2)}`
+    return `${months[monthIndex]}/${year.slice(2)}`
 }
 
 function getCurrentYearMonth(): string {
@@ -130,164 +118,185 @@ function getCurrentYearMonth(): string {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
-// =========================
-// Hook principal
-// =========================
+function getProductKey(item: ReceiptItem): string {
+    return item.normalized_name || item.name
+}
+
+/** Unidades de medida (peso/volume) — contam como 1 ocorrência */
+const MEASURE_UNITS = new Set(['KG', 'G', 'ML', 'L'])
+
+/** Retorna a quantidade contável: se for unidade, usa quantity; se for medida, conta 1. */
+function getCountableQty(item: ReceiptItem): number {
+    const unit = (item.unit || 'UN').toUpperCase()
+    if (MEASURE_UNITS.has(unit)) return 1
+    return Math.round(item.quantity) || 1
+}
+
+export function buildAnalysisData(
+    receipts: Receipt[],
+    selectedMonth: string | null,
+    isLoading = false,
+    selectedPriceProduct: string | null = null,
+): AnalysisData {
+    const receiptDates: { yearMonth: string; receipt: Receipt }[] = []
+
+    for (const receipt of receipts) {
+        const yearMonth = getYearMonth(receipt.date)
+        if (yearMonth) {
+            receiptDates.push({ yearMonth, receipt })
+        }
+    }
+
+    const uniqueMonths = [...new Set(receiptDates.map((item) => item.yearMonth))].sort()
+    const availableMonths = uniqueMonths.map((yearMonth) => ({
+        value: yearMonth,
+        label: formatMonthLabel(yearMonth),
+    }))
+
+    const effectiveMonth =
+        selectedMonth && uniqueMonths.includes(selectedMonth)
+            ? selectedMonth
+            : uniqueMonths[uniqueMonths.length - 1] ?? getCurrentYearMonth()
+
+    const monthReceipts = receiptDates
+        .filter((item) => item.yearMonth === effectiveMonth)
+        .map((item) => item.receipt)
+
+    let totalSpent = 0
+    let totalItems = 0
+    const allItems: ReceiptItem[] = []
+
+    for (const receipt of monthReceipts) {
+        for (const item of receipt.items ?? []) {
+            totalSpent += calculateItemTotal(item, parseBRL)
+            totalItems += getCountableQty(item)
+            allItems.push(item)
+        }
+    }
+
+    const totalReceipts = monthReceipts.length
+    const monthlySummary: MonthlySummary = {
+        totalSpent,
+        totalItems,
+        totalProductLines: allItems.length,
+        totalReceipts,
+        avgTicket: totalReceipts > 0 ? totalSpent / totalReceipts : 0,
+        periodLabel: formatMonthLabel(effectiveMonth),
+    }
+
+    const categoryMap = new Map<string, number>()
+    for (const item of allItems) {
+        const category = item.category || 'Sem categoria'
+        categoryMap.set(
+            category,
+            (categoryMap.get(category) || 0) + calculateItemTotal(item, parseBRL),
+        )
+    }
+
+    const categories = [...categoryMap.entries()]
+        .map(([name, amount]) => ({
+            name,
+            amount,
+            percent: totalSpent > 0 ? Math.round((amount / totalSpent) * 100) : 0,
+            color: getCategoryColor(name),
+        }))
+        .sort((a, b) => b.amount - a.amount)
+
+    const productMap = new Map<string, { qty: number; total: number }>()
+    for (const item of allItems) {
+        const key = getProductKey(item)
+        const current = productMap.get(key) || { qty: 0, total: 0 }
+        current.qty += getCountableQty(item)
+        current.total += calculateItemTotal(item, parseBRL)
+        productMap.set(key, current)
+    }
+
+    const topProducts = [...productMap.entries()]
+        .map(([name, data]) => ({ name, qty: data.qty, total: data.total }))
+        .sort((a, b) => b.qty - a.qty || b.total - a.total)
+
+    const selectedProductExists =
+        selectedPriceProduct !== null &&
+        topProducts.some((product) => product.name === selectedPriceProduct)
+    const topProductName = selectedProductExists
+        ? selectedPriceProduct
+        : topProducts[0]?.name ?? null
+    const priceEvolution: MonthlyTotal[] = []
+
+    if (topProductName) {
+        for (const yearMonth of uniqueMonths) {
+            let totalUnitPrice = 0
+            let count = 0
+
+            for (const { receipt } of receiptDates.filter((item) => item.yearMonth === yearMonth)) {
+                for (const item of receipt.items ?? []) {
+                    if (getProductKey(item) === topProductName) {
+                        totalUnitPrice += parseBRL(item.price)
+                        count += 1
+                    }
+                }
+            }
+
+            if (count > 0) {
+                const averagePrice = totalUnitPrice / count
+                priceEvolution.push({
+                    month: formatShortMonth(yearMonth),
+                    label: `R$ ${averagePrice.toFixed(2).replace('.', ',')}`,
+                    total: averagePrice,
+                })
+            }
+        }
+    }
+
+    const totalEvolution = uniqueMonths.map((yearMonth) => {
+        let monthTotal = 0
+
+        for (const { receipt } of receiptDates.filter((item) => item.yearMonth === yearMonth)) {
+            for (const item of receipt.items ?? []) {
+                monthTotal += calculateItemTotal(item, parseBRL)
+            }
+        }
+
+        return {
+            month: formatShortMonth(yearMonth),
+            label: `R$ ${monthTotal.toFixed(2).replace('.', ',')}`,
+            total: monthTotal,
+        }
+    })
+
+    return {
+        monthlySummary: totalReceipts > 0 ? monthlySummary : null,
+        categories,
+        topProducts,
+        priceEvolution,
+        totalEvolution,
+        availableMonths,
+        isLoading,
+        priceEvolutionProduct: topProductName,
+    }
+}
 
 /**
  * Hook que processa receipts do banco e retorna dados agregados para análise.
  * @param selectedMonth - Mês selecionado no formato "YYYY-MM" (ex: "2026-06")
+ * @param providedReceipts - Receipts opcionais para analisar um recorte já filtrado.
  */
-export function useAnalysisData(selectedMonth: string | null): AnalysisData {
-    const { data: receipts = [], isLoading } = useAllReceiptsQuery(true)
+export function useAnalysisData(
+    selectedMonth: string | null,
+    providedReceipts?: Receipt[],
+    selectedPriceProduct?: string | null,
+): AnalysisData {
+    const shouldFetchReceipts = providedReceipts === undefined
+    const { data: fetchedReceipts = [], isLoading } = useAllReceiptsQuery(shouldFetchReceipts)
+    const receipts = providedReceipts ?? fetchedReceipts
 
-    return useMemo(() => {
-        // Extrair todos os meses disponíveis dos receipts
-        const receiptDates: { yearMonth: string; receipt: Receipt }[] = []
-        for (const r of receipts) {
-            const ym = getYearMonth(r.date)
-            if (ym) {
-                receiptDates.push({ yearMonth: ym, receipt: r })
-            }
-        }
-
-        // Meses únicos ordenados
-        const uniqueMonths = [...new Set(receiptDates.map((x) => x.yearMonth))].sort()
-        const availableMonths = uniqueMonths.map((ym) => ({
-            value: ym,
-            label: formatMonthLabel(ym),
-        }))
-
-        // Determinar o mês efetivo: se o selectedMonth for válido e existe nos dados, usa ele.
-        // Senão, usa o último mês com dados. Se não houver dados, usa o mês atual.
-        const effectiveMonth =
-            selectedMonth && uniqueMonths.includes(selectedMonth)
-                ? selectedMonth
-                : availableMonths.length > 0
-                    ? uniqueMonths[uniqueMonths.length - 1]
-                    : getCurrentYearMonth()
-
-        // Filtrar receipts do mês efetivo
-        const monthReceipts = receiptDates
-            .filter((x) => x.yearMonth === effectiveMonth)
-            .map((x) => x.receipt)
-
-        // --- Resumo Mensal ---
-        let totalSpent = 0
-        let totalItems = 0
-        const allItems: ReceiptItem[] = []
-
-        for (const receipt of monthReceipts) {
-            if (receipt.items) {
-                for (const item of receipt.items) {
-                    totalSpent += item.total ?? item.price * item.quantity
-                    totalItems += item.quantity
-                    allItems.push(item)
-                }
-            }
-        }
-
-        const totalReceipts = monthReceipts.length
-        const avgTicket = totalReceipts > 0 ? totalSpent / totalReceipts : 0
-
-        const monthlySummary: MonthlySummary = {
-            totalSpent,
-            totalItems,
-            totalReceipts,
-            avgTicket,
-            periodLabel: formatMonthLabel(effectiveMonth),
-        }
-
-        // --- Categorias ---
-        const categoryMap = new Map<string, number>()
-        for (const item of allItems) {
-            const cat = item.category || 'Sem categoria'
-            const value = item.total ?? item.price * item.quantity
-            categoryMap.set(cat, (categoryMap.get(cat) || 0) + value)
-        }
-
-        const categoryEntries = [...categoryMap.entries()]
-            .map(([name, amount]) => ({
-                name,
-                amount,
-                percent: totalSpent > 0 ? Math.round((amount / totalSpent) * 100) : 0,
-                color: getCategoryColor(name),
-            }))
-            .sort((a, b) => b.amount - a.amount)
-
-        // --- Produtos Mais Comprados ---
-        const productMap = new Map<string, { qty: number; total: number }>()
-        for (const item of allItems) {
-            const key = item.normalized_name || item.name
-            const current = productMap.get(key) || { qty: 0, total: 0 }
-            current.qty += item.quantity
-            current.total += item.total ?? item.price * item.quantity
-            productMap.set(key, current)
-        }
-
-        const topProducts: ProductRank[] = [...productMap.entries()]
-            .map(([name, data]) => ({ name, qty: data.qty, total: data.total }))
-            .sort((a, b) => b.qty - a.qty)
-
-        // --- Produto mais frequente (para evolução de preços) ---
-        const topProductName = topProducts.length > 0 ? topProducts[0].name : null
-
-        // --- Evolução de Preços do produto mais frequente ---
-        const priceEvolution: MonthlyTotal[] = []
-        if (topProductName) {
-            for (const ym of uniqueMonths) {
-                const monthReceiptsForProduct = receiptDates.filter((x) => x.yearMonth === ym)
-                let totalPrice = 0
-                let count = 0
-                for (const { receipt } of monthReceiptsForProduct) {
-                    if (receipt.items) {
-                        for (const item of receipt.items) {
-                            const key = item.normalized_name || item.name
-                            if (key === topProductName) {
-                                totalPrice += item.price
-                                count++
-                            }
-                        }
-                    }
-                }
-                if (count > 0) {
-                    priceEvolution.push({
-                        month: formatShortMonth(ym),
-                        label: `R$ ${(totalPrice / count).toFixed(2).replace('.', ',')}`,
-                        total: totalPrice / count,
-                    })
-                }
-            }
-        }
-
-        // --- Evolução de Gastos Totais por Mês ---
-        const totalEvolution: MonthlyTotal[] = []
-        for (const ym of uniqueMonths) {
-            const monthReceiptsTotal = receiptDates.filter((x) => x.yearMonth === ym)
-            let monthTotal = 0
-            for (const { receipt } of monthReceiptsTotal) {
-                if (receipt.items) {
-                    for (const item of receipt.items) {
-                        monthTotal += item.total ?? item.price * item.quantity
-                    }
-                }
-            }
-            totalEvolution.push({
-                month: formatShortMonth(ym),
-                label: `R$ ${monthTotal.toFixed(2).replace('.', ',')}`,
-                total: monthTotal,
-            })
-        }
-
-        return {
-            monthlySummary: totalReceipts > 0 ? monthlySummary : null,
-            categories: categoryEntries,
-            topProducts,
-            priceEvolution,
-            totalEvolution,
-            availableMonths,
-            isLoading,
-            priceEvolutionProduct: topProductName,
-        }
-    }, [receipts, selectedMonth, isLoading])
+    return useMemo(
+        () => buildAnalysisData(
+            receipts,
+            selectedMonth,
+            shouldFetchReceipts && isLoading,
+            selectedPriceProduct ?? null,
+        ),
+        [receipts, selectedMonth, shouldFetchReceipts, isLoading, selectedPriceProduct],
+    )
 }

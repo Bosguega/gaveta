@@ -9,17 +9,33 @@ import {
     DollarSign,
 } from 'lucide-react'
 import { useAnalysisData } from '../../hooks/useAnalysisData'
+import { formatBRL } from '../../utils/currency'
+import type { Receipt } from '../../types/domain'
 import './AnalysisTab.css'
 
 interface AnalysisTabProps {
     onClose: () => void
+    receipts?: Receipt[]
+    scopeLabel?: string
 }
 
 const PRICE_CHART_HEIGHT = 130
 const TOTAL_CHART_HEIGHT = 140
 
-export function AnalysisTab({ onClose }: AnalysisTabProps) {
+function formatMoney(value: number): string {
+    return `R$ ${formatBRL(value)}`
+}
+
+function formatQuantity(value: number): string {
+    return new Intl.NumberFormat('pt-BR', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+    }).format(value)
+}
+
+export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: AnalysisTabProps) {
     const [selectedMonth, setSelectedMonth] = useState<string | null>(null)
+    const [selectedPriceProduct, setSelectedPriceProduct] = useState<string | null>(null)
 
     const {
         monthlySummary,
@@ -30,40 +46,39 @@ export function AnalysisTab({ onClose }: AnalysisTabProps) {
         availableMonths,
         isLoading,
         priceEvolutionProduct,
-    } = useAnalysisData(selectedMonth)
+    } = useAnalysisData(selectedMonth, receipts, selectedPriceProduct)
 
-    // Determinar o mês efetivo para exibir no select
     const effectiveMonth =
         selectedMonth ??
         availableMonths[availableMonths.length - 1]?.value ??
         ''
 
-    // Máximos para gráficos
     const priceChartMax =
         priceEvolution.length > 0
-            ? Math.max(...priceEvolution.map((p) => p.total))
+            ? Math.max(...priceEvolution.map((point) => point.total))
             : 1
 
     const totalChartMax =
         totalEvolution.length > 0
-            ? Math.max(...totalEvolution.map((p) => p.total))
+            ? Math.max(...totalEvolution.map((point) => point.total))
             : 1
 
-    // Total geral (soma de todos os meses) para o card de evolução
-    const grandTotal = totalEvolution.reduce((acc, cur) => acc + cur.total, 0)
+    const grandTotal = totalEvolution.reduce((acc, current) => acc + current.total, 0)
 
     return (
         <div className="analysis-container">
-            {/* Cabeçalho */}
             <div className="analysis-header">
                 <div className="analysis-header-left">
                     <button className="analysis-back-btn" onClick={onClose} aria-label="Voltar">
                         <ArrowLeft size={20} />
                     </button>
-                    <h2>
-                        <BarChart3 size={22} color="var(--primary)" />
-                        Análises
-                    </h2>
+                    <div>
+                        <h2>
+                            <BarChart3 size={22} color="var(--primary)" />
+                            Análises
+                        </h2>
+                        <div className="analysis-scope">{scopeLabel}</div>
+                    </div>
                 </div>
             </div>
 
@@ -73,7 +88,6 @@ export function AnalysisTab({ onClose }: AnalysisTabProps) {
                 </div>
             ) : (
                 <>
-                    {/* Seletor de mês */}
                     {availableMonths.length > 0 && (
                         <div className="analysis-month-selector">
                             <label htmlFor="month-select">Mês:</label>
@@ -81,11 +95,11 @@ export function AnalysisTab({ onClose }: AnalysisTabProps) {
                                 id="month-select"
                                 className="month-select"
                                 value={effectiveMonth}
-                                onChange={(e) => setSelectedMonth(e.target.value)}
+                                onChange={(event) => setSelectedMonth(event.target.value)}
                             >
-                                {availableMonths.map((m) => (
-                                    <option key={m.value} value={m.value}>
-                                        {m.label}
+                                {availableMonths.map((month) => (
+                                    <option key={month.value} value={month.value}>
+                                        {month.label}
                                     </option>
                                 ))}
                             </select>
@@ -93,12 +107,11 @@ export function AnalysisTab({ onClose }: AnalysisTabProps) {
                     )}
 
                     {availableMonths.length === 0 ? (
-                        <div className="analysis-empty" style={{ minHeight: 200 }}>
+                        <div className="analysis-empty analysis-empty-large">
                             <p>Nenhum dado disponível. Adicione notas fiscais para ver análises.</p>
                         </div>
                     ) : (
                         <div className="analysis-grid">
-                            {/* Card 1 — Resumo Mensal */}
                             <div className="analysis-card analysis-card-full">
                                 <div className="analysis-card-header">
                                     <span className="analysis-card-title">
@@ -116,20 +129,22 @@ export function AnalysisTab({ onClose }: AnalysisTabProps) {
                                 {monthlySummary ? (
                                     <>
                                         <div className="summary-month">
-                                            R$ {monthlySummary.totalSpent.toFixed(2).replace('.', ',')}
+                                            {formatMoney(monthlySummary.totalSpent)}
                                         </div>
                                         <div className="summary-period">{monthlySummary.periodLabel}</div>
 
                                         <div className="summary-stats">
                                             <div className="summary-stat">
-                                                <div className="summary-stat-label">Itens comprados</div>
-                                                <div className="summary-stat-value">{monthlySummary.totalItems}</div>
-                                                <div className="summary-stat-sub">em {monthlySummary.totalReceipts} notas</div>
+                                                <div className="summary-stat-label">Produtos lançados</div>
+                                                <div className="summary-stat-value">{monthlySummary.totalProductLines}</div>
+                                                <div className="summary-stat-sub">
+                                                    qtd. total: {formatQuantity(monthlySummary.totalItems)}
+                                                </div>
                                             </div>
                                             <div className="summary-stat">
                                                 <div className="summary-stat-label">Ticket médio</div>
                                                 <div className="summary-stat-value">
-                                                    R$ {monthlySummary.avgTicket.toFixed(2).replace('.', ',')}
+                                                    {formatMoney(monthlySummary.avgTicket)}
                                                 </div>
                                                 <div className="summary-stat-sub">por nota</div>
                                             </div>
@@ -142,8 +157,7 @@ export function AnalysisTab({ onClose }: AnalysisTabProps) {
                                 )}
                             </div>
 
-                            {/* Card 2 — Categorias */}
-                            <div className="analysis-card">
+                            <div className="analysis-card analysis-card-products">
                                 <div className="analysis-card-header">
                                     <span className="analysis-card-title">
                                         <PieChart size={16} />
@@ -158,29 +172,29 @@ export function AnalysisTab({ onClose }: AnalysisTabProps) {
                                 </div>
 
                                 {categories.length > 0 ? (
-                                    categories.map((cat) => (
-                                        <div className="category-item" key={cat.name}>
+                                    categories.map((category) => (
+                                        <div className="category-item" key={category.name}>
                                             <div
                                                 className="category-dot"
-                                                style={{ background: cat.color }}
+                                                style={{ background: category.color }}
                                             />
                                             <div className="category-info">
-                                                <div className="category-name">{cat.name}</div>
+                                                <div className="category-name">{category.name}</div>
                                                 <div className="category-bar">
                                                     <div
                                                         className="category-bar-fill"
                                                         style={{
-                                                            width: `${cat.percent}%`,
-                                                            background: cat.color,
+                                                            width: `${category.percent}%`,
+                                                            background: category.color,
                                                         }}
                                                     />
                                                 </div>
                                             </div>
                                             <div>
                                                 <div className="category-amount">
-                                                    R$ {cat.amount.toFixed(2).replace('.', ',')}
+                                                    {formatMoney(category.amount)}
                                                 </div>
-                                                <div className="category-percent">{cat.percent}%</div>
+                                                <div className="category-percent">{category.percent}%</div>
                                             </div>
                                         </div>
                                     ))
@@ -191,8 +205,7 @@ export function AnalysisTab({ onClose }: AnalysisTabProps) {
                                 )}
                             </div>
 
-                            {/* Card 3 — Produtos Mais Comprados */}
-                            <div className="analysis-card">
+                            <div className="analysis-card analysis-card-ranked">
                                 <div className="analysis-card-header">
                                     <span className="analysis-card-title">
                                         <Package size={16} />
@@ -209,7 +222,12 @@ export function AnalysisTab({ onClose }: AnalysisTabProps) {
                                 {topProducts.length > 0 ? (
                                     <div className="products-scroll">
                                         {topProducts.map((product, index) => (
-                                            <div className="product-item" key={product.name}>
+                                            <button
+                                                type="button"
+                                                className={`product-item product-item-button ${product.name === priceEvolutionProduct ? 'is-selected' : ''}`}
+                                                key={product.name}
+                                                onClick={() => setSelectedPriceProduct(product.name)}
+                                            >
                                                 <div
                                                     className={`product-rank ${index === 0 ? 'top-1' : ''}${index === 1 ? 'top-2' : ''}${index === 2 ? 'top-3' : ''}`}
                                                 >
@@ -218,13 +236,13 @@ export function AnalysisTab({ onClose }: AnalysisTabProps) {
                                                 <div className="product-info">
                                                     <div className="product-name">{product.name}</div>
                                                     <div className="product-qty">
-                                                        {product.qty}x compras
+                                                        {formatQuantity(product.qty)}x comprado
                                                     </div>
                                                 </div>
                                                 <div className="product-total">
-                                                    R$ {product.total.toFixed(2).replace('.', ',')}
+                                                    {formatMoney(product.total)}
                                                 </div>
-                                            </div>
+                                            </button>
                                         ))}
                                     </div>
                                 ) : (
@@ -234,7 +252,6 @@ export function AnalysisTab({ onClose }: AnalysisTabProps) {
                                 )}
                             </div>
 
-                            {/* Card 4 — Evolução de Preços (produto mais frequente) */}
                             <div className="analysis-card">
                                 <div className="analysis-card-header">
                                     <span className="analysis-card-title">
@@ -252,7 +269,7 @@ export function AnalysisTab({ onClose }: AnalysisTabProps) {
                                 {priceEvolution.length > 0 && priceEvolutionProduct ? (
                                     <>
                                         <div className="price-evolution-product">
-                                            {priceEvolutionProduct}
+                                            Preço médio: {priceEvolutionProduct}
                                         </div>
                                         <div className="price-chart">
                                             {priceEvolution.map((item) => {
@@ -282,7 +299,6 @@ export function AnalysisTab({ onClose }: AnalysisTabProps) {
                                 )}
                             </div>
 
-                            {/* Card 5 — Evolução de Gastos Totais */}
                             <div className="analysis-card analysis-card-full">
                                 <div className="analysis-card-header">
                                     <span className="analysis-card-title">
@@ -302,7 +318,7 @@ export function AnalysisTab({ onClose }: AnalysisTabProps) {
                                         <div className="total-evolution-summary">
                                             <span className="label">Total no período:</span>
                                             <span className="value">
-                                                R$ {grandTotal.toFixed(2).replace('.', ',')}
+                                                {formatMoney(grandTotal)}
                                             </span>
                                         </div>
                                         <div className="price-chart" style={{ height: TOTAL_CHART_HEIGHT }}>

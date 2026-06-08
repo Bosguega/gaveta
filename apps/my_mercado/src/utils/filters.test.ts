@@ -51,6 +51,29 @@ describe("applyReceiptFilters", () => {
     expect(result.items.map((r) => r.id)).toEqual(["3", "1", "2"]);
   });
 
+  it("sorts by value using item total when present", () => {
+    const result = applyReceiptFilters(
+      [
+        {
+          id: "discounted",
+          establishment: "Mercado A",
+          date: "20/03/2026",
+          items: [{ name: "Cafe", quantity: 3, price: 20, total: 30 }],
+        },
+        {
+          id: "regular",
+          establishment: "Mercado B",
+          date: "20/03/2026",
+          items: [{ name: "Arroz", quantity: 1, price: 40, total: 40 }],
+        },
+      ],
+      "",
+      makeFilters({ sortBy: "value", sortOrder: "desc" }),
+    );
+
+    expect(result.items.map((r) => r.id)).toEqual(["regular", "discounted"]);
+  });
+
   it("sorts by store ascending", () => {
     const result = applyReceiptFilters(
       receipts,

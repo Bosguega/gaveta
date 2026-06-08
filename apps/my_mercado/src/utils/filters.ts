@@ -6,6 +6,7 @@
 
 import { parseToDate } from "./date";
 import { parseBRL } from "./currency";
+import { calculateReceiptTotal } from "./analytics/aggregate";
 import type { Receipt, DictionaryEntry } from "../types/domain";
 import type { HistoryFilters, SearchFilters } from "../types/ui";
 import { startOfMonth, endOfMonth, subMonths, isWithinInterval } from "date-fns";
@@ -174,14 +175,8 @@ export function sortReceipts(
       return sortOrder === "asc" ? timeA - timeB : timeB - timeA;
     }
     if (sortBy === "value") {
-      const totalA = a.items.reduce(
-        (acc, item) => acc + parseBRL(item.price || "0") * (item.quantity || 1),
-        0
-      );
-      const totalB = b.items.reduce(
-        (acc, item) => acc + parseBRL(item.price || "0") * (item.quantity || 1),
-        0
-      );
+      const totalA = calculateReceiptTotal(a, parseBRL);
+      const totalB = calculateReceiptTotal(b, parseBRL);
       return sortOrder === "asc" ? totalA - totalB : totalB - totalA;
     }
     if (sortBy === "store") {

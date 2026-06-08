@@ -10,7 +10,11 @@ export function calculateItemTotal(
   item: ReceiptItem,
   parseBRL: ParseNumeric,
 ): number {
-  return parseBRL(item.price) * parseBRL(item.quantity || 1);
+  if (item.total !== undefined && item.total !== null) {
+    return parseBRL(item.total);
+  }
+
+  return parseBRL(item.price) * parseBRL(item.quantity ?? 1);
 }
 
 export function calculateReceiptTotal(

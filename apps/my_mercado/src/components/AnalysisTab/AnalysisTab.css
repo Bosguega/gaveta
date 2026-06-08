@@ -27,6 +27,12 @@
     margin: 0;
 }
 
+.analysis-scope {
+    color: var(--text-tertiary);
+    font-size: 0.75rem;
+    margin-top: 2px;
+}
+
 .analysis-back-btn {
     display: flex;
     align-items: center;
@@ -51,14 +57,27 @@
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: var(--space-4);
+    align-items: stretch;
 }
 
 .analysis-card {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--card-border);
-    border-radius: 16px;
+    border-radius: 8px;
     padding: var(--space-5);
     transition: border-color 0.2s;
+}
+
+.analysis-card-products {
+    display: flex;
+    flex-direction: column;
+}
+
+.analysis-card-ranked {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
 }
 
 .analysis-card:hover {
@@ -90,7 +109,7 @@
 .analysis-card-icon {
     width: 32px;
     height: 32px;
-    border-radius: 10px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -120,7 +139,7 @@
 
 .summary-stat {
     background: rgba(255, 255, 255, 0.04);
-    border-radius: 10px;
+    border-radius: 8px;
     padding: var(--space-3);
 }
 
@@ -209,6 +228,30 @@
 
 .product-item+.product-item {
     border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.product-item-button {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+    border-radius: 8px;
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.product-item-button:hover,
+.product-item-button:focus-visible {
+    background: rgba(255, 255, 255, 0.04);
+    outline: none;
+}
+
+.product-item-button.is-selected {
+    background: rgba(245, 158, 11, 0.1);
 }
 
 .product-rank {
@@ -376,7 +419,8 @@
 
 /* Scroll na lista de produtos */
 .products-scroll {
-    max-height: 280px;
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
 }
 
@@ -433,4 +477,8 @@
 
 .text-primary-red {
     color: #ef4444;
+}
+
+.analysis-empty-large {
+    min-height: 200px;
 }
