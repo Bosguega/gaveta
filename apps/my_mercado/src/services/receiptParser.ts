@@ -25,9 +25,17 @@ function normalizeSpaces(value: string | null | undefined): string {
 
 function toBRDateTime(datePart: string, timePart?: string): string {
   const baseTime = timePart ? timePart.trim() : "";
-  const normalizedTime =
-    baseTime.length === 5 ? `${baseTime}:00` : baseTime || "00:00:00";
-  return `${datePart.trim()} ${normalizedTime}`;
+  if (baseTime) {
+    const normalizedTime =
+      baseTime.length === 5 ? `${baseTime}:00` : baseTime;
+    return `${datePart.trim()} ${normalizedTime}`;
+  }
+  // Se não foi possível extrair o horário, usa o horário atual
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  return `${datePart.trim()} ${hh}:${mm}:${ss}`;
 }
 
 function extractEmissionDate(value: string | null | undefined): string | null {
@@ -57,7 +65,10 @@ function getFallbackDateAtMidnight(): string {
   const dd = String(now.getDate()).padStart(2, "0");
   const mm = String(now.getMonth() + 1).padStart(2, "0");
   const yyyy = String(now.getFullYear());
-  return `${dd}/${mm}/${yyyy} 00:00:00`;
+  const hh = String(now.getHours()).padStart(2, "0");
+  const min = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  return `${dd}/${mm}/${yyyy} ${hh}:${min}:${ss}`;
 }
 
 function validateNfceSpUrl(rawUrl: string): string {

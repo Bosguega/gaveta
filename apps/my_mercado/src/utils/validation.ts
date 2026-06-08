@@ -50,10 +50,15 @@ export const receiptSchema = z.object({
     .transform((val) => val.trim()),
   date: z
     .string()
-    .regex(/^\d{2}\/\d{2}\/\d{4}$/, "Data inválida! Use DD/MM/AAAA")
+    .regex(/^\d{2}\/\d{2}\/\d{4}(?:\s+\d{2}:\d{2}:\d{2})?$/, "Data inválida! Use DD/MM/AAAA")
     .transform((val) => {
-      const [dd, mm, yyyy] = val.split("/");
-      const date = new Date(`${yyyy}-${mm}-${dd}`);
+      const [datePart, timePart] = val.includes(" ") ? val.split(" ") : [val, ""];
+      const [dd, mm, yyyy] = datePart.split("/");
+      const date = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+      if (timePart) {
+        const [h, min, s] = timePart.split(":");
+        date.setHours(Number(h), Number(min), Number(s), 0);
+      }
       return date;
     }),
   items: z
@@ -92,7 +97,7 @@ export const manualReceiptFormSchema = z.object({
     .transform((val) => val.trim()),
   date: z
     .string()
-    .regex(/^\d{2}\/\d{2}\/\d{4}$/, "Data inválida! Use DD/MM/AAAA"),
+    .regex(/^\d{2}\/\d{2}\/\d{4}(?:\s+\d{2}:\d{2}:\d{2})?$/, "Data inválida! Use DD/MM/AAAA"),
   items: z
     .array(manualItemSchema)
     .min(1, "Adicione pelo menos um item"),

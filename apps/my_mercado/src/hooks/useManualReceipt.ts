@@ -33,11 +33,20 @@ export function useManualReceipt(saveReceipt: SaveReceiptFn) {
   const setManualItem = useScannerStore((state) => state.setManualItem);
   const setCurrentReceipt = useScannerStore((state) => state.setCurrentReceipt);
 
-  const getDefaultManualData = useCallback((): typeof manualData => ({
-    establishment: '',
-    date: new Date().toLocaleDateString('pt-BR'),
-    items: [],
-  }), []);
+  const getDefaultManualData = useCallback((): typeof manualData => {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = String(now.getFullYear());
+    const hh = String(now.getHours()).padStart(2, '0');
+    const min = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    return {
+      establishment: '',
+      date: `${dd}/${mm}/${yyyy} ${hh}:${min}:${ss}`,
+      items: [],
+    };
+  }, []);
 
   const handleAddManualItem = useCallback(() => {
     // Validação centralizada com Zod
