@@ -34,7 +34,6 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
         availableMonths,
         isLoading,
         resolved,
-        filters,
         setFilter,
     } = useAnalysisData(receipts)
 
