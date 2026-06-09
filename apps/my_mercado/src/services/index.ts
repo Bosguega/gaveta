@@ -22,6 +22,16 @@ export {
     updateDictionary,
 } from "./dictionaryService";
 
+// Establishment dictionary service
+export {
+    getFullEstablishmentDictionaryFromDB,
+    getEstablishmentMapFromDB,
+    upsertEstablishmentDictionaryEntryInDB,
+    applyEstablishmentEntryToSavedReceipts,
+    deleteEstablishmentDictionaryEntryFromDB,
+    clearEstablishmentDictionaryInDB,
+} from "./establishmentDictionaryService";
+
 
 // Storage fallback service
 export {

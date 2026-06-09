@@ -29,6 +29,7 @@ import { TabSkeleton as SubTabSkeleton } from "./Skeleton";
 import type { ConfirmDialogConfig } from "../types/ui";
 
 const DictionaryTab = lazy(() => import("./DictionaryTab"));
+const EstablishmentDictionaryTab = lazy(() => import("./EstablishmentDictionaryTab"));
 
 interface SettingsTabProps {
   onOpenAiConfig: () => void;
@@ -38,7 +39,7 @@ export default function SettingsTab({ onOpenAiConfig }: SettingsTabProps) {
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogConfig | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncListsEnabled, setSyncListsEnabled] = useState(() => isShoppingListCloudSyncEnabled());
-  const [activeSubTab, setActiveSubTab] = useState<"main" | "dictionary">("main");
+  const [activeSubTab, setActiveSubTab] = useState<"main" | "dictionary" | "establishment-dictionary">("main");
 
   const resetScannerState = useScannerStore((state) => state.resetScannerState);
   const sessionUserId = useReceiptsSessionStore((state) => state.sessionUserId);
@@ -179,6 +180,21 @@ export default function SettingsTab({ onOpenAiConfig }: SettingsTabProps) {
       );
     }
 
+    if (activeSubTab === "establishment-dictionary") {
+      return (
+        <Suspense fallback={<SubTabSkeleton />}>
+          <div className="relative">
+            <button
+              onClick={() => setActiveSubTab("main")}
+              className="btn btn-secondary flex items-center gap-2 mb-4"
+            >
+              Voltar para Configuracoes
+            </button>
+            <EstablishmentDictionaryTab />
+          </div>
+        </Suspense>
+      );
+    }
 
     return null;
   };
@@ -217,6 +233,17 @@ export default function SettingsTab({ onOpenAiConfig }: SettingsTabProps) {
             <span className="flex items-center gap-2">
               <BookOpen size={18} />
               Dicionario de Produtos
+            </span>
+            <ChevronRight size={18} />
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab("establishment-dictionary")}
+            className="btn btn-secondary flex items-center justify-between"
+          >
+            <span className="flex items-center gap-2">
+              <BookOpen size={18} />
+              Dicionario de Estabelecimentos
             </span>
             <ChevronRight size={18} />
           </button>

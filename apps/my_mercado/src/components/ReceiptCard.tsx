@@ -4,6 +4,7 @@ import { parseBRL, formatBRL } from "../utils/currency";
 import { calculateReceiptTotal } from "../utils/analytics";
 import { formatToBR } from "../utils/date";
 import type { Receipt, ReceiptItem } from "../types/domain";
+import { useEstablishmentMap, resolveEstablishmentName } from "../hooks/useEstablishmentMap";
 
 interface ReceiptCardProps {
     receipt: Receipt;
@@ -18,6 +19,11 @@ export const ReceiptCard = React.memo(function ReceiptCard({
     onToggle,
     onDelete,
 }: ReceiptCardProps) {
+    const establishmentMap = useEstablishmentMap();
+    const displayEstablishment = useMemo(
+        () => resolveEstablishmentName(receipt.establishment, establishmentMap),
+        [receipt.establishment, establishmentMap],
+    );
     // Memoizar o cálculo do total
     const total = useMemo(() => {
         return calculateReceiptTotal(receipt, parseBRL);
@@ -48,7 +54,7 @@ export const ReceiptCard = React.memo(function ReceiptCard({
                 <div className="flex justify-between items-start mb-2">
                     <div>
                         <h3 className="text-slate-50 text-[1.1rem] mb-1">
-                            {receipt.establishment}
+                            {displayEstablishment}
                         </h3>
                         <div className="flex gap-4 items-center">
                             <span className="text-slate-400 text-xs">

@@ -64,6 +64,21 @@ export type DictionaryMap = Record<
   }
 >;
 
+/**
+ * Entrada do dicionário de estabelecimentos
+ */
+export interface EstablishmentDictionaryEntry {
+  nome_nota: string;
+  nome_fantasia: string;
+  user_id?: string;
+  created_at?: string;
+}
+
+/**
+ * Mapa do dicionário de estabelecimentos (nome_nota → nome_fantasia)
+ */
+export type EstablishmentDictionaryMap = Record<string, string>;
+
 
 export type ShoppingListMemberRole = "owner" | "editor" | "viewer";
 
