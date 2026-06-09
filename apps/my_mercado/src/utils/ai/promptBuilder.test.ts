@@ -21,7 +21,7 @@ describe("promptBuilder", () => {
       const items = [{ key: "test", raw: "TEST" }];
       const prompt = buildNormalizationPrompt(items);
 
-      expect(prompt).toContain("Categorize em:");
+      expect(prompt).toContain("Categorize usando EXATAMENTE");
     });
 
     it("deve incluir exemplos no prompt", () => {
@@ -47,7 +47,7 @@ describe("promptBuilder", () => {
         {
           key: "item1",
           normalized_name: "Arroz Branco 5kg",
-          category: "Grãos",
+          category: "Bebidas",
           brand: "Tio João",
           slug: "arroz_branco_5kg",
         },
@@ -59,8 +59,24 @@ describe("promptBuilder", () => {
       expect(result[0]).toEqual({
         key: "item1",
         normalized_name: "Arroz Branco 5kg",
-        category: "Grãos",
+        category: "Bebidas",
       });
+    });
+
+    it("deve normalizar categoria com grafia incorreta (ex: 'Laticinios' -> 'Laticínios')", () => {
+      const jsonText = JSON.stringify([
+        { key: "item1", normalized_name: "Leite", category: "Laticinios" },
+        { key: "item2", normalized_name: "Picanha", category: "acougue" },
+        { key: "item3", normalized_name: "Sabao", category: "Limpeza" },
+        { key: "item4", normalized_name: "Desconhecido", category: "Qualquer Coisa" },
+      ]);
+
+      const result = parseAiJsonResponse(jsonText);
+
+      expect(result[0].category).toBe("Laticínios");
+      expect(result[1].category).toBe("Açougue");
+      expect(result[2].category).toBe("Limpeza");
+      expect(result[3].category).toBe("Outros");
     });
 
     it("deve remover markdown wrapper do JSON", () => {

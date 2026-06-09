@@ -1,8 +1,11 @@
-import { useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useAllReceiptsQuery } from './queries/useReceiptsQuery'
 import type { Receipt, ReceiptItem } from '../types/domain'
 import { parseBRL } from '../utils/currency'
 import { calculateItemTotal } from '../utils/analytics'
+import { normalizeCategory } from '../utils/categoryNormalizer'
+
+/* ─── Types ─────────────────────────────────────────── */
 
 export interface MonthlySummary {
     totalSpent: number
@@ -32,24 +35,39 @@ export interface MonthlyTotal {
     total: number
 }
 
-export interface AnalysisData {
-    /** Resumo do mês selecionado */
-    monthlySummary: MonthlySummary | null
-    /** Gastos por categoria no mês */
-    categories: CategorySummary[]
-    /** Produtos mais comprados no mês */
-    topProducts: ProductRank[]
-    /** Evolução de preços do produto mais frequente do mês */
-    priceEvolution: MonthlyTotal[]
-    /** Evolução de gastos totais por mês */
-    totalEvolution: MonthlyTotal[]
-    /** Lista de meses disponíveis { value: "YYYY-MM", label: "Junho/2026" } */
-    availableMonths: { value: string; label: string }[]
-    /** Se os dados estão carregando */
-    isLoading: boolean
-    /** Nome do produto usado na evolução de preços */
-    priceEvolutionProduct: string | null
+export interface AnalysisFilters {
+    /** "YYYY-MM" ou null (null = último mês disponível) */
+    month: string | null
+    /** Nome exato do produto ou null */
+    product: string | null
 }
+
+export interface AnalysisResolved {
+    /** Mês efetivamente usado (sempre "YYYY-MM" válido dentro de availableMonths) */
+    month: string
+    /** Produto selecionado que existe no mês atual, ou null se inválido/não selecionado */
+    product: string | null
+}
+
+export interface AnalysisEngine {
+    monthlySummary: MonthlySummary | null
+    categories: CategorySummary[]
+    topProducts: ProductRank[]
+    priceEvolution: MonthlyTotal[]
+    totalEvolution: MonthlyTotal[]
+    availableMonths: { value: string; label: string }[]
+    isLoading: boolean
+
+    /** O que o usuário pediu (pode ser inválido) */
+    filters: AnalysisFilters
+    /** O que foi aplicado (sempre coerente com os dados) */
+    resolved: AnalysisResolved
+
+    /** Atualiza um filtro. Se o filtro invalida o outro, ele é resetado. */
+    setFilter: (name: keyof AnalysisFilters, value: string | null) => void
+}
+
+/* ─── Helpers (unchanged from original) ─────────────── */
 
 const CATEGORY_COLORS: Record<string, string> = {
     Alimentos: '#10b981',
@@ -132,12 +150,13 @@ function getCountableQty(item: ReceiptItem): number {
     return Math.round(item.quantity) || 1
 }
 
-export function buildAnalysisData(
+/* ─── Pure engine (no side effects, no fallback product) ─────── */
+
+export function buildAnalysisEngine(
     receipts: Receipt[],
-    selectedMonth: string | null,
-    isLoading = false,
-    selectedPriceProduct: string | null = null,
-): AnalysisData {
+    filters: AnalysisFilters,
+    isLoading: boolean,
+): AnalysisEngine {
     const receiptDates: { yearMonth: string; receipt: Receipt }[] = []
 
     for (const receipt of receipts) {
@@ -148,20 +167,22 @@ export function buildAnalysisData(
     }
 
     const uniqueMonths = [...new Set(receiptDates.map((item) => item.yearMonth))].sort()
-    const availableMonths = uniqueMonths.map((yearMonth) => ({
+    const computedAvailableMonths = uniqueMonths.map((yearMonth) => ({
         value: yearMonth,
         label: formatMonthLabel(yearMonth),
     }))
 
-    const effectiveMonth =
-        selectedMonth && uniqueMonths.includes(selectedMonth)
-            ? selectedMonth
+    // ── Resolved month ──
+    const resolvedMonth =
+        filters.month && uniqueMonths.includes(filters.month)
+            ? filters.month
             : uniqueMonths[uniqueMonths.length - 1] ?? getCurrentYearMonth()
 
     const monthReceipts = receiptDates
-        .filter((item) => item.yearMonth === effectiveMonth)
+        .filter((item) => item.yearMonth === resolvedMonth)
         .map((item) => item.receipt)
 
+    // ── Monthly computation ──
     let totalSpent = 0
     let totalItems = 0
     const allItems: ReceiptItem[] = []
@@ -175,18 +196,23 @@ export function buildAnalysisData(
     }
 
     const totalReceipts = monthReceipts.length
-    const monthlySummary: MonthlySummary = {
-        totalSpent,
-        totalItems,
-        totalProductLines: allItems.length,
-        totalReceipts,
-        avgTicket: totalReceipts > 0 ? totalSpent / totalReceipts : 0,
-        periodLabel: formatMonthLabel(effectiveMonth),
-    }
+    const monthlySummary: MonthlySummary | null = totalReceipts > 0
+        ? {
+            totalSpent,
+            totalItems,
+            totalProductLines: allItems.length,
+            totalReceipts,
+            avgTicket: totalReceipts > 0 ? totalSpent / totalReceipts : 0,
+            periodLabel: formatMonthLabel(resolvedMonth),
+        }
+        : null
 
+    // ── Categories ──
     const categoryMap = new Map<string, number>()
     for (const item of allItems) {
-        const category = item.category || 'Sem categoria'
+        // Defesa em profundidade: normaliza categoria para a grafia canonica
+        // mesmo que algum caminho de leitura nao tenha normalizado.
+        const category = normalizeCategory(item.category)
         categoryMap.set(
             category,
             (categoryMap.get(category) || 0) + calculateItemTotal(item, parseBRL),
@@ -202,6 +228,7 @@ export function buildAnalysisData(
         }))
         .sort((a, b) => b.amount - a.amount)
 
+    // ── Products ranking ──
     const productMap = new Map<string, { qty: number; total: number }>()
     for (const item of allItems) {
         const key = getProductKey(item)
@@ -215,22 +242,23 @@ export function buildAnalysisData(
         .map(([name, data]) => ({ name, qty: data.qty, total: data.total }))
         .sort((a, b) => b.qty - a.qty || b.total - a.total)
 
-    const selectedProductExists =
-        selectedPriceProduct !== null &&
-        topProducts.some((product) => product.name === selectedPriceProduct)
-    const topProductName = selectedProductExists
-        ? selectedPriceProduct
-        : topProducts[0]?.name ?? null
+    // ── Resolved product (NO silent fallback) ──
+    const resolvedProduct =
+        filters.product !== null && topProducts.some((p) => p.name === filters.product)
+            ? filters.product
+            : null
+
+    // ── Price evolution (only when a product is resolved) ──
     const priceEvolution: MonthlyTotal[] = []
 
-    if (topProductName) {
+    if (resolvedProduct) {
         for (const yearMonth of uniqueMonths) {
             let totalUnitPrice = 0
             let count = 0
 
             for (const { receipt } of receiptDates.filter((item) => item.yearMonth === yearMonth)) {
                 for (const item of receipt.items ?? []) {
-                    if (getProductKey(item) === topProductName) {
+                    if (getProductKey(item) === resolvedProduct) {
                         totalUnitPrice += parseBRL(item.price)
                         count += 1
                     }
@@ -248,6 +276,7 @@ export function buildAnalysisData(
         }
     }
 
+    // ── Total evolution ──
     const totalEvolution = uniqueMonths.map((yearMonth) => {
         let monthTotal = 0
 
@@ -265,38 +294,61 @@ export function buildAnalysisData(
     })
 
     return {
-        monthlySummary: totalReceipts > 0 ? monthlySummary : null,
+        monthlySummary,
         categories,
         topProducts,
         priceEvolution,
         totalEvolution,
-        availableMonths,
+        availableMonths: computedAvailableMonths,
         isLoading,
-        priceEvolutionProduct: topProductName,
+        filters,
+        resolved: {
+            month: resolvedMonth,
+            product: resolvedProduct,
+        },
+        setFilter: () => {
+            // Will be overridden in the hook
+        },
     }
 }
 
-/**
- * Hook que processa receipts do banco e retorna dados agregados para análise.
- * @param selectedMonth - Mês selecionado no formato "YYYY-MM" (ex: "2026-06")
- * @param providedReceipts - Receipts opcionais para analisar um recorte já filtrado.
- */
+/* ─── Hook ──────────────────────────────────────────── */
+
 export function useAnalysisData(
-    selectedMonth: string | null,
     providedReceipts?: Receipt[],
-    selectedPriceProduct?: string | null,
-): AnalysisData {
+): AnalysisEngine {
     const shouldFetchReceipts = providedReceipts === undefined
     const { data: fetchedReceipts = [], isLoading } = useAllReceiptsQuery(shouldFetchReceipts)
     const receipts = providedReceipts ?? fetchedReceipts
 
-    return useMemo(
-        () => buildAnalysisData(
-            receipts,
-            selectedMonth,
-            shouldFetchReceipts && isLoading,
-            selectedPriceProduct ?? null,
-        ),
-        [receipts, selectedMonth, shouldFetchReceipts, isLoading, selectedPriceProduct],
+    const [filters, setFiltersState] = useState<AnalysisFilters>({
+        month: null,
+        product: null,
+    })
+
+    const setFilter = useCallback(
+        (name: keyof AnalysisFilters, value: string | null) => {
+            setFiltersState((prev) => {
+                const next = { ...prev, [name]: value }
+
+                // Changing the month resets the product filter
+                if (name === 'month') {
+                    next.product = null
+                }
+
+                return next
+            })
+        },
+        [],
     )
+
+    const engine = useMemo(
+        () => buildAnalysisEngine(receipts, filters, shouldFetchReceipts && isLoading),
+        [receipts, filters, shouldFetchReceipts, isLoading],
+    )
+
+    return {
+        ...engine,
+        setFilter,
+    }
 }

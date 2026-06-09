@@ -1,6 +1,7 @@
 import { getAuthenticatedSupabaseContext } from "./authService";
 import type { DictionaryEntry, DictionaryMap } from "../types/domain";
 import { mapSupabaseError } from "../utils/supabaseError";
+import { normalizeCategory } from "../utils/categoryNormalizer";
 
 interface DbDictionaryRow {
   key: string;
@@ -30,7 +31,12 @@ export async function getFullDictionaryFromDB(): Promise<DictionaryEntry[]> {
     .order("key", { ascending: true });
 
   if (error) throw error;
-  return (data || []) as DictionaryEntry[];
+  // Migracao em memoria: garante que categorias legadas
+  // (ex: "Laticinios") voltem com a grafia canonica (ex: "Laticinios").
+  return ((data || []) as DictionaryEntry[]).map((entry) => ({
+    ...entry,
+    category: normalizeCategory(entry.category),
+  }));
 }
 
 /**
@@ -141,7 +147,7 @@ export async function getDictionary(keys: string[]): Promise<DictionaryMap> {
   return rows.reduce((acc: DictionaryMap, row) => {
     acc[row.key] = {
       normalized_name: row.normalized_name,
-      category: row.category || undefined,
+      category: normalizeCategory(row.category),
     };
     return acc;
   }, {});
@@ -161,7 +167,7 @@ export async function updateDictionary(
     user_id: user.id,
     key: e.key,
     normalized_name: e.normalized_name,
-    category: e.category || "Outros",
+    category: normalizeCategory(e.category),
   }));
 
   const { error } = await client

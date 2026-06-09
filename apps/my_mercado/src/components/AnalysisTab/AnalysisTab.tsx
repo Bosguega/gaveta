@@ -1,13 +1,4 @@
-import { useState } from 'react'
-import {
-    BarChart3,
-    TrendingUp,
-    ShoppingBag,
-    ArrowLeft,
-    PieChart,
-    Package,
-    DollarSign,
-} from 'lucide-react'
+import { BarChart3, TrendingUp, ShoppingBag, ArrowLeft, PieChart, Package, DollarSign } from 'lucide-react'
 import { useAnalysisData } from '../../hooks/useAnalysisData'
 import { formatBRL } from '../../utils/currency'
 import type { Receipt } from '../../types/domain'
@@ -34,9 +25,6 @@ function formatQuantity(value: number): string {
 }
 
 export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: AnalysisTabProps) {
-    const [selectedMonth, setSelectedMonth] = useState<string | null>(null)
-    const [selectedPriceProduct, setSelectedPriceProduct] = useState<string | null>(null)
-
     const {
         monthlySummary,
         categories,
@@ -45,13 +33,10 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
         totalEvolution,
         availableMonths,
         isLoading,
-        priceEvolutionProduct,
-    } = useAnalysisData(selectedMonth, receipts, selectedPriceProduct)
-
-    const effectiveMonth =
-        selectedMonth ??
-        availableMonths[availableMonths.length - 1]?.value ??
-        ''
+        resolved,
+        filters,
+        setFilter,
+    } = useAnalysisData(receipts)
 
     const priceChartMax =
         priceEvolution.length > 0
@@ -94,8 +79,8 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
                             <select
                                 id="month-select"
                                 className="month-select"
-                                value={effectiveMonth}
-                                onChange={(event) => setSelectedMonth(event.target.value)}
+                                value={resolved.month}
+                                onChange={(event) => setFilter('month', event.target.value)}
                             >
                                 {availableMonths.map((month) => (
                                     <option key={month.value} value={month.value}>
@@ -172,32 +157,34 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
                                 </div>
 
                                 {categories.length > 0 ? (
-                                    categories.map((category) => (
-                                        <div className="category-item" key={category.name}>
-                                            <div
-                                                className="category-dot"
-                                                style={{ background: category.color }}
-                                            />
-                                            <div className="category-info">
-                                                <div className="category-name">{category.name}</div>
-                                                <div className="category-bar">
-                                                    <div
-                                                        className="category-bar-fill"
-                                                        style={{
-                                                            width: `${category.percent}%`,
-                                                            background: category.color,
-                                                        }}
-                                                    />
+                                    <div className="categories-scroll">
+                                        {categories.map((category) => (
+                                            <div className="category-item" key={category.name}>
+                                                <div
+                                                    className="category-dot"
+                                                    style={{ background: category.color }}
+                                                />
+                                                <div className="category-info">
+                                                    <div className="category-name">{category.name}</div>
+                                                    <div className="category-bar">
+                                                        <div
+                                                            className="category-bar-fill"
+                                                            style={{
+                                                                width: `${category.percent}%`,
+                                                                background: category.color,
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className="category-amount">
+                                                        {formatMoney(category.amount)}
+                                                    </div>
+                                                    <div className="category-percent">{category.percent}%</div>
                                                 </div>
                                             </div>
-                                            <div>
-                                                <div className="category-amount">
-                                                    {formatMoney(category.amount)}
-                                                </div>
-                                                <div className="category-percent">{category.percent}%</div>
-                                            </div>
-                                        </div>
-                                    ))
+                                        ))}
+                                    </div>
                                 ) : (
                                     <div className="analysis-empty">
                                         <p>Nenhuma categoria neste mês.</p>
@@ -224,9 +211,9 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
                                         {topProducts.map((product, index) => (
                                             <button
                                                 type="button"
-                                                className={`product-item product-item-button ${product.name === priceEvolutionProduct ? 'is-selected' : ''}`}
+                                                className={`product-item product-item-button ${product.name === resolved.product ? 'is-selected' : ''}`}
                                                 key={product.name}
-                                                onClick={() => setSelectedPriceProduct(product.name)}
+                                                onClick={() => setFilter('product', product.name)}
                                             >
                                                 <div
                                                     className={`product-rank ${index === 0 ? 'top-1' : ''}${index === 1 ? 'top-2' : ''}${index === 2 ? 'top-3' : ''}`}
@@ -266,10 +253,10 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
                                     </div>
                                 </div>
 
-                                {priceEvolution.length > 0 && priceEvolutionProduct ? (
+                                {priceEvolution.length > 0 && resolved.product ? (
                                     <>
                                         <div className="price-evolution-product">
-                                            Preço médio: {priceEvolutionProduct}
+                                            Produto: {resolved.product}
                                         </div>
                                         <div className="price-chart">
                                             {priceEvolution.map((item) => {

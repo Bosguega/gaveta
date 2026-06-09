@@ -4,6 +4,7 @@ import { normalizeKey } from "../utils/normalize";
 import { stripVariableInfo, cleanAIName } from "../utils/stringUtils";
 import { toNumber } from "../utils/shoppingList";
 import { logger } from "../utils/logger";
+import { normalizeCategory } from "../utils/categoryNormalizer";
 import type { AiNormalizationResult } from "../types/ai";
 import type { DictionaryMap, RawReceiptItem, ReceiptItem } from "../types/domain";
 
@@ -96,7 +97,7 @@ export async function processItemsPipeline(
       const cleaned: AiNormalizationResult[] = response.map((r) => ({
         key: r.key,
         normalized_name: cleanAIName(r.normalized_name),
-        category: String(r.category || "Outros"),
+        category: normalizeCategory(r.category),
       }));
 
       aiResults = [...aiResults, ...cleaned];
@@ -132,7 +133,7 @@ export async function processItemsPipeline(
       name: item.name,
       normalized_key: item.normalized_key,
       normalized_name: dictEntry?.normalized_name || item.name,
-      category: dictEntry?.category || "Outros",
+      category: normalizeCategory(dictEntry?.category),
       quantity,
       unit: item.unit || "UN",
       price,

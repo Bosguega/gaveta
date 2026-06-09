@@ -6,6 +6,7 @@ import {
   getFullDictionaryFromDB,
   updateDictionaryEntryInDB,
 } from "../../services";
+import { normalizeCategory } from "../../utils/categoryNormalizer";
 import type { DictionaryEntry } from "../../types/domain";
 
 export const dictionaryKeys = {
@@ -35,13 +36,14 @@ export function useUpdateDictionaryEntry() {
       normalizedName: string;
       category: string;
     }) => {
+      const normalizedCategory = normalizeCategory(category);
       await updateDictionaryEntryInDB(
         key,
         normalizedName,
-        category,
+        normalizedCategory,
       );
 
-      return { key, normalizedName, category };
+      return { key, normalizedName, category: normalizedCategory };
     },
     onSuccess: ({ key, normalizedName, category }) => {
       queryClient.setQueryData(
@@ -51,10 +53,10 @@ export function useUpdateDictionaryEntry() {
           return old.map((entry) =>
             entry.key === key
               ? {
-                  ...entry,
-                  normalized_name: normalizedName,
-                  category,
-                }
+                ...entry,
+                normalized_name: normalizedName,
+                category,
+              }
               : entry,
           );
         },

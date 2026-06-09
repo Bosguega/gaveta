@@ -71,6 +71,7 @@
 .analysis-card-products {
     display: flex;
     flex-direction: column;
+    height: 660px;
 }
 
 .analysis-card-ranked {
@@ -78,6 +79,7 @@
     flex-direction: column;
     overflow: hidden;
     min-height: 0;
+    height: 660px;
 }
 
 .analysis-card:hover {
@@ -418,10 +420,19 @@
 }
 
 /* Scroll na lista de produtos */
+.categories-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    height: 0;
+}
+
 .products-scroll {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    height: 0;
+    /* força o flex a respeitar o espaço disponível */
 }
 
 .products-scroll::-webkit-scrollbar {
