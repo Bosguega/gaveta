@@ -175,6 +175,37 @@
     border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+/* Botao de categoria clicavel (para filtrar o card de Top Produtos) */
+.category-item-button {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+    border-radius: 8px;
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.category-item-button:hover,
+.category-item-button:focus-visible {
+    background: rgba(255, 255, 255, 0.04);
+    outline: none;
+}
+
+.category-item-button.is-selected {
+    background: rgba(139, 92, 246, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.35);
+}
+
+.category-item-button.is-selected .category-name {
+    color: var(--primary);
+    font-weight: var(--weight-semibold);
+}
+
 .category-dot {
     width: 10px;
     height: 10px;
@@ -467,6 +498,49 @@
     font-size: 1.1rem;
     font-weight: var(--weight-bold);
     color: var(--text-primary);
+}
+
+/* Label "Filtrando por..." no card de Produtos Mais Comprados */
+.top-products-filter-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-3);
+    padding: 0.4rem 0.6rem;
+    background: rgba(139, 92, 246, 0.1);
+    border-radius: 8px;
+}
+
+.top-products-filter-label strong {
+    color: var(--primary);
+    font-weight: var(--weight-semibold);
+}
+
+.top-products-filter-clear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.95rem;
+    line-height: 1;
+    margin-left: auto;
+    padding: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.top-products-filter-clear:hover,
+.top-products-filter-clear:focus-visible {
+    background: rgba(255, 255, 255, 0.2);
+    color: var(--text-primary);
+    outline: none;
 }
 
 /* Utilitário de cor para cards */

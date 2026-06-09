@@ -40,6 +40,8 @@ export interface AnalysisFilters {
     month: string | null
     /** Nome exato do produto ou null */
     product: string | null
+    /** Nome exato da categoria ou null (null = todas) */
+    category: string | null
 }
 
 export interface AnalysisResolved {
@@ -47,6 +49,8 @@ export interface AnalysisResolved {
     month: string
     /** Produto selecionado que existe no mês atual, ou null se inválido/não selecionado */
     product: string | null
+    /** Categoria selecionada que existe no mês atual, ou null se inválida/não selecionada */
+    category: string | null
 }
 
 export interface AnalysisEngine {
@@ -228,9 +232,20 @@ export function buildAnalysisEngine(
         }))
         .sort((a, b) => b.amount - a.amount)
 
-    // ── Products ranking ──
+    // ── Resolved category (NO silent fallback) ──
+    const requestedCategory = filters.category ?? null
+    const resolvedCategory =
+        requestedCategory !== null && categories.some((c) => c.name === requestedCategory)
+            ? requestedCategory
+            : null
+
+    // ── Products ranking (filtrado pela categoria selecionada, se houver) ──
     const productMap = new Map<string, { qty: number; total: number }>()
     for (const item of allItems) {
+        // Se uma categoria esta selecionada, ignora items de outras categorias
+        if (resolvedCategory !== null && normalizeCategory(item.category) !== resolvedCategory) {
+            continue
+        }
         const key = getProductKey(item)
         const current = productMap.get(key) || { qty: 0, total: 0 }
         current.qty += getCountableQty(item)
@@ -305,6 +320,7 @@ export function buildAnalysisEngine(
         resolved: {
             month: resolvedMonth,
             product: resolvedProduct,
+            category: resolvedCategory,
         },
         setFilter: () => {
             // Will be overridden in the hook
@@ -324,6 +340,7 @@ export function useAnalysisData(
     const [filters, setFiltersState] = useState<AnalysisFilters>({
         month: null,
         product: null,
+        category: null,
     })
 
     const setFilter = useCallback(
@@ -333,6 +350,12 @@ export function useAnalysisData(
 
                 // Changing the month resets the product filter
                 if (name === 'month') {
+                    next.product = null
+                }
+
+                // Changing the category also resets the product filter
+                // (o produto filtrado pode nao existir na nova categoria)
+                if (name === 'category') {
                     next.product = null
                 }
 

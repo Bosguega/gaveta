@@ -38,6 +38,15 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
         setFilter,
     } = useAnalysisData(receipts)
 
+    /**
+     * Toggle de categoria: clica de novo na mesma para limpar.
+     * Como a UI so permite clicar em categorias validas do mes,
+     * o toggle aqui e sempre sobre a `resolved.category`.
+     */
+    const handleCategoryClick = (categoryName: string) => {
+        setFilter('category', resolved.category === categoryName ? null : categoryName)
+    }
+
     const priceChartMax =
         priceEvolution.length > 0
             ? Math.max(...priceEvolution.map((point) => point.total))
@@ -158,32 +167,46 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
 
                                 {categories.length > 0 ? (
                                     <div className="categories-scroll">
-                                        {categories.map((category) => (
-                                            <div className="category-item" key={category.name}>
-                                                <div
-                                                    className="category-dot"
-                                                    style={{ background: category.color }}
-                                                />
-                                                <div className="category-info">
-                                                    <div className="category-name">{category.name}</div>
-                                                    <div className="category-bar">
-                                                        <div
-                                                            className="category-bar-fill"
-                                                            style={{
-                                                                width: `${category.percent}%`,
-                                                                background: category.color,
-                                                            }}
-                                                        />
+                                        {categories.map((category) => {
+                                            const isSelected = resolved.category === category.name
+                                            return (
+                                                <button
+                                                    type="button"
+                                                    key={category.name}
+                                                    className={`category-item category-item-button ${isSelected ? 'is-selected' : ''}`}
+                                                    onClick={() => handleCategoryClick(category.name)}
+                                                    aria-pressed={isSelected}
+                                                    title={
+                                                        isSelected
+                                                            ? 'Clique para limpar o filtro'
+                                                            : 'Filtrar produtos desta categoria'
+                                                    }
+                                                >
+                                                    <div
+                                                        className="category-dot"
+                                                        style={{ background: category.color }}
+                                                    />
+                                                    <div className="category-info">
+                                                        <div className="category-name">{category.name}</div>
+                                                        <div className="category-bar">
+                                                            <div
+                                                                className="category-bar-fill"
+                                                                style={{
+                                                                    width: `${category.percent}%`,
+                                                                    background: category.color,
+                                                                }}
+                                                            />
+                                                        </div>
                                                     </div>
-                                                </div>
-                                                <div>
-                                                    <div className="category-amount">
-                                                        {formatMoney(category.amount)}
+                                                    <div>
+                                                        <div className="category-amount">
+                                                            {formatMoney(category.amount)}
+                                                        </div>
+                                                        <div className="category-percent">{category.percent}%</div>
                                                     </div>
-                                                    <div className="category-percent">{category.percent}%</div>
-                                                </div>
-                                            </div>
-                                        ))}
+                                                </button>
+                                            )
+                                        })}
                                     </div>
                                 ) : (
                                     <div className="analysis-empty">
@@ -205,6 +228,20 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
                                         <Package size={18} className="text-primary-purple" />
                                     </div>
                                 </div>
+
+                                {resolved.category && (
+                                    <div className="top-products-filter-label">
+                                        Filtrando por: <strong>{resolved.category}</strong>{' '}
+                                        <button
+                                            type="button"
+                                            className="top-products-filter-clear"
+                                            onClick={() => setFilter('category', null)}
+                                            aria-label="Limpar filtro de categoria"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                )}
 
                                 {topProducts.length > 0 ? (
                                     <div className="products-scroll">
