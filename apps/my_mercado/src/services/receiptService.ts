@@ -21,6 +21,7 @@ interface DbItemRow {
 interface DbReceiptRow {
   id: string;
   establishment: string;
+  establishment_display?: string | null;
   date: string;
   created_at?: string | null;
   items?: DbItemRow[] | null;
@@ -105,6 +106,7 @@ function mapDbReceiptToReceipt(row: DbReceiptRow): Receipt {
   return {
     id: row.id,
     establishment: row.establishment,
+    establishment_display: row.establishment_display ?? undefined,
     date: formatToBR(row.date),
     items: (row.items || []).map(mapDbItemToReceiptItem),
   };
@@ -151,6 +153,7 @@ export async function getReceiptsPaginated(
     ? `
       id,
       establishment,
+      establishment_display,
       date,
       created_at,
       items (
@@ -164,7 +167,7 @@ export async function getReceiptsPaginated(
         price
       )
     `
-    : "id, establishment, date, created_at";
+    : "id, establishment, establishment_display, date, created_at";
 
   let query = client
     .from("receipts")
@@ -227,7 +230,7 @@ export async function getAllReceiptsFromDB(): Promise<Receipt[]> {
       includeItems: true,
     });
     return result.data;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     if (import.meta.env.DEV) {
       logger.error('getAllReceiptsFromDB', 'Erro ao buscar todos os receipts', error);

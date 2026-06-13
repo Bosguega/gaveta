@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { getEstablishmentMapFromDB } from "../services";
+import { useMemo } from "react";
+import { useEstablishmentDictionaryQuery } from "./queries/useEstablishmentDictionaryQuery";
 import { normalizeKey } from "../utils/normalize";
 import type { EstablishmentDictionaryMap } from "../types/domain";
 
@@ -7,18 +7,21 @@ import type { EstablishmentDictionaryMap } from "../types/domain";
  * Hook que retorna o mapa nome_nota → nome_fantasia
  * para resolução de nomes de estabelecimentos na UI.
  *
- * O mapa usa chave normalizada (normalizeKey) para busca.
- * Se um estabelecimento não estiver no dicionário,
- * retorna o nome original.
+ * Reusa os dados da query principal do dicionário,
+ * garantindo que qualquer atualização reflita na UI.
  */
 export function useEstablishmentMap(): EstablishmentDictionaryMap {
-    const { data = {} } = useQuery({
-        queryKey: ["establishment-dictionary", "map"],
-        queryFn: getEstablishmentMapFromDB,
-        staleTime: 10 * 60 * 1000,
-    });
+    const { data: entries = [] } = useEstablishmentDictionaryQuery();
 
-    return data;
+    const map = useMemo(() => {
+        return entries.reduce<EstablishmentDictionaryMap>((acc, entry) => {
+            const key = normalizeKey(entry.nome_nota);
+            acc[key] = entry.nome_fantasia;
+            return acc;
+        }, {});
+    }, [entries]);
+
+    return map;
 }
 
 /**

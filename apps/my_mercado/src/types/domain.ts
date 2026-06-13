@@ -37,6 +37,7 @@ export interface ReceiptItem {
 export interface Receipt {
   id: string;
   establishment: string;
+  establishment_display?: string;
   date: string;
   items: ReceiptItem[];
   created_at?: string;

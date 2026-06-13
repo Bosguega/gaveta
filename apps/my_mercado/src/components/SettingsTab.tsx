@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from "react";
+import { useState, lazy, Suspense, useEffect } from "react";
 import {
   Settings,
   Trash2,
@@ -27,6 +27,7 @@ import {
 import ConfirmDialog from "./ConfirmDialog";
 import { TabSkeleton as SubTabSkeleton } from "./Skeleton";
 import type { ConfirmDialogConfig } from "../types/ui";
+import { useEstablishmentPrefillStore } from "../stores/useEstablishmentPrefillStore";
 
 const DictionaryTab = lazy(() => import("./DictionaryTab"));
 const EstablishmentDictionaryTab = lazy(() => import("./EstablishmentDictionaryTab"));
@@ -40,6 +41,15 @@ export default function SettingsTab({ onOpenAiConfig }: SettingsTabProps) {
   const [loading, setLoading] = useState(false);
   const [syncListsEnabled, setSyncListsEnabled] = useState(() => isShoppingListCloudSyncEnabled());
   const [activeSubTab, setActiveSubTab] = useState<"main" | "dictionary" | "establishment-dictionary">("main");
+  const prefillNomeNota = useEstablishmentPrefillStore((s) => s.nomeNota);
+
+  // Auto-navega para o dicionário de estabelecimentos se houver prefill
+  useEffect(() => {
+    if (prefillNomeNota) {
+      setActiveSubTab("establishment-dictionary");
+      // Não limpa aqui - o EstablishmentDictionaryTab vai ler e limpar
+    }
+  }, [prefillNomeNota]);
 
   const resetScannerState = useScannerStore((state) => state.resetScannerState);
   const sessionUserId = useReceiptsSessionStore((state) => state.sessionUserId);

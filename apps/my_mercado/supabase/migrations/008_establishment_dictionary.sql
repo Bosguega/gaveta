@@ -2,14 +2,12 @@
 -- 008_establishment_dictionary.sql
 --
 -- Cria a tabela establishment_dictionary para mapear nomes de
--- estabelecimentos das notas (nomeNota) para nomes amigaveis
--- definidos pelo usuario (nomeFantasia).
---
--- Inclui RPC para aplicar a atualizacao em lote nas receipts
--- salvas, com filtro estrito por user_id.
+-- estabelecimentos (nomeNota -> nomeFantasia) e uma coluna
+-- establishment_display na tabela receipts que pode ser
+-- atualizada via RPC sem alterar o nome original.
 -- =============================================================
 
--- 1. Criar tabela
+-- 1. Criar tabela do dicionário
 CREATE TABLE IF NOT EXISTS establishment_dictionary (
     nome_nota TEXT NOT NULL,
     nome_fantasia TEXT NOT NULL,
@@ -18,7 +16,10 @@ CREATE TABLE IF NOT EXISTS establishment_dictionary (
     PRIMARY KEY (user_id, nome_nota)
 );
 
--- 2. RLS
+-- 2. Adicionar coluna de display na tabela receipts
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS establishment_display TEXT;
+
+-- 3. RLS
 ALTER TABLE establishment_dictionary ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Usuarios podem ler seus proprios mapeamentos"
@@ -41,10 +42,9 @@ CREATE POLICY "Usuarios podem deletar seus proprios mapeamentos"
     FOR DELETE
     USING (auth.uid() = user_id);
 
--- 3. RPC: apply_establishment_entry_to_receipts
--- Atualiza o campo establishment nas receipts do usuario
--- quando o nome fantasia de um estabelecimento e alterado.
--- Filtro estrito por user_id + establishment antigo.
+-- 4. RPC: apply_establishment_entry_to_receipts
+-- Atualiza APENAS establishment_display nas receipts,
+-- preservando o establishment original.
 CREATE OR REPLACE FUNCTION apply_establishment_entry_to_receipts(
     p_user_id UUID,
     p_old_name TEXT,
@@ -58,7 +58,7 @@ DECLARE
     v_updated_count INTEGER;
 BEGIN
     UPDATE receipts
-    SET establishment = p_new_name
+    SET establishment_display = p_new_name
     WHERE user_id = p_user_id
       AND establishment = p_old_name;
 

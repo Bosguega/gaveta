@@ -60,8 +60,8 @@ export async function upsertEstablishmentDictionaryEntryInDB(
 }
 
 /**
- * Aplica a atualização do nome fantasia a todas as receipts salvas
- * que possuem o nome_nota original
+ * Aplica uma entrada do dicionário às receipts salvas.
+ * Atualiza APENAS a coluna establishment_display, preservando o original.
  */
 export async function applyEstablishmentEntryToSavedReceipts(
     oldName: string,

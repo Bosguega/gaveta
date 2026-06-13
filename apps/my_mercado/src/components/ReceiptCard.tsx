@@ -1,9 +1,11 @@
 import React, { useMemo, useCallback } from "react";
-import { Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Trash2, ChevronDown, ChevronUp, Edit3 } from "lucide-react";
 import { parseBRL, formatBRL } from "../utils/currency";
 import { calculateReceiptTotal } from "../utils/analytics";
 import { formatToBR } from "../utils/date";
 import type { Receipt, ReceiptItem } from "../types/domain";
+import { useEstablishmentPrefillStore } from "../stores/useEstablishmentPrefillStore";
+import { useUiStore } from "../stores/useUiStore";
 import { useEstablishmentMap, resolveEstablishmentName } from "../hooks/useEstablishmentMap";
 
 interface ReceiptCardProps {
@@ -19,11 +21,22 @@ export const ReceiptCard = React.memo(function ReceiptCard({
     onToggle,
     onDelete,
 }: ReceiptCardProps) {
+    const setPrefillNomeNota = useEstablishmentPrefillStore((s) => s.setNomeNota);
+    const setTab = useUiStore((s) => s.setTab);
     const establishmentMap = useEstablishmentMap();
-    const displayEstablishment = useMemo(
-        () => resolveEstablishmentName(receipt.establishment, establishmentMap),
-        [receipt.establishment, establishmentMap],
-    );
+
+    // Usa establishment_display quando disponível (aplicado via RPC),
+    // caindo de volta para a resolução local ou nome original.
+    const displayEstablishment = useMemo(() => {
+        return receipt.establishment_display || resolveEstablishmentName(receipt.establishment, establishmentMap);
+    }, [receipt.establishment, receipt.establishment_display, establishmentMap]);
+
+    const handleGoToEstablishmentDictionary = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation();
+        setPrefillNomeNota(receipt.establishment);
+        setTab("settings");
+    }, [receipt.establishment, setPrefillNomeNota, setTab]);
+
     // Memoizar o cálculo do total
     const total = useMemo(() => {
         return calculateReceiptTotal(receipt, parseBRL);
@@ -53,8 +66,15 @@ export const ReceiptCard = React.memo(function ReceiptCard({
             >
                 <div className="flex justify-between items-start mb-2">
                     <div>
-                        <h3 className="text-slate-50 text-[1.1rem] mb-1">
+                        <h3 className="text-slate-50 text-[1.1rem] mb-1 group">
                             {displayEstablishment}
+                            <button
+                                onClick={handleGoToEstablishmentDictionary}
+                                className="ml-2 bg-blue-500/10 border-none rounded-lg w-6 h-6 inline-flex items-center justify-center text-[var(--primary)] align-middle opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Definir nome amigável"
+                            >
+                                <Edit3 size={12} />
+                            </button>
                         </h3>
                         <div className="flex gap-4 items-center">
                             <span className="text-slate-400 text-xs">

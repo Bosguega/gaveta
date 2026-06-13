@@ -1,9 +1,10 @@
 import { CheckCircle, ChevronDown, ChevronUp, XCircle, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { formatBRL, parseBRL } from "../../../utils/currency";
 import { formatToBR } from "../../../utils/date";
 import type { ReceiptItem } from "../../../types/domain";
 import type { ReceiptResultProps } from "../../../types/scanner";
+import { useEstablishmentMap, resolveEstablishmentName } from "../../../hooks/useEstablishmentMap";
 
 export function ResultScreen({
   currentReceipt,
@@ -13,6 +14,12 @@ export function ResultScreen({
   calculateReceiptTotal,
 }: ReceiptResultProps) {
   const [isExpanded, setIsExpanded] = useState(true);
+  const establishmentMap = useEstablishmentMap();
+
+  const displayEstablishment = useMemo(() => {
+    return currentReceipt.establishment_display || resolveEstablishmentName(currentReceipt.establishment, establishmentMap);
+  }, [currentReceipt.establishment, currentReceipt.establishment_display, establishmentMap]);
+
   const displayDate = formatToBR(currentReceipt.date) || currentReceipt.date;
 
   const formatItemTotal = (item: ReceiptItem) => {
@@ -47,7 +54,7 @@ export function ResultScreen({
           <div className="flex justify-between items-start mb-2">
             <div>
               <h3 className="text-slate-50 text-[1.1rem] mb-1">
-                {currentReceipt.establishment}
+                {displayEstablishment}
               </h3>
               <div className="flex gap-4 items-center">
                 <span className="text-slate-400 text-xs">

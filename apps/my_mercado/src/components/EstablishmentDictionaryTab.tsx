@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Book, RotateCcw, Save, X, Edit3, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { Book, Plus, RotateCcw, Save, X, Edit3, Trash2 } from "lucide-react";
 import { toast, type Toast } from "react-hot-toast";
 import { notify } from "../utils/notifications";
 import { logger } from "../utils/logger";
@@ -10,6 +10,7 @@ import { filterBySearch, sortItems } from "../utils/filters";
 import type { ConfirmDialogConfig, SortDirection } from "../types/ui";
 import type { EstablishmentDictionaryEntry } from "../types/domain";
 import { useAllReceiptsQuery } from "../hooks/queries/useReceiptsQuery";
+import { useEstablishmentPrefillStore } from "../stores/useEstablishmentPrefillStore";
 import {
     useApplyEstablishmentEntryToSavedReceipts,
     useClearEstablishmentDictionary,
@@ -26,12 +27,20 @@ function EstablishmentDictionaryTab() {
     const deleteEntry = useDeleteEstablishmentDictionaryEntry();
     const clearDictionary = useClearEstablishmentDictionary();
     const applyChanges = useApplyEstablishmentEntryToSavedReceipts();
+    const prefillNomeNota = useEstablishmentPrefillStore((s) => s.nomeNota);
+    const clearPrefill = useEstablishmentPrefillStore((s) => s.clear);
+    const prefillApplied = useRef(false);
 
     const [searchQuery, setSearchQuery] = useState("");
     const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
     const [sortBy, setSortBy] = useState("recent");
     const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
     const [editingKey, setEditingKey] = useState<string | null>(null);
+    const [isAdding, setIsAdding] = useState(false);
+    const [addForm, setAddForm] = useState({
+        nome_nota: "",
+        nome_fantasia: "",
+    });
     const [editForm, setEditForm] = useState({
         nome_fantasia: "",
     });
@@ -93,7 +102,6 @@ function EstablishmentDictionaryTab() {
         try {
             const previous = dictionary.find((item) => item.nome_nota === nomeNota);
             const previousNomeFantasia = (previous?.nome_fantasia ?? "").trim();
-
             const nextNomeFantasia = (editForm.nome_fantasia ?? "").trim();
 
             if (!nextNomeFantasia) {
@@ -101,8 +109,7 @@ function EstablishmentDictionaryTab() {
                 return;
             }
 
-            const shouldOfferApplyToSaved =
-                previousNomeFantasia !== nextNomeFantasia;
+            const shouldOfferApplyToSaved = previousNomeFantasia !== nextNomeFantasia;
 
             await upsertEntry.mutateAsync({
                 nomeNota,
@@ -177,6 +184,45 @@ function EstablishmentDictionaryTab() {
         });
     };
 
+    const handleAddEntry = async () => {
+        const nomeNota = addForm.nome_nota.trim();
+        const nomeFantasia = addForm.nome_fantasia.trim();
+
+        if (!nomeNota) {
+            notify.error("O nome da nota não pode ficar vazio.");
+            return;
+        }
+        if (!nomeFantasia) {
+            notify.error("O nome fantasia não pode ficar vazio.");
+            return;
+        }
+
+        try {
+            const exists = dictionary.find((item) => item.nome_nota === nomeNota);
+            if (exists) {
+                notify.error("Já existe um mapeamento para este estabelecimento.");
+                return;
+            }
+
+            await upsertEntry.mutateAsync({
+                nomeNota,
+                nomeFantasia,
+            });
+
+            setIsAdding(false);
+            setAddForm({ nome_nota: "", nome_fantasia: "" });
+            notify.success("Item adicionado!");
+        } catch (err) {
+            logger.error("EstablishmentDictionaryTab", "Erro ao adicionar item", err);
+            notify.error("Erro ao adicionar item.");
+        }
+    };
+
+    const handleCancelAdd = () => {
+        setIsAdding(false);
+        setAddForm({ nome_nota: "", nome_fantasia: "" });
+    };
+
     const handleClearDictionary = async () => {
         setConfirmDialog({
             title: "Limpar dicionario?",
@@ -194,6 +240,24 @@ function EstablishmentDictionaryTab() {
             },
         });
     };
+
+    // Se veio de um prefill (clicou no lápis no histórico)
+    useEffect(() => {
+        if (prefillNomeNota && !prefillApplied.current) {
+            prefillApplied.current = true;
+            const exists = dictionary.find((item) => item.nome_nota === prefillNomeNota);
+            if (exists) {
+                handleStartEdit(exists);
+            } else {
+                setIsAdding(true);
+                setAddForm({
+                    nome_nota: prefillNomeNota,
+                    nome_fantasia: "",
+                });
+            }
+            clearPrefill();
+        }
+    }, [prefillNomeNota, dictionary, clearPrefill]);
 
     const filteredDictionary = useMemo(() => {
         return filterBySearch(dictionary, searchQuery, ["nome_nota", "nome_fantasia"]);
@@ -214,11 +278,7 @@ function EstablishmentDictionaryTab() {
         };
 
         const sorted = sortItems(filteredDictionary, sortBy, sortDirection, customSorters);
-
-        return {
-            items: sorted,
-            totalCount: sorted.length,
-        };
+        return { items: sorted, totalCount: sorted.length };
     }, [filteredDictionary, sortBy, sortDirection]);
 
     useEffect(() => {
@@ -239,13 +299,22 @@ function EstablishmentDictionaryTab() {
                         <Book color="var(--primary)" size={20} />
                         Dicionario de Estabelecimentos
                     </h2>
-                    <button
-                        className="btn bg-red-500/10 border-none text-red-400 p-2 rounded-lg"
-                        onClick={handleClearDictionary}
-                        title="Limpar Dicionario"
-                    >
-                        <RotateCcw size={20} />
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            className="btn bg-green-500/10 border-none text-green-400 p-2 rounded-lg"
+                            onClick={() => setIsAdding(true)}
+                            title="Adicionar mapeamento"
+                        >
+                            <Plus size={20} />
+                        </button>
+                        <button
+                            className="btn bg-red-500/10 border-none text-red-400 p-2 rounded-lg"
+                            onClick={handleClearDictionary}
+                            title="Limpar Dicionario"
+                        >
+                            <RotateCcw size={20} />
+                        </button>
+                    </div>
                 </div>
 
                 <UniversalSearchBar
@@ -273,12 +342,45 @@ function EstablishmentDictionaryTab() {
                             <Skeleton width="100%" height="80px" className="mb-4" />
                             <Skeleton width="100%" height="80px" />
                         </div>
-                    ) : visibleItems.length === 0 ? (
+                    ) : visibleItems.length === 0 && !isAdding ? (
                         <div className="glass-card text-center p-12">
                             <p className="text-slate-500">Nenhum item encontrado no dicionario.</p>
                         </div>
                     ) : (
                         <>
+                            {isAdding && (
+                                <div className="glass-card animated-item mb-0 p-4">
+                                    <div className="flex flex-col gap-3">
+                                        <div className="text-xs text-slate-500 font-bold">NOVO MAPEAMENTO</div>
+                                        <input
+                                            type="text"
+                                            className="search-input bg-[var(--bg-color)]"
+                                            value={addForm.nome_nota}
+                                            onChange={(e) =>
+                                                setAddForm({ ...addForm, nome_nota: e.target.value })
+                                            }
+                                            placeholder="Nome exato na nota"
+                                        />
+                                        <input
+                                            type="text"
+                                            className="search-input bg-[var(--bg-color)]"
+                                            value={addForm.nome_fantasia}
+                                            onChange={(e) =>
+                                                setAddForm({ ...addForm, nome_fantasia: e.target.value })
+                                            }
+                                            placeholder="Nome fantasia"
+                                        />
+                                        <div className="flex gap-2">
+                                            <button className="btn btn-success flex-1" onClick={handleAddEntry}>
+                                                <Save size={18} /> Adicionar
+                                            </button>
+                                            <button className="btn flex-1" onClick={handleCancelAdd}>
+                                                <X size={18} /> Cancelar
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                             {visibleItems.map((item) => (
                                 <div key={item.nome_nota}>
                                     {editingKey === item.nome_nota ? (
@@ -296,18 +398,11 @@ function EstablishmentDictionaryTab() {
                                                     }
                                                     placeholder="Nome fantasia"
                                                 />
-
                                                 <div className="flex gap-2">
-                                                    <button
-                                                        className="btn btn-success flex-1"
-                                                        onClick={() => handleSaveEdit(item.nome_nota)}
-                                                    >
+                                                    <button className="btn btn-success flex-1" onClick={() => handleSaveEdit(item.nome_nota)}>
                                                         <Save size={18} /> Salvar
                                                     </button>
-                                                    <button
-                                                        className="btn flex-1"
-                                                        onClick={() => setEditingKey(null)}
-                                                    >
+                                                    <button className="btn flex-1" onClick={() => setEditingKey(null)}>
                                                         <X size={18} /> Cancelar
                                                     </button>
                                                 </div>
