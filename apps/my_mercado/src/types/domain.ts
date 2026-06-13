@@ -69,14 +69,14 @@ export type DictionaryMap = Record<
  * Entrada do dicionário de estabelecimentos
  */
 export interface EstablishmentDictionaryEntry {
-  nome_nota: string;
+  establishment: string;
   nome_fantasia: string;
   user_id?: string;
   created_at?: string;
 }
 
 /**
- * Mapa do dicionário de estabelecimentos (nome_nota → nome_fantasia)
+ * Mapa do dicionário de estabelecimentos (establishment → nome_fantasia)
  */
 export type EstablishmentDictionaryMap = Record<string, string>;
 

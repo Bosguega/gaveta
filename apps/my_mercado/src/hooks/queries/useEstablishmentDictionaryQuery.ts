@@ -27,24 +27,24 @@ export function useUpsertEstablishmentDictionaryEntry() {
 
     return useMutation({
         mutationFn: async ({
-            nomeNota,
+            establishment,
             nomeFantasia,
         }: {
-            nomeNota: string;
+            establishment: string;
             nomeFantasia: string;
         }) => {
-            await upsertEstablishmentDictionaryEntryInDB(nomeNota, nomeFantasia);
-            return { nomeNota, nomeFantasia };
+            await upsertEstablishmentDictionaryEntryInDB(establishment, nomeFantasia);
+            return { establishment, nomeFantasia };
         },
-        onSuccess: ({ nomeNota, nomeFantasia }) => {
+        onSuccess: ({ establishment, nomeFantasia }) => {
             queryClient.setQueryData(
                 establishmentDictionaryKeys.list(),
                 (old: EstablishmentDictionaryEntry[] | undefined) => {
                     if (!old) return old;
-                    const exists = old.find((entry) => entry.nome_nota === nomeNota);
+                    const exists = old.find((entry) => entry.establishment === establishment);
                     if (exists) {
                         return old.map((entry) =>
-                            entry.nome_nota === nomeNota
+                            entry.establishment === establishment
                                 ? { ...entry, nome_fantasia: nomeFantasia }
                                 : entry,
                         );
@@ -52,7 +52,7 @@ export function useUpsertEstablishmentDictionaryEntry() {
                     return [
                         ...old,
                         {
-                            nome_nota: nomeNota,
+                            establishment: establishment,
                             nome_fantasia: nomeFantasia,
                             created_at: new Date().toISOString(),
                         },
@@ -67,16 +67,16 @@ export function useDeleteEstablishmentDictionaryEntry() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: async (nomeNota: string) => {
-            await deleteEstablishmentDictionaryEntryFromDB(nomeNota);
-            return nomeNota;
+        mutationFn: async (establishment: string) => {
+            await deleteEstablishmentDictionaryEntryFromDB(establishment);
+            return establishment;
         },
-        onSuccess: (deletedNomeNota) => {
+        onSuccess: (deletedEstablishment) => {
             queryClient.setQueryData(
                 establishmentDictionaryKeys.list(),
                 (old: EstablishmentDictionaryEntry[] | undefined) => {
                     if (!old) return old;
-                    return old.filter((entry) => entry.nome_nota !== deletedNomeNota);
+                    return old.filter((entry) => entry.establishment !== deletedEstablishment);
                 },
             );
         },

@@ -38,7 +38,7 @@ function EstablishmentDictionaryTab() {
     const [editingKey, setEditingKey] = useState<string | null>(null);
     const [isAdding, setIsAdding] = useState(false);
     const [addForm, setAddForm] = useState({
-        nome_nota: "",
+        establishment: "",
         nome_fantasia: "",
     });
     const [editForm, setEditForm] = useState({
@@ -92,15 +92,15 @@ function EstablishmentDictionaryTab() {
     };
 
     const handleStartEdit = (item: EstablishmentDictionaryEntry) => {
-        setEditingKey(item.nome_nota);
+        setEditingKey(item.establishment);
         setEditForm({
             nome_fantasia: item.nome_fantasia || "",
         });
     };
 
-    const handleSaveEdit = async (nomeNota: string) => {
+    const handleSaveEdit = async (establishment: string) => {
         try {
-            const previous = dictionary.find((item) => item.nome_nota === nomeNota);
+            const previous = dictionary.find((item) => item.establishment === establishment);
             const previousNomeFantasia = (previous?.nome_fantasia ?? "").trim();
             const nextNomeFantasia = (editForm.nome_fantasia ?? "").trim();
 
@@ -112,7 +112,7 @@ function EstablishmentDictionaryTab() {
             const shouldOfferApplyToSaved = previousNomeFantasia !== nextNomeFantasia;
 
             await upsertEntry.mutateAsync({
-                nomeNota,
+                establishment,
                 nomeFantasia: nextNomeFantasia,
             });
 
@@ -166,15 +166,15 @@ function EstablishmentDictionaryTab() {
         }
     };
 
-    const handleDeleteEntry = async (nomeNota: string) => {
+    const handleDeleteEntry = async (establishment: string) => {
         setConfirmDialog({
             title: "Remover item?",
-            message: `Isso remove o mapeamento de "${nomeNota}" do dicionario.`,
+            message: `Isso remove o mapeamento de "${establishment}" do dicionario.`,
             confirmText: "Remover",
             danger: true,
             onConfirm: async () => {
                 try {
-                    await deleteEntry.mutateAsync(nomeNota);
+                    await deleteEntry.mutateAsync(establishment);
                     notify.success("Item removido!");
                 } catch (err) {
                     logger.error("EstablishmentDictionaryTab", "Erro ao remover item", err);
@@ -185,10 +185,10 @@ function EstablishmentDictionaryTab() {
     };
 
     const handleAddEntry = async () => {
-        const nomeNota = addForm.nome_nota.trim();
+        const establishment = addForm.establishment.trim();
         const nomeFantasia = addForm.nome_fantasia.trim();
 
-        if (!nomeNota) {
+        if (!establishment) {
             notify.error("O nome da nota não pode ficar vazio.");
             return;
         }
@@ -198,19 +198,19 @@ function EstablishmentDictionaryTab() {
         }
 
         try {
-            const exists = dictionary.find((item) => item.nome_nota === nomeNota);
+            const exists = dictionary.find((item) => item.establishment === establishment);
             if (exists) {
                 notify.error("Já existe um mapeamento para este estabelecimento.");
                 return;
             }
 
             await upsertEntry.mutateAsync({
-                nomeNota,
+                establishment,
                 nomeFantasia,
             });
 
             setIsAdding(false);
-            setAddForm({ nome_nota: "", nome_fantasia: "" });
+            setAddForm({ establishment: "", nome_fantasia: "" });
             notify.success("Item adicionado!");
         } catch (err) {
             logger.error("EstablishmentDictionaryTab", "Erro ao adicionar item", err);
@@ -220,7 +220,7 @@ function EstablishmentDictionaryTab() {
 
     const handleCancelAdd = () => {
         setIsAdding(false);
-        setAddForm({ nome_nota: "", nome_fantasia: "" });
+        setAddForm({ establishment: "", nome_fantasia: "" });
     };
 
     const handleClearDictionary = async () => {
@@ -245,13 +245,13 @@ function EstablishmentDictionaryTab() {
     useEffect(() => {
         if (prefillNomeNota && !prefillApplied.current) {
             prefillApplied.current = true;
-            const exists = dictionary.find((item) => item.nome_nota === prefillNomeNota);
+            const exists = dictionary.find((item) => item.establishment === prefillNomeNota);
             if (exists) {
                 handleStartEdit(exists);
             } else {
                 setIsAdding(true);
                 setAddForm({
-                    nome_nota: prefillNomeNota,
+                    establishment: prefillNomeNota,
                     nome_fantasia: "",
                 });
             }
@@ -260,7 +260,7 @@ function EstablishmentDictionaryTab() {
     }, [prefillNomeNota, dictionary, clearPrefill]);
 
     const filteredDictionary = useMemo(() => {
-        return filterBySearch(dictionary, searchQuery, ["nome_nota", "nome_fantasia"]);
+        return filterBySearch(dictionary, searchQuery, ["establishment", "nome_fantasia"]);
     }, [dictionary, searchQuery]);
 
     const sortedDictionary = useMemo(() => {
@@ -271,8 +271,8 @@ function EstablishmentDictionaryTab() {
                 return dateA.getTime() - dateB.getTime();
             },
             alpha: (a: EstablishmentDictionaryEntry, b: EstablishmentDictionaryEntry) => {
-                const nameA = (a.nome_fantasia || a.nome_nota).toLowerCase();
-                const nameB = (b.nome_fantasia || b.nome_nota).toLowerCase();
+                const nameA = (a.nome_fantasia || a.establishment).toLowerCase();
+                const nameB = (b.nome_fantasia || b.establishment).toLowerCase();
                 return nameA.localeCompare(nameB);
             },
         };
@@ -355,9 +355,9 @@ function EstablishmentDictionaryTab() {
                                         <input
                                             type="text"
                                             className="search-input bg-[var(--bg-color)]"
-                                            value={addForm.nome_nota}
+                                            value={addForm.establishment}
                                             onChange={(e) =>
-                                                setAddForm({ ...addForm, nome_nota: e.target.value })
+                                                setAddForm({ ...addForm, establishment: e.target.value })
                                             }
                                             placeholder="Nome exato na nota"
                                         />
@@ -382,12 +382,12 @@ function EstablishmentDictionaryTab() {
                                 </div>
                             )}
                             {visibleItems.map((item) => (
-                                <div key={item.nome_nota}>
-                                    {editingKey === item.nome_nota ? (
+                                <div key={item.establishment}>
+                                    {editingKey === item.establishment ? (
                                         <div className="glass-card animated-item mb-0 p-4">
                                             <div className="flex flex-col gap-3">
                                                 <div className="text-xs text-slate-500 font-bold">
-                                                    NOME NA NOTA: {item.nome_nota}
+                                                    NOME NA NOTA: {item.establishment}
                                                 </div>
                                                 <input
                                                     type="text"
@@ -399,7 +399,7 @@ function EstablishmentDictionaryTab() {
                                                     placeholder="Nome fantasia"
                                                 />
                                                 <div className="flex gap-2">
-                                                    <button className="btn btn-success flex-1" onClick={() => handleSaveEdit(item.nome_nota)}>
+                                                    <button className="btn btn-success flex-1" onClick={() => handleSaveEdit(item.establishment)}>
                                                         <Save size={18} /> Salvar
                                                     </button>
                                                     <button className="btn flex-1" onClick={() => setEditingKey(null)}>
@@ -418,7 +418,7 @@ function EstablishmentDictionaryTab() {
                                                         </span>
                                                     </div>
                                                     <div className="text-xs text-slate-500 italic">
-                                                        Original: {item.nome_nota}
+                                                        Original: {item.establishment}
                                                     </div>
                                                 </div>
                                                 <div className="flex gap-2">
@@ -429,7 +429,7 @@ function EstablishmentDictionaryTab() {
                                                         <Edit3 size={16} />
                                                     </button>
                                                     <button
-                                                        onClick={() => handleDeleteEntry(item.nome_nota)}
+                                                        onClick={() => handleDeleteEntry(item.establishment)}
                                                         className="bg-red-500/10 border-none rounded-lg w-9 h-9 flex items-center justify-center text-red-500"
                                                     >
                                                         <Trash2 size={16} />

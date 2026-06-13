@@ -17,19 +17,19 @@ export async function getFullEstablishmentDictionaryFromDB(): Promise<Establishm
         .from("establishment_dictionary")
         .select("*")
         .eq("user_id", user.id)
-        .order("nome_nota", { ascending: true });
+        .order("establishment", { ascending: true });
 
     if (error) throw error;
     return (data || []) as EstablishmentDictionaryEntry[];
 }
 
 /**
- * Busca o mapa nome_nota → nome_fantasia (para uso na UI)
+ * Busca o mapa establishment → nome_fantasia (para uso na UI)
  */
 export async function getEstablishmentMapFromDB(): Promise<EstablishmentDictionaryMap> {
     const entries = await getFullEstablishmentDictionaryFromDB();
     return entries.reduce<EstablishmentDictionaryMap>((acc, entry) => {
-        const key = normalizeKey(entry.nome_nota);
+        const key = normalizeKey(entry.establishment);
         acc[key] = entry.nome_fantasia;
         return acc;
     }, {});
@@ -39,7 +39,7 @@ export async function getEstablishmentMapFromDB(): Promise<EstablishmentDictiona
  * Atualiza ou insere uma entrada no dicionário de estabelecimentos
  */
 export async function upsertEstablishmentDictionaryEntryInDB(
-    nomeNota: string,
+    establishment: string,
     nomeFantasia: string
 ): Promise<boolean> {
     const { client, user } = await getAuthenticatedSupabaseContext();
@@ -48,11 +48,11 @@ export async function upsertEstablishmentDictionaryEntryInDB(
         .from("establishment_dictionary")
         .upsert(
             {
-                nome_nota: nomeNota,
+                establishment: establishment,
                 nome_fantasia: nomeFantasia,
                 user_id: user.id,
             },
-            { onConflict: "user_id,nome_nota" }
+            { onConflict: "user_id,establishment" }
         );
 
     if (error) throw error;
@@ -83,7 +83,7 @@ export async function applyEstablishmentEntryToSavedReceipts(
  * Deleta uma entrada do dicionário de estabelecimentos
  */
 export async function deleteEstablishmentDictionaryEntryFromDB(
-    nomeNota: string
+    establishment: string
 ): Promise<boolean> {
     const { client, user } = await getAuthenticatedSupabaseContext();
 
@@ -91,7 +91,7 @@ export async function deleteEstablishmentDictionaryEntryFromDB(
         .from("establishment_dictionary")
         .delete()
         .eq("user_id", user.id)
-        .eq("nome_nota", nomeNota);
+        .eq("establishment", establishment);
 
     if (error) throw error;
     return true;

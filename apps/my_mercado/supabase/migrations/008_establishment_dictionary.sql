@@ -9,11 +9,11 @@
 
 -- 1. Criar tabela do dicionário
 CREATE TABLE IF NOT EXISTS establishment_dictionary (
-    nome_nota TEXT NOT NULL,
+    establishment TEXT NOT NULL,
     nome_fantasia TEXT NOT NULL,
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (user_id, nome_nota)
+    PRIMARY KEY (user_id, establishment)
 );
 
 -- 2. Adicionar coluna de display na tabela receipts

@@ -23,7 +23,7 @@ BEGIN
   -- Busca o nome fantasia correspondente no dicionário de estabelecimentos
   SELECT nome_fantasia INTO v_establishment_display
   FROM public.establishment_dictionary
-  WHERE user_id = p_user_id AND nome_nota = p_establishment;
+  WHERE user_id = p_user_id AND establishment = p_establishment;
 
   INSERT INTO public.receipts (
     id,
@@ -101,5 +101,5 @@ UPDATE public.receipts r
 SET establishment_display = d.nome_fantasia
 FROM public.establishment_dictionary d
 WHERE r.user_id = d.user_id 
-  AND r.establishment = d.nome_nota
+  AND r.establishment = d.establishment
   AND r.establishment_display IS NULL;

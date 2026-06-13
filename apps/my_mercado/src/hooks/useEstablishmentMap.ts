@@ -4,7 +4,7 @@ import { normalizeKey } from "../utils/normalize";
 import type { EstablishmentDictionaryMap } from "../types/domain";
 
 /**
- * Hook que retorna o mapa nome_nota → nome_fantasia
+ * Hook que retorna o mapa establishment → nome_fantasia
  * para resolução de nomes de estabelecimentos na UI.
  *
  * Reusa os dados da query principal do dicionário,
@@ -15,7 +15,7 @@ export function useEstablishmentMap(): EstablishmentDictionaryMap {
 
     const map = useMemo(() => {
         return entries.reduce<EstablishmentDictionaryMap>((acc, entry) => {
-            const key = normalizeKey(entry.nome_nota);
+            const key = normalizeKey(entry.establishment);
             acc[key] = entry.nome_fantasia;
             return acc;
         }, {});
