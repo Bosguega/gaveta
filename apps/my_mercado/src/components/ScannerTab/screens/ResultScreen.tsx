@@ -7,6 +7,7 @@ import { normalizeKey } from "../../../utils/normalize";
 import type { ReceiptItem } from "../../../types/domain";
 import type { ReceiptResultProps } from "../../../types/scanner";
 import { useEstablishmentMap } from "../../../hooks/useEstablishmentMap";
+import { useUpsertEstablishmentDictionaryEntry } from "../../../hooks/queries/useEstablishmentDictionaryQuery";
 
 export function ResultScreen({
   currentReceipt,
@@ -17,12 +18,14 @@ export function ResultScreen({
 }: ReceiptResultProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const establishmentMap = useEstablishmentMap();
+  const upsertEntry = useUpsertEstablishmentDictionaryEntry();
 
   const displayEstablishment = useMemo(() => {
     return currentReceipt.establishment_display || currentReceipt.establishment;
   }, [currentReceipt.establishment, currentReceipt.establishment_display]);
 
-  // Toast pós-salvamento: avisa se for um estabelecimento novo (não mapeado)
+  // Pós-salvamento: insere estabelecimento novo no dicionário com nome fantasia = establishment
+  // e avisa o usuário via toast
   const prevSaving = useRef(isSaving);
   const toastShownForReceipt = useRef<string | null>(null);
 
@@ -32,13 +35,15 @@ export function ResultScreen({
       const hasEntryInDictionary = normalizeKey(estabelecimento) in establishmentMap;
       if (!hasEntryInDictionary) {
         toastShownForReceipt.current = currentReceipt.id;
+        // Insere no dicionário com establishment = nome_fantasia
+        upsertEntry.mutate({ establishment: estabelecimento, nomeFantasia: estabelecimento });
         toast(`Novo estabelecimento encontrado: ${estabelecimento}`, {
           duration: 5000,
         });
       }
     }
     prevSaving.current = isSaving;
-  }, [isSaving, currentReceipt.establishment, currentReceipt.id, establishmentMap]);
+  }, [isSaving, currentReceipt.establishment, currentReceipt.id, establishmentMap, upsertEntry]);
 
   const displayDate = formatToBR(currentReceipt.date) || currentReceipt.date;
 
