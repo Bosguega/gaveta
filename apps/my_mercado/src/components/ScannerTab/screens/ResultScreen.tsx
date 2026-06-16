@@ -1,10 +1,12 @@
 import { CheckCircle, ChevronDown, ChevronUp, XCircle, Loader2 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { toast } from "react-hot-toast";
 import { formatBRL, parseBRL } from "../../../utils/currency";
 import { formatToBR } from "../../../utils/date";
+import { normalizeKey } from "../../../utils/normalize";
 import type { ReceiptItem } from "../../../types/domain";
 import type { ReceiptResultProps } from "../../../types/scanner";
-import { useEstablishmentMap, resolveEstablishmentName } from "../../../hooks/useEstablishmentMap";
+import { useEstablishmentMap } from "../../../hooks/useEstablishmentMap";
 
 export function ResultScreen({
   currentReceipt,
@@ -17,8 +19,26 @@ export function ResultScreen({
   const establishmentMap = useEstablishmentMap();
 
   const displayEstablishment = useMemo(() => {
-    return currentReceipt.establishment_display || resolveEstablishmentName(currentReceipt.establishment, establishmentMap);
-  }, [currentReceipt.establishment, currentReceipt.establishment_display, establishmentMap]);
+    return currentReceipt.establishment_display || currentReceipt.establishment;
+  }, [currentReceipt.establishment, currentReceipt.establishment_display]);
+
+  // Toast pós-salvamento: avisa se for um estabelecimento novo (não mapeado)
+  const prevSaving = useRef(isSaving);
+  const toastShownForReceipt = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (prevSaving.current && !isSaving && toastShownForReceipt.current !== currentReceipt.id) {
+      const estabelecimento = currentReceipt.establishment;
+      const hasEntryInDictionary = normalizeKey(estabelecimento) in establishmentMap;
+      if (!hasEntryInDictionary) {
+        toastShownForReceipt.current = currentReceipt.id;
+        toast(`Novo estabelecimento encontrado: ${estabelecimento}`, {
+          duration: 5000,
+        });
+      }
+    }
+    prevSaving.current = isSaving;
+  }, [isSaving, currentReceipt.establishment, currentReceipt.id, establishmentMap]);
 
   const displayDate = formatToBR(currentReceipt.date) || currentReceipt.date;
 

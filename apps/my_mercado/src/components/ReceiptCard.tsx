@@ -6,7 +6,6 @@ import { formatToBR } from "../utils/date";
 import type { Receipt, ReceiptItem } from "../types/domain";
 import { useEstablishmentPrefillStore } from "../stores/useEstablishmentPrefillStore";
 import { useUiStore } from "../stores/useUiStore";
-import { useEstablishmentMap, resolveEstablishmentName } from "../hooks/useEstablishmentMap";
 
 interface ReceiptCardProps {
     receipt: Receipt;
@@ -23,13 +22,11 @@ export const ReceiptCard = React.memo(function ReceiptCard({
 }: ReceiptCardProps) {
     const setPrefillNomeNota = useEstablishmentPrefillStore((s) => s.setNomeNota);
     const setTab = useUiStore((s) => s.setTab);
-    const establishmentMap = useEstablishmentMap();
 
-    // Usa establishment_display quando disponível (aplicado via RPC),
-    // caindo de volta para a resolução local ou nome original.
+    // Exibe establishment_display (sempre preenchido pela RPC)
     const displayEstablishment = useMemo(() => {
-        return receipt.establishment_display || resolveEstablishmentName(receipt.establishment, establishmentMap);
-    }, [receipt.establishment, receipt.establishment_display, establishmentMap]);
+        return receipt.establishment_display || receipt.establishment;
+    }, [receipt.establishment, receipt.establishment_display]);
 
     const handleGoToEstablishmentDictionary = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
