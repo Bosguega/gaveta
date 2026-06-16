@@ -179,6 +179,19 @@ describe("buildAnalysisEngine", () => {
     expect(data.priceEvolution).toEqual([]);
   });
 
+  it("builds establishment spending by receipt establishment", () => {
+    const data = buildAnalysisEngine(
+      receipts,
+      { month: "2026-03", product: null, category: null },
+      false,
+    );
+
+    expect(data.establishmentSpending.length).toBe(1);
+    expect(data.establishmentSpending[0].name).toBe("Mercado Central");
+    expect(data.establishmentSpending[0].amount).toBe(43);
+    expect(data.establishmentSpending[0].percent).toBe(100);
+  });
+
   it("exports emptyFilters helper for reuse", () => {
     // Smoke test: garante que emptyFilters tem a forma esperada
     expect(emptyFilters).toEqual({ month: null, product: null, category: null });

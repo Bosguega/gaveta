@@ -35,6 +35,13 @@ export interface MonthlyTotal {
     total: number
 }
 
+export interface EstablishmentSpending {
+    name: string
+    amount: number
+    percent: number
+    color: string
+}
+
 export interface AnalysisFilters {
     /** "YYYY-MM" ou null (null = último mês disponível) */
     month: string | null
@@ -59,6 +66,7 @@ export interface AnalysisEngine {
     topProducts: ProductRank[]
     priceEvolution: MonthlyTotal[]
     totalEvolution: MonthlyTotal[]
+    establishmentSpending: EstablishmentSpending[]
     availableMonths: { value: string; label: string }[]
     isLoading: boolean
 
@@ -211,6 +219,28 @@ export function buildAnalysisEngine(
         }
         : null
 
+    // ── Establishment spending ──
+    const establishmentMap = new Map<string, number>()
+    for (const receipt of monthReceipts) {
+        const estName = receipt.establishment_display || receipt.establishment
+        if (estName) {
+            let receiptTotal = 0
+            for (const item of receipt.items ?? []) {
+                receiptTotal += calculateItemTotal(item, parseBRL)
+            }
+            establishmentMap.set(estName, (establishmentMap.get(estName) || 0) + receiptTotal)
+        }
+    }
+
+    const establishmentSpending = [...establishmentMap.entries()]
+        .map(([name, amount]) => ({
+            name,
+            amount,
+            percent: totalSpent > 0 ? Math.round((amount / totalSpent) * 100) : 0,
+            color: getCategoryColor(name),
+        }))
+        .sort((a, b) => b.amount - a.amount)
+
     // ── Categories ──
     const categoryMap = new Map<string, number>()
     for (const item of allItems) {
@@ -314,6 +344,7 @@ export function buildAnalysisEngine(
         topProducts,
         priceEvolution,
         totalEvolution,
+        establishmentSpending,
         availableMonths: computedAvailableMonths,
         isLoading,
         filters,

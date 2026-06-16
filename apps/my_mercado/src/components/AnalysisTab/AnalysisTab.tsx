@@ -1,4 +1,4 @@
-import { BarChart3, TrendingUp, ShoppingBag, ArrowLeft, PieChart, Package, DollarSign } from 'lucide-react'
+import { BarChart3, TrendingUp, ShoppingBag, ArrowLeft, PieChart, Package, DollarSign, Store } from 'lucide-react'
 import { useAnalysisData } from '../../hooks/useAnalysisData'
 import { formatBRL } from '../../utils/currency'
 import type { Receipt } from '../../types/domain'
@@ -11,6 +11,7 @@ interface AnalysisTabProps {
 }
 
 const PRICE_CHART_HEIGHT = 130
+
 const TOTAL_CHART_HEIGHT = 140
 
 function formatMoney(value: number): string {
@@ -31,6 +32,7 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
         topProducts,
         priceEvolution,
         totalEvolution,
+        establishmentSpending,
         availableMonths,
         isLoading,
         resolved,
@@ -271,6 +273,59 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
                                 ) : (
                                     <div className="analysis-empty">
                                         <p>Nenhum produto neste mês.</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="analysis-card analysis-card-establishments">
+                                <div className="analysis-card-header">
+                                    <span className="analysis-card-title">
+                                        <Store size={16} />
+                                        Gastos por Estabelecimento
+                                    </span>
+                                    <div
+                                        className="analysis-card-icon"
+                                        style={{ background: 'rgba(236, 72, 153, 0.12)' }}
+                                    >
+                                        <Store size={18} className="text-primary-pink" />
+                                    </div>
+                                </div>
+
+                                {establishmentSpending.length > 0 ? (
+                                    <div className="categories-scroll">
+                                        {establishmentSpending.map((est) => (
+                                            <div
+                                                key={est.name}
+                                                className="category-item"
+                                            >
+                                                <div
+                                                    className="category-dot"
+                                                    style={{ background: est.color }}
+                                                />
+                                                <div className="category-info">
+                                                    <div className="category-name">{est.name}</div>
+                                                    <div className="category-bar">
+                                                        <div
+                                                            className="category-bar-fill"
+                                                            style={{
+                                                                width: `${est.percent}%`,
+                                                                background: est.color,
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className="category-amount">
+                                                        {formatMoney(est.amount)}
+                                                    </div>
+                                                    <div className="category-percent">{est.percent}%</div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="analysis-empty">
+                                        <p>Nenhum estabelecimento neste mês.</p>
                                     </div>
                                 )}
                             </div>

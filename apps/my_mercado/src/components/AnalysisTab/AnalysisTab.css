@@ -74,6 +74,12 @@
     height: 660px;
 }
 
+.analysis-card-establishments {
+    display: flex;
+    flex-direction: column;
+    height: 300px;
+}
+
 .analysis-card-ranked {
     display: flex;
     flex-direction: column;
