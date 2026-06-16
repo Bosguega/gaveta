@@ -129,7 +129,7 @@ function EstablishmentDictionaryTab() {
                                 </div>
                                 <div className="text-slate-400 text-[0.85rem] leading-[1.35]">
                                     Atualiza o nome do estabelecimento de{" "}
-                                    <strong className="text-slate-200">{nomeNota}</strong> para{" "}
+                                    <strong className="text-slate-200">{establishment}</strong> para{" "}
                                     <strong className="text-slate-200">{nextNomeFantasia}</strong>{" "}
                                     em todas as notas salvas.
                                 </div>
@@ -141,7 +141,7 @@ function EstablishmentDictionaryTab() {
                                     onClick={async () => {
                                         toast.dismiss(t.id);
                                         await applyChangesToSavedReceipts(
-                                            nomeNota,
+                                            establishment,
                                             nextNomeFantasia,
                                         );
                                     }}
