@@ -8,6 +8,7 @@ export const CATEGORIES = [
   "Bebidas",
   "Mercearia",
   "Petshop",
+  "Farmácia",
   "Outros"
 ] as const;
 

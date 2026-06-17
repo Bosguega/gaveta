@@ -71,13 +71,13 @@
 .analysis-card-products {
     display: flex;
     flex-direction: column;
-    height: 660px;
+    height: 720px;
 }
 
 .analysis-card-establishments {
     display: flex;
     flex-direction: column;
-    height: 300px;
+    height: 320px;
 }
 
 .analysis-card-ranked {
@@ -85,7 +85,7 @@
     flex-direction: column;
     overflow: hidden;
     min-height: 0;
-    height: 660px;
+    height: 720px;
 }
 
 .analysis-card:hover {

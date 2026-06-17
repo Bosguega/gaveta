@@ -2,7 +2,6 @@ import { useCallback } from "react";
 import { notify } from "../../utils/notifications";
 import { logger } from "../../utils/logger";
 import { useReceiptScanner } from "../../hooks/useReceiptScanner";
-import { useImageQrScanner } from "../../hooks/useImageQrScanner";
 import { useReceiptsSessionStore } from "../../stores/useReceiptsSessionStore";
 import { useUiStore } from "../../stores/useUiStore";
 import { useScannerStore } from "../../stores/useScannerStore";
@@ -24,7 +23,6 @@ function ScannerTab() {
   const isSaving = useScannerStore((state) => state.isSaving);
   const setCurrentReceipt = useScannerStore((state) => state.setCurrentReceipt);
   const setDuplicateReceipt = useScannerStore((state) => state.setDuplicateReceipt);
-  const { decodeQRFromImage } = useImageQrScanner();
 
   // Wrapper para adaptar a interface da mutation do React Query
   const saveReceipt = useCallback(
@@ -80,32 +78,63 @@ function ScannerTab() {
   const isLoading = loading;
   const isScanning = scanning;
 
-  // Handler de upload de arquivo (foto/galeria)
+  // Handler de upload de arquivo (foto/galeria) — OCR com IA
   const handleFileUpload = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (!file) return;
 
       try {
-        // Notificar que está processando
-        notify.loading('Analisando imagem...');
+        const toastId = notify.loading('Extraindo dados da imagem com IA...');
 
-        // Decodificar QR Code da imagem usando BarcodeDetector ou html5-qrcode
-        const decodedText = await decodeQRFromImage(file);
+        const { parseReceiptFromImage } = await import('../../services/imageReceiptParser');
+        const result = await parseReceiptFromImage(file);
 
-        if (decodedText) {
-          // QR Code encontrado! Processar o texto decodificado
-          notify.success('QR Code encontrado na imagem!');
-          await handleScanSuccess(decodedText);
+        notify.dismiss(toastId);
+
+        // Feedback de confiança
+        const confidenceMessages: Record<string, string> = {
+          alta: 'Alta confiança na leitura.',
+          media: 'Confiança média — revise os dados antes de salvar.',
+          baixa: 'Confiança baixa — a imagem pode estar ilegível, revise cuidadosamente.',
+        };
+
+        const confMessage = confidenceMessages[result.confidence] || '';
+        if (result.confidence === 'alta') {
+          notify.success(`Nota identificada! ${confMessage}`);
+        } else if (result.confidence === 'media') {
+          notify.warning(`Nota identificada com ressalvas. ${confMessage}`);
         } else {
-          notify.error('Nenhum QR Code encontrado na imagem.');
+          notify.warning(`Leitura com baixa confiabilidade. ${confMessage}`);
         }
+
+        // Passar os itens pela pipeline de normalização (consulta/alimenta o dicionário de produtos)
+        const { processItemsPipeline } = await import('../../services/productService');
+
+        const rawItemsForPipeline = result.receipt.items.map(item => ({
+          name: item.name,
+          qty: item.quantity.toString().replace('.', ','),
+          unit: item.unit || 'UN',
+          unitPrice: item.price.toString().replace('.', ','),
+          total: (item.total ?? item.price * item.quantity).toString().replace('.', ',')
+        }));
+
+        const processedItems = await processItemsPipeline(rawItemsForPipeline);
+
+        const processedReceipt = {
+          ...result.receipt,
+          items: processedItems,
+        };
+
+        // Atualiza o receipt processado no estado
+        setCurrentReceipt(processedReceipt);
       } catch (err) {
-        logger.error('ScannerTab', 'Erro ao processar arquivo', err);
-        notify.error('Erro ao processar imagem.');
+        const message = err instanceof Error ? err.message : 'Erro desconhecido';
+        logger.error('ScannerTab', 'Erro ao processar imagem com IA', err);
+        notify.error(`Erro ao processar imagem: ${message}`);
       }
     },
-    [handleScanSuccess, decodeQRFromImage]
+    [setCurrentReceipt]
   );
 
   // Handler de URL
