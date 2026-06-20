@@ -99,7 +99,7 @@ export function usePurchaseHistory(
           if (!key) continue;
 
           const quantity = current.quantity || 1;
-          const unitPrice = current.price || 0;
+          const unitPrice = current.paid_price ?? (current.price || 0);
           const total = current.total ?? unitPrice * quantity;
 
           const list = map.get(key) || [];

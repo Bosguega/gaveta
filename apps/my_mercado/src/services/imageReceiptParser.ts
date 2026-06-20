@@ -197,6 +197,7 @@ Regras:
             name: item.name,
             quantity: item.quantity,
             price: item.price,
+            paid_price: item.price,
             total: item.total,
         })),
     };

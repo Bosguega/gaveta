@@ -10,6 +10,11 @@ export function calculateItemTotal(
   item: ReceiptItem,
   parseBRL: ParseNumeric,
 ): number {
+  // Prioridade: paid_price (preço real pago) > total > price * quantity
+  if (item.paid_price !== undefined && item.paid_price !== null) {
+    return parseBRL(item.paid_price) * parseBRL(item.quantity ?? 1);
+  }
+
   if (item.total !== undefined && item.total !== null) {
     return parseBRL(item.total);
   }

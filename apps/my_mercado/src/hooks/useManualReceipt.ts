@@ -70,6 +70,7 @@ export function useManualReceipt(saveReceipt: SaveReceiptFn) {
       name: name.trim(),
       quantity: qtyNum,
       price: priceNum,
+      paid_price: priceNum,
       total: totalNum,
     };
 
@@ -118,6 +119,7 @@ export function useManualReceipt(saveReceipt: SaveReceiptFn) {
           ...manualData.items[idx],
           quantity,
           price,
+          paid_price: price,
           total: quantity * price,
         };
       }),

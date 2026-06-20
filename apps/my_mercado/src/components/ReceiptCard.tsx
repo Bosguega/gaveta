@@ -1,11 +1,12 @@
-import React, { useMemo, useCallback } from "react";
-import { Trash2, ChevronDown, ChevronUp, Edit3 } from "lucide-react";
+import React, { useMemo, useCallback, useState, useRef, useEffect } from "react";
+import { Trash2, ChevronDown, ChevronUp, Edit3, Pencil } from "lucide-react";
 import { parseBRL, formatBRL } from "../utils/currency";
 import { calculateReceiptTotal } from "../utils/analytics";
 import { formatToBR } from "../utils/date";
 import type { Receipt, ReceiptItem } from "../types/domain";
 import { useEstablishmentPrefillStore } from "../stores/useEstablishmentPrefillStore";
 import { useUiStore } from "../stores/useUiStore";
+import { useUpdateItemPaidPrice } from "../hooks/queries/useUpdateItemPaidPrice";
 
 interface ReceiptCardProps {
     receipt: Receipt;
@@ -13,6 +14,103 @@ interface ReceiptCardProps {
     onToggle: (id: string) => void;
     onDelete: (id: string) => void;
 }
+
+interface EditablePriceProps {
+    item: ReceiptItem;
+}
+
+const EditablePrice = React.memo(function EditablePrice({ item }: EditablePriceProps) {
+    const [editing, setEditing] = useState(false);
+    const [value, setValue] = useState("");
+    const inputRef = useRef<HTMLInputElement>(null);
+    const updatePaidPrice = useUpdateItemPaidPrice();
+
+    const paidPrice = item.paid_price ?? item.price;
+    const hasDiscount = item.paid_price !== undefined && item.paid_price < item.price;
+    const itemTotal = item.total ?? (item.price * item.quantity);
+
+    const displayPrice = useMemo(() => {
+        if (hasDiscount) {
+            return paidPrice * item.quantity;
+        }
+        return itemTotal;
+    }, [hasDiscount, paidPrice, item.quantity, itemTotal]);
+
+    const handleStartEdit = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation();
+        setValue(formatBRL(item.paid_price ?? item.price));
+        setEditing(true);
+    }, [item.paid_price, item.price]);
+
+    useEffect(() => {
+        if (editing && inputRef.current) {
+            inputRef.current.focus();
+            inputRef.current.select();
+        }
+    }, [editing]);
+
+    const handleFinishEdit = useCallback(() => {
+        setEditing(false);
+        const parsed = parseBRL(value);
+        if (isNaN(parsed) || parsed < 0) return;
+        // Só salva se realmente mudou
+        if (parsed === (item.paid_price ?? item.price)) return;
+        if (!item.id) return;
+
+        updatePaidPrice.mutate({ itemId: item.id, paidPrice: parsed });
+    }, [value, item.paid_price, item.price, item.id, updatePaidPrice]);
+
+    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if (e.key === "Enter") {
+            (e.target as HTMLInputElement).blur();
+        }
+        if (e.key === "Escape") {
+            setEditing(false);
+        }
+        e.stopPropagation();
+    }, []);
+
+    if (editing) {
+        return (
+            <input
+                ref={inputRef}
+                type="text"
+                className="w-24 text-right bg-slate-800 border border-blue-500/40 rounded px-2 py-0.5 text-sm text-slate-200 outline-none focus:border-blue-500"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                onBlur={handleFinishEdit}
+                onKeyDown={handleKeyDown}
+                onClick={(e) => e.stopPropagation()}
+            />
+        );
+    }
+
+    return (
+        <div className="flex items-center gap-2">
+            {hasDiscount ? (
+                <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500 line-through text-xs">
+                        R$ {itemTotal.toFixed(2).replace(".", ",")}
+                    </span>
+                    <span className="text-[var(--success)] font-semibold text-sm">
+                        R$ {displayPrice.toFixed(2).replace(".", ",")}
+                    </span>
+                </div>
+            ) : (
+                <span className="text-slate-300 font-semibold text-sm">
+                    R$ {itemTotal.toFixed(2).replace(".", ",")}
+                </span>
+            )}
+            <button
+                onClick={handleStartEdit}
+                className="bg-slate-700/50 border-none rounded w-5 h-5 flex items-center justify-center text-slate-400 cursor-pointer hover:text-slate-200 hover:bg-slate-700 flex-shrink-0"
+                title="Editar preço pago"
+            >
+                <Pencil size={10} />
+            </button>
+        </div>
+    );
+});
 
 export const ReceiptCard = React.memo(function ReceiptCard({
     receipt,
@@ -105,10 +203,10 @@ export const ReceiptCard = React.memo(function ReceiptCard({
                 <div className="animated-expand bg-slate-900/30 border-t border-[var(--card-border)] p-4 overflow-hidden">
                     {receipt.items.map((item: ReceiptItem, idx: number) => (
                         <div
-                            key={idx}
+                            key={item.id || idx}
                             className={`flex justify-between py-2.5 ${idx === receipt.items.length - 1 ? "" : "border-b border-white/5"}`}
                         >
-                            <div className="flex-1">
+                            <div className="flex-1 min-w-0">
                                 <div className="text-sm text-slate-200 font-medium flex items-center gap-2">
                                     {item.normalized_name || item.name}
                                     {item.category && (
@@ -128,8 +226,8 @@ export const ReceiptCard = React.memo(function ReceiptCard({
                                     </div>
                                 )}
                             </div>
-                            <div className="text-slate-300 font-semibold text-sm">
-                                R$ {item.total}
+                            <div className="flex-shrink-0 ml-2">
+                                <EditablePrice item={item} />
                             </div>
                         </div>
                     ))}

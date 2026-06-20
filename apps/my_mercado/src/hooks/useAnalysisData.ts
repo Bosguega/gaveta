@@ -304,7 +304,7 @@ export function buildAnalysisEngine(
             for (const { receipt } of receiptDates.filter((item) => item.yearMonth === yearMonth)) {
                 for (const item of receipt.items ?? []) {
                     if (getProductKey(item) === resolvedProduct) {
-                        totalUnitPrice += parseBRL(item.price)
+                        totalUnitPrice += parseBRL(item.paid_price ?? item.price)
                         count += 1
                     }
                 }

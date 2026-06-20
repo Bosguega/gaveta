@@ -16,6 +16,7 @@ interface DbItemRow {
   quantity?: number | null;
   unit?: string | null;
   price?: number | null;
+  paid_price?: number | null;
 }
 
 interface DbReceiptRow {
@@ -53,6 +54,7 @@ function mapDbItemToReceiptItem(item: DbItemRow): ReceiptItem {
     quantity,
     unit: item.unit ?? undefined,
     price,
+    paid_price: item.paid_price ?? undefined,
     total,
   };
 }
@@ -70,6 +72,7 @@ function mapReceiptItemToDb(item: ReceiptItem, receiptId: string) {
     quantity: item.quantity,
     unit: item.unit || "un",
     price: item.price,
+    paid_price: item.paid_price,
   };
 }
 
@@ -164,7 +167,8 @@ export async function getReceiptsPaginated(
         category,
         quantity,
         unit,
-        price
+        price,
+        paid_price
       )
     `
     : "id, establishment, establishment_display, date, created_at";
@@ -278,7 +282,8 @@ export async function getReceiptItemsFromDB(receiptId: string): Promise<ReceiptI
       category,
       quantity,
       unit,
-      price
+      price,
+      paid_price
     `,
     )
     .eq("receipt_id", receiptId);

@@ -28,6 +28,7 @@ export interface ReceiptItem {
   quantity: number;
   unit?: string;
   price: number;
+  paid_price?: number;
   total?: number;
 }
 
