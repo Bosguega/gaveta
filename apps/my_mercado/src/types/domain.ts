@@ -42,6 +42,7 @@ export interface Receipt {
   date: string;
   items: ReceiptItem[];
   created_at?: string;
+  total_discount?: number;
 }
 
 /**

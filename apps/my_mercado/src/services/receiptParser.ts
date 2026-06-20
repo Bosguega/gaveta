@@ -309,18 +309,28 @@ export async function parseNFCeSP(url: string): Promise<Receipt> {
       receiptId = `nfce-${hashHex.slice(0, 16)}`;
     }
 
+    // Extrair valor de desconto global da nota (ex: "Descontos R$:8,72")
+    const bodyText = doc.body?.textContent || "";
+    const discountMatch = bodyText.match(/Descontos\s*R?\$?\s*:?\s*([\d.,]+)/i);
+    const totalDiscount = discountMatch
+      ? parseFloat(discountMatch[1].replace(",", "."))
+      : undefined;
+
+    const parsedItems = items.map((rawItem) => ({
+      name: rawItem.name,
+      quantity: parseFloat(rawItem.qty.replace(",", ".")) || 1,
+      unit: rawItem.unit,
+      price: parseFloat(rawItem.unitPrice.replace(",", ".")) || 0,
+      paid_price: parseFloat(rawItem.unitPrice.replace(",", ".")) || 0,
+      total: parseFloat(rawItem.total.replace(",", ".")) || 0,
+    }));
+
     return {
       id: receiptId,
       establishment,
       date,
-      items: items.map((rawItem) => ({
-        name: rawItem.name,
-        quantity: parseFloat(rawItem.qty.replace(",", ".")) || 1,
-        unit: rawItem.unit,
-        price: parseFloat(rawItem.unitPrice.replace(",", ".")) || 0,
-        paid_price: parseFloat(rawItem.unitPrice.replace(",", ".")) || 0,
-        total: parseFloat(rawItem.total.replace(",", ".")) || 0,
-      })),
+      items: parsedItems,
+      total_discount: totalDiscount,
     };
   } catch (error) {
     logger.error('Parser', 'Erro ao parsear NFC-e:', error);
@@ -424,17 +434,19 @@ export function parseRawTextReceipt(text: string): Receipt {
     uniqueSuffix = `${establishment}-${date}-${totalValue.toFixed(2)}`.replace(/\s+/g, "");
   }
 
+  const parsedItems = items.map((rawItem) => ({
+    name: rawItem.name,
+    quantity: parseFloat(rawItem.qty.replace(",", ".")) || 1,
+    unit: rawItem.unit,
+    price: parseFloat(rawItem.unitPrice.replace(",", ".")) || 0,
+    paid_price: parseFloat(rawItem.unitPrice.replace(",", ".")) || 0,
+    total: parseFloat(rawItem.total.replace(",", ".")) || 0,
+  }));
+
   return {
     id: `pasted-${uniqueSuffix}`,
     establishment,
     date,
-    items: items.map((rawItem) => ({
-      name: rawItem.name,
-      quantity: parseFloat(rawItem.qty.replace(",", ".")) || 1,
-      unit: rawItem.unit,
-      price: parseFloat(rawItem.unitPrice.replace(",", ".")) || 0,
-      paid_price: parseFloat(rawItem.unitPrice.replace(",", ".")) || 0,
-      total: parseFloat(rawItem.total.replace(",", ".")) || 0,
-    })),
+    items: parsedItems,
   };
 }

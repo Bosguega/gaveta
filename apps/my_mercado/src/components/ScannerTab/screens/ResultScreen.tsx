@@ -1,7 +1,8 @@
-import { CheckCircle, ChevronDown, ChevronUp, XCircle, Loader2 } from "lucide-react";
+import { CheckCircle, ChevronDown, ChevronUp, XCircle, Loader2, Tag } from "lucide-react";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import { formatBRL, parseBRL } from "../../../utils/currency";
+import { formatQuantity } from "../../../utils/format";
 import { formatToBR } from "../../../utils/date";
 import { normalizeKey } from "../../../utils/normalize";
 import type { ReceiptItem } from "../../../types/domain";
@@ -56,6 +57,9 @@ export function ResultScreen({
 
   const total = calculateReceiptTotal(currentReceipt.items);
 
+  const totalDiscount = currentReceipt.total_discount;
+  const hasDiscount = totalDiscount !== undefined && totalDiscount > 0.005;
+
   return (
     <div className="glass-card p-0 overflow-hidden">
       {/* Header com ícone de sucesso */}
@@ -64,9 +68,18 @@ export function ResultScreen({
           <CheckCircle color="white" size={32} />
         </div>
         <h2 className="text-white mb-2">Nota Escaneada!</h2>
-        <p className="text-slate-400 text-sm">
-          Revise os itens abaixo e confirme
-        </p>
+        {hasDiscount ? (
+          <div className="flex items-center justify-center gap-2 bg-amber-500/15 text-amber-400 px-4 py-2 rounded-lg font-medium">
+            <Tag size={16} />
+            <span>
+              Esta nota possui <strong>R$ {totalDiscount.toFixed(2).replace(".", ",")}</strong> em descontos!
+            </span>
+          </div>
+        ) : (
+          <p className="text-slate-400 text-sm">
+            Revise os itens abaixo e confirme
+          </p>
+        )}
       </div>
 
       {/* Corpo do ReceiptCard (mesmo formato do histórico) */}
@@ -121,8 +134,8 @@ export function ResultScreen({
                   </div>
                   <div className={`text-xs text-slate-500 ${item.normalized_name ? "italic" : "not-italic"}`}>
                     {item.normalized_name
-                      ? `${item.quantity} x R$ ${formatBRL(item.price)}`
-                      : `${item.quantity} x R$ ${formatBRL(item.price)}`}
+                      ? `${formatQuantity(item.quantity)} x R$ ${formatBRL(item.price)}`
+                      : `${formatQuantity(item.quantity)} x R$ ${formatBRL(item.price)}`}
                   </div>
                 </div>
                 <div className="text-slate-300 font-semibold text-sm">

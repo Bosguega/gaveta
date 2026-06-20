@@ -1,6 +1,7 @@
 import React, { useMemo, useCallback, useState, useRef, useEffect } from "react";
 import { Trash2, ChevronDown, ChevronUp, Edit3, Pencil } from "lucide-react";
 import { parseBRL, formatBRL } from "../utils/currency";
+import { formatQuantity } from "../utils/format";
 import { calculateReceiptTotal } from "../utils/analytics";
 import { formatToBR } from "../utils/date";
 import type { Receipt, ReceiptItem } from "../types/domain";
@@ -218,11 +219,11 @@ export const ReceiptCard = React.memo(function ReceiptCard({
                                 <div className={`text-xs text-slate-500 ${item.normalized_name ? "italic" : "not-italic"}`}>
                                     {item.normalized_name
                                         ? item.name
-                                        : `${item.quantity} x R$ ${formatBRL(item.price)}`}
+                                        : `${formatQuantity(item.quantity)} x R$ ${formatBRL(item.price)}`}
                                 </div>
                                 {item.normalized_name && (
                                     <div className="text-xs text-slate-400">
-                                        {item.quantity} x R$ {formatBRL(item.price)}
+                                        {formatQuantity(item.quantity)} x R$ {formatBRL(item.price)}
                                     </div>
                                 )}
                             </div>
