@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { notify } from "../../utils/notifications";
 import { logger } from "../../utils/logger";
 import { useReceiptScanner } from "../../hooks/useReceiptScanner";
+import { useImageQrScanner } from "../../hooks/useImageQrScanner";
 import { useReceiptsSessionStore } from "../../stores/useReceiptsSessionStore";
 import { useUiStore } from "../../stores/useUiStore";
 import { useScannerStore } from "../../stores/useScannerStore";
@@ -17,6 +18,7 @@ import type { SaveReceiptResponse } from "../../types/scanner";
 
 function ScannerTab() {
   const saveReceiptMutation = useSaveReceipt();
+  const { decodeQRFromImage } = useImageQrScanner();
   const sessionUserId = useReceiptsSessionStore((state) => state.sessionUserId);
   const tab = useUiStore((state) => state.tab);
   const loadingStep = useScannerStore((state) => state.loadingStep);
@@ -78,10 +80,40 @@ function ScannerTab() {
   const isLoading = loading;
   const isScanning = scanning;
 
-  // Handler de upload de arquivo (foto/galeria) — OCR com IA
+  // Handler de foto: le QR Code de uma imagem capturada.
   const handleFileUpload = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+
+      const toastId = notify.loading('Lendo QR Code da imagem...');
+
+      try {
+        const decodedText = await decodeQRFromImage(file);
+        notify.dismiss(toastId);
+
+        if (!decodedText) {
+          notify.error('Nenhum QR Code encontrado na imagem.');
+          return;
+        }
+
+        await handleScanSuccess(decodedText);
+      } catch (err) {
+        notify.dismiss(toastId);
+        const message = err instanceof Error ? err.message : 'Erro desconhecido';
+        logger.error('ScannerTab', 'Erro ao ler QR Code da foto', err);
+        notify.error(`Erro ao ler QR Code: ${message}`);
+      }
+    },
+    [decodeQRFromImage, handleScanSuccess]
+  );
+
+  // Handler de galeria: envia imagem da nota para OCR com IA.
+  const handleGalleryUpload = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
       if (!file) return;
 
       try {
@@ -261,6 +293,7 @@ function ScannerTab() {
         <IdleScreen
           onStartCamera={() => startCamera('environment', handleScanSuccess)}
           onFileUpload={handleFileUpload}
+          onGalleryUpload={handleGalleryUpload}
           onManualMode={() => setManualMode(true)}
           handleUrlSubmit={handleUrlSubmit}
           handleTextSubmit={processRawText}
@@ -295,6 +328,8 @@ function ScannerTab() {
           onForceSave={handleForceSaveDuplicate}
         />
       )}
+
+      <div id="qr-image-reader" className="hidden" />
     </>
   );
 }

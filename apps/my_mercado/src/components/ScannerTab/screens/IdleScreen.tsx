@@ -7,6 +7,7 @@ import type { InitialScannerScreenProps } from "../../../types/scanner";
 export function IdleScreen({
   onStartCamera,
   onFileUpload,
+  onGalleryUpload,
   onManualMode,
   handleUrlSubmit,
   handleTextSubmit,
@@ -93,7 +94,7 @@ export function IdleScreen({
           <input
             type="file"
             accept="image/*"
-            onChange={onFileUpload}
+            onChange={onGalleryUpload}
             disabled={isLoading || isScanning}
             className="hidden"
           />

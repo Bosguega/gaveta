@@ -108,6 +108,7 @@ export interface ManualReceiptFormProps {
 export interface InitialScannerScreenProps {
   onStartCamera: () => void;
   onFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onGalleryUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onManualMode: () => void;
   handleUrlSubmit: (url: string) => void;
   handleTextSubmit: (text: string) => void;
