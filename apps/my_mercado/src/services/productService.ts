@@ -20,7 +20,7 @@ const isDev = import.meta.env.DEV;
 function rawToProcessed(item: RawReceiptItem): ReceiptItem {
   const quantity = toNumber(item.qty, 1);
   const unitPrice = toNumber(item.unitPrice, 0);
-  const totalValue = quantity * unitPrice;
+  const totalValue = toNumber(item.total, 0);
 
   return {
     name: item.name,

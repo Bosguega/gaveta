@@ -33,7 +33,8 @@ export const exportToCSV = (items: Receipt[]) => {
     "Produto",
     "Quantidade",
     "Unidade",
-    "Preço Unitário",
+    "Preço Pago",
+    "Preço Original",
     "Total",
   ];
 
@@ -44,6 +45,7 @@ export const exportToCSV = (items: Receipt[]) => {
       item.name,
       item.quantity || 1,
       item.unit || "un",
+      formatBRL((item.paid_price ?? item.price) || 0),
       formatBRL(item.price || 0),
       formatBRL(item.total || 0),
     ]),

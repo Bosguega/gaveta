@@ -17,6 +17,7 @@ interface DbItemRow {
   unit?: string | null;
   price?: number | null;
   paid_price?: number | null;
+  total?: number | null;
 }
 
 interface DbReceiptRow {
@@ -43,7 +44,7 @@ const RESTORE_BATCH_SIZE = 25;
 function mapDbItemToReceiptItem(item: DbItemRow): ReceiptItem {
   const quantity = item.quantity ?? 1;
   const price = item.price ?? 0;
-  const total = calc.mul(price, quantity);
+  const total = item.total ?? calc.mul(item.paid_price ?? price, quantity);
 
   return {
     id: item.id,
@@ -73,6 +74,7 @@ function mapReceiptItemToDb(item: ReceiptItem, receiptId: string) {
     unit: item.unit || "un",
     price: item.price,
     paid_price: item.paid_price,
+    total: item.total,
   };
 }
 
@@ -168,7 +170,8 @@ export async function getReceiptsPaginated(
         quantity,
         unit,
         price,
-        paid_price
+        paid_price,
+        total
       )
     `
     : "id, establishment, establishment_display, date, created_at";
@@ -283,7 +286,8 @@ export async function getReceiptItemsFromDB(receiptId: string): Promise<ReceiptI
       quantity,
       unit,
       price,
-      paid_price
+      paid_price,
+      total
     `,
     )
     .eq("receipt_id", receiptId);

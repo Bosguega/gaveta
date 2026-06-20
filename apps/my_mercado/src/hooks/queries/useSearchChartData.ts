@@ -77,7 +77,7 @@ export function useSearchChartData(
           }
         );
         if (match) {
-          dataPoint[itemName] = parseBRL(match.price);
+          dataPoint[itemName] = parseBRL(match.paid_price ?? match.price);
         }
       });
       return dataPoint;

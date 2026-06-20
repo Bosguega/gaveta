@@ -49,7 +49,23 @@ export function ResultScreen({
   const displayDate = formatToBR(currentReceipt.date) || currentReceipt.date;
 
   const formatItemTotal = (item: ReceiptItem) => {
-    if (item.total) return formatBRL(item.total);
+    // Se o item foi editado manualmente (preço pago diferente do preço original), calculamos dinamicamente
+    const isEdited = item.paid_price !== undefined && item.paid_price !== null &&
+                     item.price !== undefined && item.price !== null &&
+                     parseBRL(item.paid_price) !== parseBRL(item.price);
+
+    if (isEdited) {
+      return formatBRL(parseBRL(item.paid_price) * parseBRL(item.quantity ?? 1));
+    }
+
+    if (item.total !== undefined && item.total !== null) {
+      return formatBRL(item.total);
+    }
+
+    if (item.paid_price !== undefined && item.paid_price !== null) {
+      return formatBRL(parseBRL(item.paid_price) * parseBRL(item.quantity ?? 1));
+    }
+
     const price = parseBRL(item.price || 0);
     const quantity = parseBRL(item.quantity || 1);
     return formatBRL(price * quantity);
@@ -134,8 +150,8 @@ export function ResultScreen({
                   </div>
                   <div className={`text-xs text-slate-500 ${item.normalized_name ? "italic" : "not-italic"}`}>
                     {item.normalized_name
-                      ? `${formatQuantity(item.quantity)} x R$ ${formatBRL(item.price)}`
-                      : `${formatQuantity(item.quantity)} x R$ ${formatBRL(item.price)}`}
+                      ? `${formatQuantity(item.quantity)} x R$ ${formatBRL(item.paid_price ?? item.price)}`
+                      : `${formatQuantity(item.quantity)} x R$ ${formatBRL(item.paid_price ?? item.price)}`}
                   </div>
                 </div>
                 <div className="text-slate-300 font-semibold text-sm">

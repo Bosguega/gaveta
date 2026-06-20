@@ -40,7 +40,7 @@ export const SearchItemRow: React.FC<SearchItemRowProps> = ({ item }) => {
       </div>
       <div className="text-right">
         <div className="text-[var(--success)] font-bold text-lg">
-          R$ {parseBRL(item.price).toFixed(2).replace(".", ",")}
+          R$ {parseBRL(item.paid_price ?? item.price).toFixed(2).replace(".", ",")}
         </div>
         <div className="text-[0.7rem] text-slate-600">
           por {item.unit || "un."}

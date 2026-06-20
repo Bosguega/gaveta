@@ -13,6 +13,16 @@ describe("analytics aggregate", () => {
     expect(total).toBe(14); // 7 * 2
   });
 
+  it("prioritizes item.total over price * quantity when paid_price is not edited", () => {
+    const total = calculateItemTotal(
+      { name: "Linguica", quantity: 0.47, price: 19.9, paid_price: 19.9, total: 9.39 },
+      parseBRL,
+    );
+
+    // 19.9 * 0.47 = 9.353, mas o total original da nota (9.39) deve ser retornado
+    expect(total).toBe(9.39);
+  });
+
   it("uses item.total when paid_price is absent", () => {
     const total = calculateItemTotal(
       { name: "Promocao", quantity: 3, price: 10, total: 24 },

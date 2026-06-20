@@ -42,7 +42,7 @@ export function useFilteredSearchItems({
           ]);
 
     const customSorters: Record<string, (a: PurchasedItem, b: PurchasedItem) => number> = {
-      price: (a, b) => parseBRL(a.price) - parseBRL(b.price),
+      price: (a, b) => parseBRL(a.paid_price ?? a.price) - parseBRL(b.paid_price ?? b.price),
       recent: (a, b) => {
         const dateA = parseToDate(a.purchasedAt || "");
         const dateB = parseToDate(b.purchasedAt || "");

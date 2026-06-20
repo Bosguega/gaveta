@@ -204,9 +204,27 @@ function ScannerTab() {
   }, [duplicateReceipt, saveReceipt, setCurrentReceipt, setDuplicateReceipt, stopCamera]);
 
   // Calcular total do receipt
-  const calculateReceiptTotal = useCallback(
+  const calculateTotal = useCallback(
     (items: ReceiptItem[]) => {
-      return items.reduce((acc, item) => acc + (item.total ?? item.price * item.quantity), 0);
+      return items.reduce((acc, item) => {
+        // Se o item foi editado manualmente (preço pago diferente do preço original), calculamos dinamicamente
+        const isEdited =
+          item.paid_price !== undefined &&
+          item.paid_price !== null &&
+          item.price !== undefined &&
+          item.price !== null &&
+          item.paid_price !== item.price;
+        if (isEdited) {
+          return acc + (item.paid_price as number) * (item.quantity ?? 1);
+        }
+        if (item.total !== undefined && item.total !== null) {
+          return acc + item.total;
+        }
+        if (item.paid_price !== undefined && item.paid_price !== null) {
+          return acc + item.paid_price * (item.quantity ?? 1);
+        }
+        return acc + item.price * item.quantity;
+      }, 0);
     },
     []
   );
@@ -223,7 +241,7 @@ function ScannerTab() {
           onAddManualItem={handleAddManualItem}
           onSaveManualReceipt={handleSaveManualReceipt}
           onCancel={handleCancelManualReceipt}
-          calculateReceiptTotal={calculateReceiptTotal}
+          calculateReceiptTotal={calculateTotal}
         />
       )}
 
@@ -234,7 +252,7 @@ function ScannerTab() {
           onReset={handleReset}
           onSave={handleSaveCurrentReceipt}
           isSaving={isSaving}
-          calculateReceiptTotal={calculateReceiptTotal}
+          calculateReceiptTotal={calculateTotal}
         />
       )}
 

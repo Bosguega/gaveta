@@ -219,11 +219,11 @@ export const ReceiptCard = React.memo(function ReceiptCard({
                                 <div className={`text-xs text-slate-500 ${item.normalized_name ? "italic" : "not-italic"}`}>
                                     {item.normalized_name
                                         ? item.name
-                                        : `${formatQuantity(item.quantity)} x R$ ${formatBRL(item.price)}`}
+                                        : `${formatQuantity(item.quantity)} x R$ ${formatBRL(item.paid_price ?? item.price)}`}
                                 </div>
                                 {item.normalized_name && (
                                     <div className="text-xs text-slate-400">
-                                        {formatQuantity(item.quantity)} x R$ {formatBRL(item.price)}
+                                        {formatQuantity(item.quantity)} x R$ {formatBRL(item.paid_price ?? item.price)}
                                     </div>
                                 )}
                             </div>
