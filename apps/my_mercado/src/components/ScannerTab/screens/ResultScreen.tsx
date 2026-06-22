@@ -1,5 +1,5 @@
-import { CheckCircle, ChevronDown, ChevronUp, XCircle, Loader2, Tag } from "lucide-react";
-import { useState, useMemo, useRef, useEffect } from "react";
+import { CheckCircle, ChevronDown, ChevronUp, XCircle, Loader2, Tag, Pencil } from "lucide-react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import { formatBRL, parseBRL } from "../../../utils/currency";
 import { formatQuantity } from "../../../utils/format";
@@ -9,6 +9,8 @@ import type { ReceiptItem } from "../../../types/domain";
 import type { ReceiptResultProps } from "../../../types/scanner";
 import { useEstablishmentMap } from "../../../hooks/useEstablishmentMap";
 import { useUpsertEstablishmentDictionaryEntry } from "../../../hooks/queries/useEstablishmentDictionaryQuery";
+import { useUpdateItemPaidPrice } from "../../../hooks/queries/useUpdateItemPaidPrice";
+import { PriceEditModal } from "../../PriceEditModal";
 
 export function ResultScreen({
   currentReceipt,
@@ -18,8 +20,10 @@ export function ResultScreen({
   calculateReceiptTotal,
 }: ReceiptResultProps) {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [editingItem, setEditingItem] = useState<ReceiptItem | null>(null);
   const establishmentMap = useEstablishmentMap();
   const upsertEntry = useUpsertEstablishmentDictionaryEntry();
+  const updatePaidPrice = useUpdateItemPaidPrice();
 
   const displayEstablishment = useMemo(() => {
     return currentReceipt.establishment_display || currentReceipt.establishment;
@@ -51,8 +55,8 @@ export function ResultScreen({
   const formatItemTotal = (item: ReceiptItem) => {
     // Se o item foi editado manualmente (preço pago diferente do preço original), calculamos dinamicamente
     const isEdited = item.paid_price !== undefined && item.paid_price !== null &&
-                     item.price !== undefined && item.price !== null &&
-                     parseBRL(item.paid_price) !== parseBRL(item.price);
+      item.price !== undefined && item.price !== null &&
+      parseBRL(item.paid_price) !== parseBRL(item.price);
 
     if (isEdited) {
       return formatBRL(parseBRL(item.paid_price) * parseBRL(item.quantity ?? 1));
@@ -72,6 +76,21 @@ export function ResultScreen({
   };
 
   const total = calculateReceiptTotal(currentReceipt.items);
+
+  const handleStartEdit = useCallback((e: React.MouseEvent, item: ReceiptItem) => {
+    e.stopPropagation();
+    setEditingItem(item);
+  }, []);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingItem(null);
+  }, []);
+
+  const handleSavePaidPrice = useCallback((paidPrice: number) => {
+    if (!editingItem?.id) return;
+    updatePaidPrice.mutate({ itemId: editingItem.id, paidPrice });
+    setEditingItem(null);
+  }, [editingItem, updatePaidPrice]);
 
   const totalDiscount = currentReceipt.total_discount;
   const hasDiscount = totalDiscount !== undefined && totalDiscount > 0.005;
@@ -154,8 +173,17 @@ export function ResultScreen({
                       : `${formatQuantity(item.quantity)} x R$ ${formatBRL(item.paid_price ?? item.price)}`}
                   </div>
                 </div>
-                <div className="text-slate-300 font-semibold text-sm">
-                  R$ {formatItemTotal(item)}
+                <div className="flex-shrink-0 ml-2 flex items-center gap-1.5">
+                  <div className="text-slate-300 font-semibold text-sm">
+                    R$ {formatItemTotal(item)}
+                  </div>
+                  <button
+                    onClick={(e) => handleStartEdit(e, item)}
+                    className="bg-slate-700/50 border-none rounded w-5 h-5 flex items-center justify-center text-slate-400 cursor-pointer hover:text-slate-200 hover:bg-slate-700 flex-shrink-0"
+                    title="Editar preço pago"
+                  >
+                    <Pencil size={10} />
+                  </button>
                 </div>
               </div>
             ))}
@@ -201,6 +229,17 @@ export function ResultScreen({
           Descartar
         </button>
       </div>
+
+      {/* Modal de edição de preço */}
+      {editingItem && (
+        <PriceEditModal
+          item={editingItem}
+          isOpen={true}
+          busy={updatePaidPrice.isPending}
+          onCancel={handleCancelEdit}
+          onSavePaidPrice={handleSavePaidPrice}
+        />
+      )}
     </div>
   );
 }
