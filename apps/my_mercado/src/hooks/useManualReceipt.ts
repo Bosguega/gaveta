@@ -3,26 +3,14 @@ import { notify } from '../utils/notifications';
 import { logger } from '../utils/logger';
 import { useScannerStore } from '../stores/useScannerStore';
 import { validateManualReceiptForm, validateManualItem } from '../utils/validation';
+import { processItemsPipeline } from '../services/productService';
 import { generateManualReceiptId } from '../utils/receiptId';
 import type { Receipt } from '../types/domain';
-
-type SaveReceiptResponse =
-  | { duplicate: true; existingReceipt: Receipt }
-  | { success: true; receipt: Receipt }
-  | { success: false; error: unknown };
-
-type SaveReceiptFn = (receipt: Receipt, forceReplace?: boolean) => Promise<SaveReceiptResponse>;
-
-function isSuccessResult(
-  result: SaveReceiptResponse,
-): result is { success: true; receipt: Receipt } {
-  return 'success' in result && result.success === true;
-}
 
 /**
  * Hook para gerenciar formulário de receipt manual
  */
-export function useManualReceipt(saveReceipt: SaveReceiptFn) {
+export function useManualReceipt() {
   const loading = useScannerStore((state) => state.loading);
   const setLoading = useScannerStore((state) => state.setLoading);
   const manualMode = useScannerStore((state) => state.manualMode);
@@ -107,42 +95,59 @@ export function useManualReceipt(saveReceipt: SaveReceiptFn) {
 
     const { establishment, date, items } = validation.data;
 
-    const manualId = generateManualReceiptId(establishment, date);
-    const finalData = {
-      ...manualData,
-      id: manualId,
-      establishment: establishment.trim() || 'Compra Manual',
-      items: items.map((item, idx) => {
-        const quantity = parseFloat(String(item.qty).replace(',', '.')) || 1;
-        const price = parseFloat(String(item.unitPrice).replace(',', '.')) || 0;
-        return {
-          ...manualData.items[idx],
-          quantity,
-          price,
-          paid_price: price,
-          total: quantity * price,
-        };
-      }),
-    };
-
     setLoading(true);
+
     try {
-      const result = await saveReceipt(finalData);
-      if (isSuccessResult(result)) {
-        setCurrentReceipt(result.receipt);
-        setManualMode(false);
-        setManualData(getDefaultManualData());
-        notify.success('Nota manual salva com sucesso!');
-      }
+      // 2. Passar os itens pela pipeline de normalização (dicionário + IA)
+      //    igual às notas escaneadas — recebe normalized_name e category
+      const rawItemsForPipeline = items.map((item, idx) => ({
+        name: manualData.items[idx]?.name || item.name,
+        qty: String(item.qty),
+        unit: 'UN',
+        unitPrice: String(item.unitPrice),
+        total: String(
+          (parseFloat(String(item.qty).replace(',', '.')) || 1) *
+          (parseFloat(String(item.unitPrice).replace(',', '.')) || 0),
+        ),
+      }));
+
+      const processedItems = await processItemsPipeline(rawItemsForPipeline);
+
+      const manualId = generateManualReceiptId(establishment, date);
+
+      // 3. Monta receipt completo (sem salvar ainda) e exibe no ResultScreen
+      const finalReceipt: Receipt = {
+        id: manualId,
+        establishment: establishment.trim() || 'Compra Manual',
+        date: manualData.date,
+        items: processedItems.map((processed, idx) => {
+          const quantity = parseFloat(String(items[idx].qty).replace(',', '.')) || 1;
+          const price = parseFloat(String(items[idx].unitPrice).replace(',', '.')) || 0;
+          return {
+            ...processed,
+            id: manualData.items[idx]?.id,
+            quantity,
+            price,
+            paid_price: price,
+            total: quantity * price,
+          };
+        }),
+      };
+
+      // Sai do modo manual e exibe no ResultScreen (mesmo fluxo das notas escaneadas)
+      setCurrentReceipt(finalReceipt);
+      setManualMode(false);
+      setManualData(getDefaultManualData());
+
+      notify.success('Nota preparada! Revise e salve.');
     } catch (err) {
       notify.errorSaving();
-      logger.error('ManualReceipt', 'Erro ao salvar nota manual', err);
+      logger.error('ManualReceipt', 'Erro ao processar nota manual', err);
     } finally {
       setLoading(false);
     }
   }, [
     manualData,
-    saveReceipt,
     setCurrentReceipt,
     setLoading,
     setManualData,

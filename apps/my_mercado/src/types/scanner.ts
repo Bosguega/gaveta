@@ -97,9 +97,12 @@ export interface ManualReceiptFormProps {
   manualItem: ManualReceiptItemInput;
   setManualItem: (item: ManualReceiptItemInput) => void;
   onAddManualItem: () => void;
+  onRemoveManualItem: (index: number) => void;
   onSaveManualReceipt: () => void;
   onCancel: () => void;
   calculateReceiptTotal: (items: ReceiptItem[]) => number;
+  productSuggestions?: string[];
+  establishmentOptions?: string[];
 }
 
 /**

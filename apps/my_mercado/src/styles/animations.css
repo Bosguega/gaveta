@@ -136,6 +136,10 @@
     animation: fadeIn var(--duration-fast) ease-in-out;
 }
 
+.animate-fadeIn {
+    animation: fadeIn var(--duration-normal) ease-out forwards;
+}
+
 .animated-item {
     animation: fadeInUp var(--duration-fast) ease-out forwards;
 }

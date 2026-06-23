@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { notify } from "../../utils/notifications";
 import { logger } from "../../utils/logger";
 import { useReceiptScanner } from "../../hooks/useReceiptScanner";
@@ -7,6 +7,7 @@ import { useReceiptsSessionStore } from "../../stores/useReceiptsSessionStore";
 import { useUiStore } from "../../stores/useUiStore";
 import { useScannerStore } from "../../stores/useScannerStore";
 import { useSaveReceipt } from "../../hooks/queries/useReceiptsQuery";
+import { useEstablishmentDictionaryQuery } from "../../hooks/queries/useEstablishmentDictionaryQuery";
 import { IdleScreen } from "./screens/IdleScreen";
 import { ScanningScreen } from "./screens/ScanningScreen";
 import { LoadingScreen } from "./screens/LoadingScreen";
@@ -25,6 +26,13 @@ function ScannerTab() {
   const isSaving = useScannerStore((state) => state.isSaving);
   const setCurrentReceipt = useScannerStore((state) => state.setCurrentReceipt);
   const setDuplicateReceipt = useScannerStore((state) => state.setDuplicateReceipt);
+  const { data: establishmentEntries = [] } = useEstablishmentDictionaryQuery();
+
+  // Lista de estabelecimentos conhecidos para o seletor
+  const establishmentOptions = useMemo(
+    () => establishmentEntries.map((e) => e.establishment).sort(),
+    [establishmentEntries],
+  );
 
   // Wrapper para adaptar a interface da mutation do React Query
   const saveReceipt = useCallback(
@@ -71,9 +79,9 @@ function ScannerTab() {
     processRawText,
     saveCurrentReceipt,
     handleAddManualItem,
+    handleRemoveManualItem,
     handleSaveManualReceipt,
     handleCancelManualReceipt,
-    getDefaultManualData,
   } = useReceiptScanner({ saveReceipt, tab });
 
   // Estados derivados
@@ -267,13 +275,15 @@ function ScannerTab() {
       {manualMode && (
         <ManualReceiptForm
           manualData={manualData}
-          setManualData={getDefaultManualData}
+          setManualData={(data) => useScannerStore.getState().setManualData(data)}
           manualItem={manualItem}
           setManualItem={setManualItem}
           onAddManualItem={handleAddManualItem}
+          onRemoveManualItem={handleRemoveManualItem}
           onSaveManualReceipt={handleSaveManualReceipt}
           onCancel={handleCancelManualReceipt}
           calculateReceiptTotal={calculateTotal}
+          establishmentOptions={establishmentOptions}
         />
       )}
 

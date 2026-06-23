@@ -56,10 +56,11 @@ export function useReceiptScanner({
     manualItem,
     setManualItem,
     handleAddManualItem,
+    handleRemoveManualItem,
     handleSaveManualReceipt,
     handleCancelManualReceipt,
     getDefaultManualData,
-  } = useManualReceipt(saveReceipt);
+  } = useManualReceipt();
 
   const handleScanSuccess = useCallback(
     async (decodedText: string) => {
@@ -121,6 +122,7 @@ export function useReceiptScanner({
     saveCurrentReceipt,
 
     handleAddManualItem,
+    handleRemoveManualItem,
     handleSaveManualReceipt,
     handleCancelManualReceipt,
     getDefaultManualData,
