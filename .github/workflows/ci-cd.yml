@@ -5,12 +5,13 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  workflow_dispatch:
 
 jobs:
-  quality:
-    name: Quality Checks
+  ci:
+    name: CI - Quality & Build
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -18,7 +19,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: latest
+          version: 9.12.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -28,6 +29,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build shared package (ai-core)
+        run: pnpm --filter @bosguega/ai-core build
 
       - name: Type Check (shared package)
         run: pnpm --filter @bosguega/ai-core build
@@ -43,40 +47,27 @@ jobs:
         env:
           CI: true
 
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    needs: quality
-    environment: github-pages
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: latest
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build shared package (ai-core)
-        run: pnpm --filter @bosguega/ai-core build
-
       - name: Build app (my_mercado)
         run: pnpm --filter my_mercado build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
-      - name: Upload build artifacts
+      - name: Upload build artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: apps/my_mercado/dist
+
+  cd:
+    name: CD - Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: ci
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
