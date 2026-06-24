@@ -66,35 +66,43 @@ export function PriceEditModal({
     (raw: string) => {
       setEditedField("paidPrice");
       setPaidPriceValue(raw);
-      // Recalculate total = unitPrice * quantity (only if value is non-empty)
       const parsed = parseBRL(raw);
-      if (Number.isFinite(parsed) && parsed >= 0 && raw.trim() !== "") {
-        setTotalValue(formatBRL(parsed * quantity));
+      if (Number.isFinite(parsed) && raw.trim() !== "") {
+        // If negative, user is providing a discount value to subtract from original
+        const effectivePrice = parsed < 0 ? item.price + parsed : parsed;
+        if (effectivePrice >= 0) {
+          setTotalValue(formatBRL(effectivePrice * quantity));
+        }
       }
     },
-    [quantity]
+    [quantity, item.price]
   );
 
   const handleTotalChange = useCallback(
     (raw: string) => {
       setEditedField("total");
       setTotalValue(raw);
-      // Recalculate unitPrice = total / quantity (only if value is non-empty)
       const parsed = parseBRL(raw);
-      if (Number.isFinite(parsed) && parsed >= 0 && raw.trim() !== "") {
-        setPaidPriceValue(formatBRL(parsed / quantity));
+      if (Number.isFinite(parsed) && raw.trim() !== "") {
+        // If negative, user is providing a discount value to subtract from original total
+        const effectiveTotal = parsed < 0 ? originalTotal + parsed : parsed;
+        if (effectiveTotal >= 0) {
+          setPaidPriceValue(formatBRL(effectiveTotal / quantity));
+        }
       }
     },
-    [quantity]
+    [quantity, originalTotal]
   );
 
   // Derived value to be saved (unit price)
   const nextPaidPrice = useMemo(() => {
     if (editedField === "total") {
-      return parseBRL(totalValue) / quantity;
+      const parsed = parseBRL(totalValue);
+      return parsed < 0 ? item.price + parsed : parsed / quantity;
     }
-    return parseBRL(paidPriceValue);
-  }, [editedField, paidPriceValue, quantity, totalValue]);
+    const parsed = parseBRL(paidPriceValue);
+    return parsed < 0 ? item.price + parsed : parsed;
+  }, [editedField, paidPriceValue, item.price, quantity, totalValue]);
 
   // Check if the field currently being edited is empty (whitespace-only)
   const isEditedFieldEmpty = useMemo(() => {

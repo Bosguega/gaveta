@@ -212,13 +212,13 @@ export function ManualReceiptForm({
               <label className="block text-slate-500 text-[0.7rem] uppercase tracking-wide mb-1 font-semibold">
                 Preço unitário (R$)
               </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-400 font-semibold text-sm pointer-events-none z-10 w-5 text-center">
+              <div className="flex items-center bg-[var(--bg-color)] rounded-lg border border-[var(--card-border)] px-3">
+                <span className="text-emerald-400 font-semibold text-sm pointer-events-none whitespace-nowrap">
                   R$
                 </span>
                 <input
                   type="text"
-                  className="search-input bg-[var(--bg-color)] pl-12"
+                  className="flex-1 bg-transparent outline-none border-none p-0 text-white caret-white"
                   placeholder="0,00"
                   value={manualItem.unitPrice}
                   onChange={(e) => handlePriceChange("unitPrice", e.target.value)}
@@ -231,13 +231,13 @@ export function ManualReceiptForm({
               <label className="block text-slate-500 text-[0.7rem] uppercase tracking-wide mb-1 font-semibold">
                 Preço total (R$)
               </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-400 font-semibold text-sm pointer-events-none z-10 w-5 text-center">
+              <div className="flex items-center bg-[var(--bg-color)] rounded-lg border border-[var(--card-border)] px-3">
+                <span className="text-emerald-400 font-semibold text-sm pointer-events-none whitespace-nowrap">
                   R$
                 </span>
                 <input
                   type="text"
-                  className="search-input bg-[var(--bg-color)] pl-12"
+                  className="flex-1 bg-transparent outline-none border-none p-0 text-white caret-white"
                   placeholder="0,00"
                   value={manualItem.totalPrice ?? ""}
                   onChange={(e) => handlePriceChange("totalPrice", e.target.value)}

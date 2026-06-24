@@ -3,6 +3,7 @@ import { notify } from "../../utils/notifications";
 import { logger } from "../../utils/logger";
 import { normalizeKey } from "../../utils/normalize";
 import { useReceiptScanner } from "../../hooks/useReceiptScanner";
+import { useProductSuggestions } from "../../hooks/useProductSuggestions";
 import { useImageQrScanner } from "../../hooks/useImageQrScanner";
 import { useReceiptsSessionStore } from "../../stores/useReceiptsSessionStore";
 import { useUiStore } from "../../stores/useUiStore";
@@ -97,6 +98,8 @@ function ScannerTab() {
     handleSaveManualReceipt,
     handleCancelManualReceipt,
   } = useReceiptScanner({ saveReceipt, tab });
+
+  const productSuggestions = useProductSuggestions(manualItem.name);
 
   // Estados derivados
   const isLoading = loading;
@@ -311,6 +314,7 @@ function ScannerTab() {
           onCancel={handleCancelManualReceipt}
           calculateReceiptTotal={calculateTotal}
           establishmentOptions={establishmentOptions}
+          productSuggestions={productSuggestions}
         />
       )}
 
