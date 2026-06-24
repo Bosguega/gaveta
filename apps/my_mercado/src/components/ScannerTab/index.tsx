@@ -1,13 +1,14 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { notify } from "../../utils/notifications";
 import { logger } from "../../utils/logger";
+import { normalizeKey } from "../../utils/normalize";
 import { useReceiptScanner } from "../../hooks/useReceiptScanner";
 import { useImageQrScanner } from "../../hooks/useImageQrScanner";
 import { useReceiptsSessionStore } from "../../stores/useReceiptsSessionStore";
 import { useUiStore } from "../../stores/useUiStore";
 import { useScannerStore } from "../../stores/useScannerStore";
 import { useSaveReceipt } from "../../hooks/queries/useReceiptsQuery";
-import { useEstablishmentDictionaryQuery } from "../../hooks/queries/useEstablishmentDictionaryQuery";
+import { useEstablishmentDictionaryQuery, useUpsertEstablishmentDictionaryEntry } from "../../hooks/queries/useEstablishmentDictionaryQuery";
 import { IdleScreen } from "./screens/IdleScreen";
 import { ScanningScreen } from "./screens/ScanningScreen";
 import { LoadingScreen } from "./screens/LoadingScreen";
@@ -27,6 +28,13 @@ function ScannerTab() {
   const setCurrentReceipt = useScannerStore((state) => state.setCurrentReceipt);
   const setDuplicateReceipt = useScannerStore((state) => state.setDuplicateReceipt);
   const { data: establishmentEntries = [] } = useEstablishmentDictionaryQuery();
+  const upsertEstablishment = useUpsertEstablishmentDictionaryEntry();
+  const establishmentKeys = useRef(new Set(establishmentEntries.map((e) => normalizeKey(e.establishment))));
+
+  // Atualiza conjunto de chaves quando entradas mudarem
+  if (establishmentEntries.length > 0 && establishmentEntries.some((e) => !establishmentKeys.current.has(normalizeKey(e.establishment)))) {
+    establishmentKeys.current = new Set(establishmentEntries.map((e) => normalizeKey(e.establishment)));
+  }
 
   // Lista de estabelecimentos conhecidos para o seletor — mostra nome fantasia
   const establishmentOptions = useMemo(
@@ -198,6 +206,8 @@ function ScannerTab() {
   }, [setCurrentReceipt, stopCamera]);
 
   // Handler de salvar nota (chamado pelo ResultScreen)
+  const toastShownRef = useRef<string | null>(null);
+
   const handleSaveCurrentReceipt = useCallback(async () => {
     if (!currentReceipt) return;
 
@@ -207,6 +217,17 @@ function ScannerTab() {
       const result = await saveCurrentReceipt(currentReceipt);
 
       if ("success" in result && result.success) {
+        // Auto-inserir estabelecimento no dicionário se ainda não existir
+        const key = normalizeKey(currentReceipt.establishment);
+        if (!establishmentKeys.current.has(key) && toastShownRef.current !== currentReceipt.id) {
+          toastShownRef.current = currentReceipt.id;
+          void upsertEstablishment.mutateAsync({
+            establishment: currentReceipt.establishment,
+            nomeFantasia: currentReceipt.establishment,
+          });
+          notify.success(`Novo estabelecimento adicionado: ${currentReceipt.establishment}`);
+        }
+
         // Sucesso: o currentReceipt já foi atualizado pelo saveCurrentReceipt
         // Vamos resetar após breve delay para mostrar o estado de sucesso
         setTimeout(() => {
@@ -222,7 +243,7 @@ function ScannerTab() {
     } finally {
       useScannerStore.getState().setIsSaving(false);
     }
-  }, [currentReceipt, saveCurrentReceipt, setCurrentReceipt, stopCamera]);
+  }, [currentReceipt, saveCurrentReceipt, setCurrentReceipt, stopCamera, upsertEstablishment]);
 
   // Handler de duplicata
   const handleSetDuplicateReceipt = useCallback(

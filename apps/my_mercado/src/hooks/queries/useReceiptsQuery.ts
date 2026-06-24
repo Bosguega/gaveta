@@ -4,12 +4,12 @@ import type { HistoryFilters } from "../../types/ui";
 
 // Query keys para cache
 export const receiptKeys = {
-    all: ["receipts"] as const,
-    lists: () => [...receiptKeys.all, "list"] as const,
+    all: ["receipts", "all"] as const,
+    lists: () => ["receipts", "list"] as const,
     list: (filters: HistoryFilters, search?: string) => [...receiptKeys.lists(), filters, search] as const,
-    infinites: () => [...receiptKeys.all, "infinite"] as const,
+    infinites: () => ["receipts", "infinite"] as const,
     infinite: (filters: HistoryFilters, search?: string) => [...receiptKeys.infinites(), filters, search] as const,
-    details: () => [...receiptKeys.all, "detail"] as const,
+    details: () => ["receipts", "detail"] as const,
     detail: (id: string) => [...receiptKeys.details(), id] as const,
 };
 

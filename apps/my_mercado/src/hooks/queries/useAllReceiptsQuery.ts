@@ -29,6 +29,21 @@ function normalizeReceipts(receipts: Receipt[]): Receipt[] {
 /**
  * Hook para buscar TODOS os receipts (para analytics e backup)
  */
+/**
+ * Persiste receipts no localStorage para fallback offline.
+ * Usado por serviços de sincronização, não pelo hook de query.
+ */
+export function persistReceiptsToLocalStorage(receipts: Receipt[]): void {
+    if (Array.isArray(receipts) && receipts.length > 0) {
+        try {
+            const normalized = normalizeReceipts(receipts);
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+        } catch (storageError) {
+            logger.error('AllReceiptsQuery', 'Erro ao persistir no localStorage', storageError);
+        }
+    }
+}
+
 export function useAllReceiptsQuery(enabled: boolean = true) {
     return useQuery({
         queryKey: allReceiptsKeys.all,
@@ -38,10 +53,7 @@ export function useAllReceiptsQuery(enabled: boolean = true) {
                 try {
                     const data = await getAllReceiptsFromDB();
                     const normalized = normalizeReceipts(data);
-                    // Sincronizar com localStorage como fallback (com dados normalizados)
-                    if (Array.isArray(normalized) && normalized.length > 0) {
-                        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
-                    }
+                    // Persistência deve ser feita por serviço dedicado, não pelo hook
                     return normalized;
                 } catch (_error) {
                     // Erro esperado: usuário não autenticado ou Supabase indisponível

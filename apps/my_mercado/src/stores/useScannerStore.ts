@@ -72,7 +72,7 @@ interface ResetActions {
 
 const defaultManualData: ManualReceiptData = {
   establishment: "",
-  date: new Date().toLocaleDateString("pt-BR"),
+  date: "",
   items: [],
 };
 
@@ -160,7 +160,7 @@ export const useScannerStore = create<ScannerState>()((set) => ({
       manualMode: false,
       manualData: {
         establishment: "",
-        date: new Date().toLocaleDateString("pt-BR"),
+        date: "",
         items: [],
       },
       manualItem: {
