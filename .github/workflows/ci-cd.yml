@@ -33,9 +33,6 @@ jobs:
       - name: Build shared package (ai-core)
         run: pnpm --filter @bosguega/ai-core build
 
-      - name: Type Check (shared package)
-        run: pnpm --filter @bosguega/ai-core build
-
       - name: Type Check (app)
         run: pnpm --filter my_mercado typecheck
 

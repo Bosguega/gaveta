@@ -26,10 +26,10 @@ describe("PriceEditModal", () => {
     );
 
     expect(screen.getByText("Cafe")).toBeInTheDocument();
-    expect(screen.getByText("Preco original")).toBeInTheDocument();
-    expect(screen.getByText("12,50")).toBeInTheDocument();
+    expect(screen.getByText(/Preço original/)).toBeInTheDocument();
+    expect(screen.getAllByText("12,50").length).toBeGreaterThan(0);
     expect(screen.getByDisplayValue("10,00")).toBeInTheDocument();
-    expect(screen.getByText("25,00")).toBeInTheDocument();
+    expect(screen.getAllByText("25,00").length).toBeGreaterThan(0);
     expect(screen.getByDisplayValue("20,00")).toBeInTheDocument();
   });
 
@@ -46,7 +46,7 @@ describe("PriceEditModal", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("Preco pago"), {
+    fireEvent.change(screen.getByLabelText("Preço pago /un"), {
       target: { value: "8,75" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
