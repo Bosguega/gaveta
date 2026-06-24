@@ -1,4 +1,3 @@
-import { logger } from "../../utils/logger";
 import type { RawReceiptItem, Receipt } from "../../types/domain";
 import { getFallbackDateAtMidnight, extractEmissionDate } from "./htmlParser";
 
