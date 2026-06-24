@@ -28,9 +28,15 @@ function ScannerTab() {
   const setDuplicateReceipt = useScannerStore((state) => state.setDuplicateReceipt);
   const { data: establishmentEntries = [] } = useEstablishmentDictionaryQuery();
 
-  // Lista de estabelecimentos conhecidos para o seletor
+  // Lista de estabelecimentos conhecidos para o seletor — mostra nome fantasia
   const establishmentOptions = useMemo(
-    () => establishmentEntries.map((e) => e.establishment).sort(),
+    () =>
+      establishmentEntries
+        .map((e) => ({
+          value: e.establishment,
+          label: e.nome_fantasia || e.establishment,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
     [establishmentEntries],
   );
 

@@ -80,6 +80,7 @@ const defaultManualItem: ManualReceiptItemInput = {
   name: "",
   qty: "1",
   unitPrice: "",
+  totalPrice: "",
 };
 
 const initialScanState: ScanSlice = {
@@ -166,6 +167,7 @@ export const useScannerStore = create<ScannerState>()((set) => ({
         name: "",
         qty: "1",
         unitPrice: "",
+        totalPrice: "",
       },
     }),
 }));

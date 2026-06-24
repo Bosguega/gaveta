@@ -68,6 +68,22 @@ export function ManualReceiptForm({
     }
   };
 
+  /** Ao alterar unitPrice, recalcula totalPrice e vice-versa */
+  const handlePriceChange = (field: "unitPrice" | "totalPrice", value: string) => {
+    const cleaned = value.replace(/[^\d,.]/g, "");
+    const qty = parseFloat(String(manualItem.qty).replace(",", ".")) || 1;
+
+    if (field === "unitPrice") {
+      const uPrice = parseFloat(cleaned.replace(",", ".")) || 0;
+      const tPrice = uPrice > 0 ? (qty * uPrice).toFixed(2).replace(".", ",") : "";
+      setManualItem({ ...manualItem, unitPrice: cleaned, totalPrice: tPrice });
+    } else {
+      const tPrice = parseFloat(cleaned.replace(",", ".")) || 0;
+      const uPrice = tPrice > 0 ? (tPrice / qty).toFixed(2).replace(".", ",") : "";
+      setManualItem({ ...manualItem, totalPrice: cleaned, unitPrice: uPrice });
+    }
+  };
+
   return (
     <div className="glass-card">
       {/* Header */}
@@ -105,9 +121,9 @@ export function ManualReceiptForm({
               <option value="" disabled>
                 Selecione um mercado
               </option>
-              {establishmentOptions.map((name) => (
-                <option key={name} value={name}>
-                  {name}
+              {establishmentOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
                 </option>
               ))}
               <option value="__custom__">➕ Outro...</option>
@@ -171,10 +187,10 @@ export function ManualReceiptForm({
               </datalist>
             )}
           </div>
-          {/* Qtd, Preço e Botão */}
+          {/* Qtd, Preço Unitário, Preço Total e Botão */}
           <div className="flex gap-3 items-end">
             {/* Quantidade */}
-            <div className="w-[90px] flex-shrink-0">
+            <div className="w-[80px] flex-shrink-0">
               <label className="block text-slate-500 text-[0.7rem] uppercase tracking-wide mb-1 font-semibold">
                 Qtd
               </label>
@@ -183,9 +199,9 @@ export function ManualReceiptForm({
                 className="search-input bg-[var(--bg-color)] text-center"
                 placeholder="1"
                 value={manualItem.qty}
-                onChange={(e) =>
-                  setManualItem({ ...manualItem, qty: e.target.value })
-                }
+                onChange={(e) => {
+                  setManualItem({ ...manualItem, qty: e.target.value });
+                }}
                 min="0.5"
                 step="0.5"
                 inputMode="decimal"
@@ -205,23 +221,42 @@ export function ManualReceiptForm({
                   className="search-input bg-[var(--bg-color)] pl-12"
                   placeholder="0,00"
                   value={manualItem.unitPrice}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/[^\d,.]/g, "");
-                    setManualItem({ ...manualItem, unitPrice: val });
-                  }}
+                  onChange={(e) => handlePriceChange("unitPrice", e.target.value)}
+                  inputMode="decimal"
+                />
+              </div>
+            </div>
+            {/* Preço Total */}
+            <div className="flex-1 min-w-0">
+              <label className="block text-slate-500 text-[0.7rem] uppercase tracking-wide mb-1 font-semibold">
+                Preço total (R$)
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-400 font-semibold text-sm pointer-events-none z-10 w-5 text-center">
+                  R$
+                </span>
+                <input
+                  type="text"
+                  className="search-input bg-[var(--bg-color)] pl-12"
+                  placeholder="0,00"
+                  value={manualItem.totalPrice ?? ""}
+                  onChange={(e) => handlePriceChange("totalPrice", e.target.value)}
                   inputMode="decimal"
                 />
               </div>
             </div>
             {/* Botão Adicionar */}
             <button
-              className="btn px-5 h-[44px] flex-shrink-0 mb-[2px]"
+              className="btn px-4 h-[44px] flex-shrink-0 mb-[2px]"
               onClick={onAddManualItem}
               title="Adicionar item"
             >
               <Plus size={20} />
             </button>
           </div>
+          <p className="text-slate-600 text-[0.65rem] text-center mt-1">
+            Preencha o preço unitário <strong>ou</strong> o total — o outro é calculado automaticamente
+          </p>
         </div>
       </div>
 

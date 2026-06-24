@@ -37,33 +37,35 @@ export function useManualReceipt() {
   }, []);
 
   const handleAddManualItem = useCallback(() => {
-    // Validação centralizada com Zod
-    const validation = validateManualItem({
-      name: manualItem.name?.trim(),
-      qty: String(manualItem.qty || '1'),
-      unitPrice: String(manualItem.unitPrice),
-    });
+    const qty = parseFloat(String(manualItem.qty || '1').replace(',', '.')) || 1;
+    const unitPrice = parseFloat(String(manualItem.unitPrice || '0').replace(',', '.'));
+    const totalPrice = parseFloat(String(manualItem.totalPrice || '0').replace(',', '.'));
 
-    if (!validation.success) {
-      notify.warning(validation.error);
+    // Validação: precisa de nome e pelo menos um dos preços
+    const name = manualItem.name?.trim();
+    if (!name) {
+      notify.warning('Nome do produto é obrigatório');
+      return;
+    }
+    if (!unitPrice && !totalPrice) {
+      notify.warning('Informe o preço unitário ou o preço total');
       return;
     }
 
-    const { name, qty, unitPrice } = validation.data;
-    const qtyNum = parseFloat(String(qty).replace(',', '.')) || 1;
-    const priceNum = parseFloat(String(unitPrice).replace(',', '.'));
-    const totalNum = qtyNum * priceNum;
+    // Calcula: se tem totalPrice usa ele, senão calcula unit * qty
+    const finalTotal = totalPrice > 0 ? totalPrice : unitPrice * qty;
+    const finalUnitPrice = unitPrice > 0 ? unitPrice : finalTotal / qty;
 
     const newItem = {
-      name: name.trim(),
-      quantity: qtyNum,
-      price: priceNum,
-      paid_price: priceNum,
-      total: totalNum,
+      name,
+      quantity: qty,
+      price: finalUnitPrice,
+      paid_price: finalUnitPrice,
+      total: finalTotal,
     };
 
     setManualData({ ...manualData, items: [newItem, ...manualData.items] });
-    setManualItem({ name: '', qty: '1', unitPrice: '' });
+    setManualItem({ name: '', qty: '1', unitPrice: '', totalPrice: '' });
     notify.itemAdded();
   }, [manualItem, manualData, setManualData, setManualItem]);
 

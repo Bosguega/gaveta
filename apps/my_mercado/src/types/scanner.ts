@@ -68,6 +68,7 @@ export interface ManualReceiptItemInput {
   name: string;
   qty: string;
   unitPrice: string;
+  totalPrice: string;
 }
 
 // =========================
@@ -91,6 +92,11 @@ export interface ScannerControls {
 /**
  * Props para o componente ManualReceiptForm
  */
+export interface EstablishmentOption {
+  value: string;
+  label: string;
+}
+
 export interface ManualReceiptFormProps {
   manualData: ManualReceiptData;
   setManualData: (data: ManualReceiptData) => void;
@@ -102,7 +108,7 @@ export interface ManualReceiptFormProps {
   onCancel: () => void;
   calculateReceiptTotal: (items: ReceiptItem[]) => number;
   productSuggestions?: string[];
-  establishmentOptions?: string[];
+  establishmentOptions?: EstablishmentOption[];
 }
 
 /**
