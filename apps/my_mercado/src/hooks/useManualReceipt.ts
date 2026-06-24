@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { notify } from '../utils/notifications';
 import { logger } from '../utils/logger';
 import { useScannerStore } from '../stores/useScannerStore';
-import { validateManualReceiptForm, validateManualItem } from '../utils/validation';
+import { validateManualReceiptForm } from '../utils/validation';
 import { processItemsPipeline } from '../services/productService';
 import { generateManualReceiptId } from '../utils/receiptId';
 import type { Receipt } from '../types/domain';
@@ -38,6 +38,13 @@ export function useManualReceipt() {
 
   const handleAddManualItem = useCallback(() => {
     const qty = parseFloat(String(manualItem.qty || '1').replace(',', '.')) || 1;
+
+    // Validação de quantidade
+    if (qty <= 0) {
+      notify.warning('Quantidade deve ser maior que zero');
+      return;
+    }
+
     const unitPrice = parseFloat(String(manualItem.unitPrice || '0').replace(',', '.'));
     const totalPrice = parseFloat(String(manualItem.totalPrice || '0').replace(',', '.'));
 
@@ -52,8 +59,18 @@ export function useManualReceipt() {
       return;
     }
 
-    // Calcula: se tem totalPrice usa ele, senão calcula unit * qty
-    const finalTotal = totalPrice > 0 ? totalPrice : unitPrice * qty;
+    // Avisa sobre conflito se ambos foram preenchidos com valores inconsistentes
+    const expectedTotal = unitPrice * qty;
+    if (unitPrice > 0 && totalPrice > 0) {
+      const diff = Math.abs(totalPrice - expectedTotal);
+      if (diff > 0.02) {
+        notify.warning(
+          `Preços conflitantes (unitário: R$ ${unitPrice.toFixed(2)}, total: R$ ${totalPrice.toFixed(2)}) — usando o total informado.`
+        );
+      }
+    }
+
+    const finalTotal = totalPrice > 0 ? totalPrice : expectedTotal;
     const finalUnitPrice = unitPrice > 0 ? unitPrice : finalTotal / qty;
 
     const newItem = {
@@ -64,42 +81,42 @@ export function useManualReceipt() {
       total: finalTotal,
     };
 
-    setManualData({ ...manualData, items: [newItem, ...manualData.items] });
+    // Atualização funcional para evitar stale state
+    setManualData(prev => ({ ...prev, items: [newItem, ...prev.items] }));
     setManualItem({ name: '', qty: '1', unitPrice: '', totalPrice: '' });
     notify.itemAdded();
-  }, [manualItem, manualData, setManualData, setManualItem]);
+  }, [manualItem, setManualData, setManualItem]);
 
   const handleRemoveManualItem = useCallback(
     (index: number) => {
-      const newItems = manualData.items.filter((_, i) => i !== index);
-      setManualData({ ...manualData, items: newItems });
+      setManualData(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }));
       notify.itemRemoved();
     },
-    [manualData, setManualData],
+    [setManualData],
   );
 
   const handleSaveManualReceipt = useCallback(async () => {
-    // 1. Validação com zod
-    const validation = validateManualReceiptForm({
-      establishment: manualData.establishment,
-      date: manualData.date,
-      items: manualData.items.map((item) => ({
-        name: item.name,
-        qty: String(item.quantity || 1),
-        unitPrice: String(item.price || 0),
-      })),
-    });
-
-    if (!validation.success) {
-      validation.errors.forEach((error) => notify.warning(error));
-      return;
-    }
-
-    const { establishment, date, items } = validation.data;
-
+    // Bloqueia imediatamente para evitar múltiplos cliques
     setLoading(true);
 
     try {
+      // 1. Validação com zod
+      const validation = validateManualReceiptForm({
+        establishment: manualData.establishment,
+        date: manualData.date,
+        items: manualData.items.map((item) => ({
+          name: item.name,
+          qty: String(item.quantity || 1),
+          unitPrice: String(item.price || 0),
+        })),
+      });
+
+      if (!validation.success) {
+        validation.errors.forEach((error) => notify.warning(error));
+        return;
+      }
+
+      const { establishment, date, items } = validation.data;
       // 2. Passar os itens pela pipeline de normalização (dicionário + IA)
       //    igual às notas escaneadas — recebe normalized_name e category
       const rawItemsForPipeline = items.map((item, idx) => ({
