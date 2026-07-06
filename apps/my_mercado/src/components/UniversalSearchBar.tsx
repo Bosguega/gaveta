@@ -1,4 +1,4 @@
-import { Search, ArrowDownAZ } from 'lucide-react';
+import { Search, ArrowDownAZ, X } from 'lucide-react';
 import { useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { SortDirection } from '../types/ui';
@@ -72,9 +72,18 @@ const UniversalSearchBar = ({
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
-          className={`search-input-field h-12 rounded-xl border-none bg-white/5 text-[0.95rem] w-full pl-12 pr-4 text-white outline-none ${inputClassName}`}
+          className={`search-input-field h-12 rounded-xl border-none bg-white/5 text-[0.95rem] w-full pl-12 pr-10 text-white outline-none ${inputClassName}`}
           style={inputStyle}
         />
+        {value && (
+          <button
+            onClick={() => onChange('')}
+            className="absolute right-4 top-1/2 -translate-y-1/2 bg-transparent border-none text-slate-500 hover:text-white cursor-pointer p-1 rounded-lg transition-colors duration-200"
+            aria-label="Limpar busca"
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
 
       {/* Seletor de ordenação / Filtros / Ações Extras */}

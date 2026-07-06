@@ -87,4 +87,27 @@ describe("UniversalSearchBar", () => {
 
     expect(onChange).toHaveBeenCalledWith("leite -doce");
   });
+
+  it("deve mostrar botao limpar quando há texto no campo", () => {
+    const onChange = vi.fn();
+    render(<UniversalSearchBar {...defaultProps} value="leite" onChange={onChange} />);
+
+    expect(screen.getByRole("button", { name: /limpar busca/i })).toBeInTheDocument();
+  });
+
+  it("nao deve mostrar botao limpar quando campo esta vazio", () => {
+    render(<UniversalSearchBar {...defaultProps} />);
+
+    expect(screen.queryByRole("button", { name: /limpar busca/i })).not.toBeInTheDocument();
+  });
+
+  it("deve limpar o campo ao clicar no botao X", () => {
+    const onChange = vi.fn();
+    render(<UniversalSearchBar {...defaultProps} value="leite" onChange={onChange} />);
+
+    const clearButton = screen.getByRole("button", { name: /limpar busca/i });
+    fireEvent.click(clearButton);
+
+    expect(onChange).toHaveBeenCalledWith("");
+  });
 });
