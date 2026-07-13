@@ -1,4 +1,4 @@
-import type { SupabaseClient, User, Session } from '@supabase/supabase-js'
+import type { SupabaseClient, User, Session, AuthChangeEvent } from '@supabase/supabase-js'
 import { SupabaseError } from './errors'
 
 /**
@@ -118,7 +118,7 @@ export async function requireSession(client: SupabaseClient): Promise<Session> {
  */
 export function onAuthStateChange(
     client: SupabaseClient,
-    callback: (event: string, session: Session | null) => void
+    callback: (event: AuthChangeEvent, session: Session | null) => void
 ) {
     const { data } = client.auth.onAuthStateChange(callback)
     return data.subscription

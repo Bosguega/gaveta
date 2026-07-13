@@ -75,9 +75,6 @@ importers:
       '@bosguega/supabase':
         specifier: workspace:*
         version: link:../../packages/supabase
-      '@supabase/supabase-js':
-        specifier: ^2.99.3
-        version: 2.105.3
       '@tanstack/react-query':
         specifier: ^5.95.2
         version: 5.100.9(react@18.3.1)
