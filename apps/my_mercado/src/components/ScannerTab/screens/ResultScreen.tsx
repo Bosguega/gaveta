@@ -5,7 +5,7 @@ import { formatQuantity } from "../../../utils/format";
 import { formatToBR } from "../../../utils/date";
 import type { ReceiptItem } from "../../../types/domain";
 import type { ReceiptResultProps } from "../../../types/scanner";
-import { useUpdateItemPaidPrice } from "../../../hooks/queries/useUpdateItemPaidPrice";
+import { useScannerStore } from "../../../stores/useScannerStore";
 import { PriceEditModal } from "../../PriceEditModal";
 
 export function ResultScreen({
@@ -16,8 +16,13 @@ export function ResultScreen({
   calculateReceiptTotal,
 }: ReceiptResultProps) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const [editingItem, setEditingItem] = useState<ReceiptItem | null>(null);
-  const updatePaidPrice = useUpdateItemPaidPrice();
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const setCurrentReceipt = useScannerStore((state) => state.setCurrentReceipt);
+
+  const editingItem = useMemo(() => {
+    if (editingIndex === null || !currentReceipt?.items) return null;
+    return currentReceipt.items[editingIndex] || null;
+  }, [editingIndex, currentReceipt?.items]);
 
   const displayEstablishment = useMemo(() => {
     return currentReceipt.establishment_display || currentReceipt.establishment;
@@ -50,20 +55,37 @@ export function ResultScreen({
 
   const total = calculateReceiptTotal(currentReceipt.items);
 
-  const handleStartEdit = useCallback((e: React.MouseEvent, item: ReceiptItem) => {
+  const handleStartEdit = useCallback((e: React.MouseEvent, index: number) => {
     e.stopPropagation();
-    setEditingItem(item);
+    setEditingIndex(index);
   }, []);
 
   const handleCancelEdit = useCallback(() => {
-    setEditingItem(null);
+    setEditingIndex(null);
   }, []);
 
   const handleSavePaidPrice = useCallback((paidPrice: number) => {
-    if (!editingItem?.id) return;
-    updatePaidPrice.mutate({ itemId: editingItem.id, paidPrice });
-    setEditingItem(null);
-  }, [editingItem, updatePaidPrice]);
+    if (editingIndex === null) return;
+
+    setCurrentReceipt((prev) => {
+      if (!prev) return null;
+      const updatedItems = prev.items.map((item, idx) => {
+        if (idx === editingIndex) {
+          return {
+            ...item,
+            paid_price: paidPrice,
+          };
+        }
+        return item;
+      });
+      return {
+        ...prev,
+        items: updatedItems,
+      };
+    });
+
+    setEditingIndex(null);
+  }, [editingIndex, setCurrentReceipt]);
 
   const totalDiscount = currentReceipt.total_discount;
   const hasDiscount = totalDiscount !== undefined && totalDiscount > 0.005;
@@ -147,11 +169,22 @@ export function ResultScreen({
                   </div>
                 </div>
                 <div className="flex-shrink-0 ml-2 flex items-center gap-1.5">
-                  <div className="text-slate-300 font-semibold text-sm">
-                    R$ {formatItemTotal(item)}
-                  </div>
+                  {item.paid_price !== undefined && item.paid_price !== null && item.paid_price < item.price ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-500 line-through text-xs">
+                        R$ {formatBRL(item.price * (item.quantity ?? 1))}
+                      </span>
+                      <span className="text-[var(--success)] font-semibold text-sm">
+                        R$ {formatItemTotal(item)}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-slate-300 font-semibold text-sm">
+                      R$ {formatItemTotal(item)}
+                    </div>
+                  )}
                   <button
-                    onClick={(e) => handleStartEdit(e, item)}
+                    onClick={(e) => handleStartEdit(e, idx)}
                     className="bg-slate-700/50 border-none rounded w-5 h-5 flex items-center justify-center text-slate-400 cursor-pointer hover:text-slate-200 hover:bg-slate-700 flex-shrink-0"
                     title="Editar preço pago"
                   >
@@ -204,11 +237,10 @@ export function ResultScreen({
       </div>
 
       {/* Modal de edição de preço */}
-      {editingItem && (
+      {editingIndex !== null && editingItem && (
         <PriceEditModal
           item={editingItem}
           isOpen={true}
-          busy={updatePaidPrice.isPending}
           onCancel={handleCancelEdit}
           onSavePaidPrice={handleSavePaidPrice}
         />

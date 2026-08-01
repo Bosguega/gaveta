@@ -1,5 +1,6 @@
 packages:
   - "packages/*"
+  - "packages/@bosguega/*"
   - "apps/*"
 allowBuilds:
   esbuild: true
