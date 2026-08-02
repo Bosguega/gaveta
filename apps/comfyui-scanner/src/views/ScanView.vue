@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ScanControls from '@/components/ScanControls.vue';
 import ResultsList from '@/components/ResultsList.vue';
+import WorkflowDependencyIndex from '@/components/WorkflowDependencyIndex.vue';
 import {
     scanResult,
     scanError,
@@ -29,6 +30,7 @@ import {
         </div>
 
         <ResultsList v-if="scanResult && scanResult.success" />
+        <WorkflowDependencyIndex v-if="scanResult && scanResult.success" />
     </div>
 </template>
 

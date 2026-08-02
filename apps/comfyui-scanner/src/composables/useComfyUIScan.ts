@@ -1,13 +1,14 @@
 ﻿import { ref } from 'vue'
 import { save } from '@tauri-apps/plugin-dialog';
 import { computed } from 'vue'
-import type { ScanResult, SavedPath } from '@/types'
+import type { ScanResult, SavedPath, WorkflowDependencyIndex } from '@/types'
 import {
     scanComfyuiDirectory,
     getCommonComfyuiPaths,
     findComfyuiInstallations,
     getSavedPaths,
-    saveExportFile
+    saveExportFile,
+    buildWorkflowDependencyIndex
 } from '@/services/scanner'
 import { toInventory, filterImageCategories } from '@/inventory/inventory'
 import { enrichItems } from '@/enrichment/inventory-enricher'
@@ -34,6 +35,9 @@ export const commonPaths = ref<string[]>([])
 export const savedPaths = ref<SavedPath[]>([])
 export const foundPaths = ref<SavedPath[]>([])
 export const scanningForInstallations = ref(false)
+export const workflowIndex = ref<WorkflowDependencyIndex | null>(null)
+export const isIndexingWorkflows = ref(false)
+export const workflowIndexError = ref<string | null>(null)
 
 export async function loadCommonPaths() {
     try {
@@ -78,12 +82,27 @@ export async function startScan() {
         scanResult.value = await scanComfyuiDirectory(selectedPath.value)
         if (!scanResult.value.success) {
             scanError.value = scanResult.value.error || 'Erro desconhecido'
+        } else {
+            void refreshWorkflowIndex()
         }
     } catch (error) {
         console.error('Scan error:', error)
         scanError.value = error instanceof Error ? error.message : 'Erro ao escanear'
     } finally {
         isScanning.value = false
+    }
+}
+
+export async function refreshWorkflowIndex() {
+    if (!selectedPath.value) return
+    isIndexingWorkflows.value = true
+    workflowIndexError.value = null
+    try {
+        workflowIndex.value = await buildWorkflowDependencyIndex(selectedPath.value)
+    } catch (error) {
+        workflowIndexError.value = error instanceof Error ? error.message : 'Não foi possível indexar os workflows.'
+    } finally {
+        isIndexingWorkflows.value = false
     }
 }
 
@@ -176,4 +195,6 @@ export function resetScan() {
     scanError.value = null
     searchQuery.value = ''
     selectedCategory.value = null
+    workflowIndex.value = null
+    workflowIndexError.value = null
 }

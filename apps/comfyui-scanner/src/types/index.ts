@@ -26,3 +26,24 @@ export interface ExportData {
     items: ScannedItem[];
 }
 
+export interface WorkflowDependency {
+    name: string;
+    kind: string;
+    status: 'installed' | 'missing';
+    matched_path?: string;
+}
+
+export interface WorkflowRecord {
+    name: string;
+    path: string;
+    dependencies: WorkflowDependency[];
+    node_types: string[];
+    custom_nodes: string[];
+}
+
+export interface WorkflowDependencyIndex {
+    workflows: WorkflowRecord[];
+    model_usage: Record<string, number>;
+    unused_models: string[];
+}
+

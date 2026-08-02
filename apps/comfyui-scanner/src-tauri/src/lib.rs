@@ -8,6 +8,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             scan_comfyui_directory,
+            build_workflow_dependency_index,
             get_common_comfyui_paths,
             find_comfyui_installations,
             get_saved_paths,

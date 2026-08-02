@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
@@ -28,6 +28,30 @@ pub struct ScanResult {
     pub items: Vec<ScannedItem>,
     pub summary: HashMap<String, usize>,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkflowDependency {
+    pub name: String,
+    pub kind: String,
+    pub status: String,
+    pub matched_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkflowRecord {
+    pub name: String,
+    pub path: String,
+    pub dependencies: Vec<WorkflowDependency>,
+    pub node_types: Vec<String>,
+    pub custom_nodes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkflowDependencyIndex {
+    pub workflows: Vec<WorkflowRecord>,
+    pub model_usage: HashMap<String, usize>,
+    pub unused_models: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,9 +183,9 @@ pub fn scan_comfyui_directory(path: String) -> ScanResult {
             }
         }
 
-        if let Some(workflows) = &desktop_paths.workflows {
-            if workflows.exists() {
-                scan_workflows(workflows, &mut items);
+        if let Some(install_dir) = &desktop_paths.install_dir {
+            for workflows in discover_workflow_directories(install_dir) {
+                scan_workflows(&workflows, &mut items);
             }
         }
     } else {
@@ -176,9 +200,8 @@ pub fn scan_comfyui_directory(path: String) -> ScanResult {
             scan_custom_nodes(&custom_nodes_dir, &mut items);
         }
 
-        let workflows_dir = comfyui_path.join("workflows");
-        if workflows_dir.exists() {
-            scan_workflows(&workflows_dir, &mut items);
+        for workflows in discover_workflow_directories(comfyui_path) {
+            scan_workflows(&workflows, &mut items);
         }
 
         let input_dir = comfyui_path.join("input");
@@ -369,6 +392,27 @@ fn scan_workflows(path: &Path, items: &mut Vec<ScannedItem>) {
     }
 }
 
+/// Includes both the legacy root folder and workflows belonging to each user profile.
+/// Comfy Desktop normally saves these under `user/default/workflows`.
+fn discover_workflow_directories(comfyui_root: &Path) -> Vec<PathBuf> {
+    let mut directories = Vec::new();
+    let legacy = comfyui_root.join("workflows");
+    if legacy.is_dir() {
+        directories.push(legacy);
+    }
+
+    let users_dir = comfyui_root.join("user");
+    if let Ok(profiles) = fs::read_dir(users_dir) {
+        for profile in profiles.flatten() {
+            let workflows = profile.path().join("workflows");
+            if workflows.is_dir() {
+                directories.push(workflows);
+            }
+        }
+    }
+    directories
+}
+
 fn scan_images(path: &Path, items: &mut Vec<ScannedItem>, category: &str) {
     let image_extensions = &["png", "jpg", "jpeg", "gif", "bmp", "webp"];
 
@@ -418,6 +462,128 @@ fn determine_category(file_path: &Path, base_path: &Path) -> String {
     }
 
     "Outros".to_string()
+}
+
+#[tauri::command]
+pub fn build_workflow_dependency_index(path: String) -> Result<WorkflowDependencyIndex, String> {
+    let scan = scan_comfyui_directory(path.clone());
+    if !scan.success {
+        return Err(scan.error.unwrap_or_else(|| "Falha ao escanear instalação".to_string()));
+    }
+
+    let model_items: Vec<&ScannedItem> = scan.items.iter()
+        .filter(|item| !matches!(item.category.as_str(), "Workflows" | "Custom Nodes" | "Input Images" | "Output Images"))
+        .collect();
+    let models_by_name: HashMap<String, &ScannedItem> = model_items.iter()
+        .map(|item| (item.name.to_ascii_lowercase(), *item))
+        .collect();
+
+    let root = Path::new(&path);
+    let desktop_paths = resolve_comfy_desktop_paths(root);
+    let workflow_root = desktop_paths.install_dir.as_deref().unwrap_or(root);
+    let workflow_dirs = discover_workflow_directories(workflow_root);
+    let custom_nodes_dir = if desktop_paths.root.is_some() {
+        desktop_paths.custom_nodes
+    } else {
+        Some(root.join("custom_nodes"))
+    };
+
+    let mut workflows = Vec::new();
+    let mut model_usage: HashMap<String, usize> = HashMap::new();
+    for workflow_dir in workflow_dirs.into_iter().filter(|dir| dir.exists()) {
+        for entry in WalkDir::new(workflow_dir).min_depth(1).max_depth(3).into_iter().filter_map(|entry| entry.ok()) {
+            if !entry.file_type().is_file() || entry.path().extension().and_then(|ext| ext.to_str()).map(|ext| ext.eq_ignore_ascii_case("json")) != Some(true) {
+                continue;
+            }
+            let Ok(content) = fs::read_to_string(entry.path()) else { continue; };
+            let Ok(document) = serde_json::from_str::<serde_json::Value>(&content) else { continue; };
+            let node_types = extract_node_types(&document);
+            if node_types.is_empty() { continue; }
+
+            let mut referenced = extract_api_model_references(&document);
+            extract_known_model_references(&document, &models_by_name, &mut referenced);
+            let mut dependencies = Vec::new();
+            for reference in referenced {
+                let lookup = reference.to_ascii_lowercase();
+                if let Some(model) = models_by_name.get(&lookup) {
+                    *model_usage.entry(model.name.clone()).or_insert(0) += 1;
+                    dependencies.push(WorkflowDependency { name: model.name.clone(), kind: model.category.clone(), status: "installed".to_string(), matched_path: Some(model.path.clone()) });
+                } else {
+                    dependencies.push(WorkflowDependency { name: reference, kind: "Model reference".to_string(), status: "missing".to_string(), matched_path: None });
+                }
+            }
+            dependencies.sort_by(|a, b| a.name.cmp(&b.name));
+            let custom_nodes = find_custom_node_providers(&node_types, custom_nodes_dir.as_deref());
+            workflows.push(WorkflowRecord {
+                name: entry.file_name().to_string_lossy().to_string(),
+                path: entry.path().to_string_lossy().to_string(),
+                dependencies,
+                node_types,
+                custom_nodes,
+            });
+        }
+    }
+    workflows.sort_by(|a, b| a.name.cmp(&b.name));
+    let unused_models = model_items.into_iter()
+        .filter(|item| !model_usage.contains_key(&item.name))
+        .map(|item| item.name.clone())
+        .collect();
+    Ok(WorkflowDependencyIndex { workflows, model_usage, unused_models })
+}
+
+fn extract_node_types(document: &serde_json::Value) -> Vec<String> {
+    let mut types = BTreeSet::new();
+    if let Some(nodes) = document.get("nodes").and_then(|nodes| nodes.as_array()) {
+        for node in nodes {
+            if let Some(node_type) = node.get("type").and_then(|value| value.as_str()) { types.insert(node_type.to_string()); }
+        }
+    } else if let Some(nodes) = document.as_object() {
+        for node in nodes.values() {
+            if let Some(node_type) = node.get("class_type").and_then(|value| value.as_str()) { types.insert(node_type.to_string()); }
+        }
+    }
+    types.into_iter().collect()
+}
+
+fn extract_api_model_references(document: &serde_json::Value) -> BTreeSet<String> {
+    let mut references = BTreeSet::new();
+    let Some(nodes) = document.as_object() else { return references; };
+    for node in nodes.values() {
+        let Some(inputs) = node.get("inputs").and_then(|inputs| inputs.as_object()) else { continue; };
+        for (input_name, value) in inputs {
+            let name = input_name.to_ascii_lowercase();
+            if ["ckpt", "checkpoint", "model", "lora", "vae", "control", "unet", "clip", "upscale", "encoder"].iter().any(|keyword| name.contains(keyword)) {
+                if let Some(value) = value.as_str() { references.insert(value.to_string()); }
+            }
+        }
+    }
+    references
+}
+
+fn extract_known_model_references(document: &serde_json::Value, models: &HashMap<String, &ScannedItem>, references: &mut BTreeSet<String>) {
+    match document {
+        serde_json::Value::String(value) => {
+            if let Some(model) = models.get(&value.to_ascii_lowercase()) { references.insert(model.name.clone()); }
+        }
+        serde_json::Value::Array(values) => for value in values { extract_known_model_references(value, models, references); },
+        serde_json::Value::Object(values) => for value in values.values() { extract_known_model_references(value, models, references); },
+        _ => {}
+    }
+}
+
+fn find_custom_node_providers(node_types: &[String], custom_nodes_dir: Option<&Path>) -> Vec<String> {
+    let Some(custom_nodes_dir) = custom_nodes_dir.filter(|dir| dir.exists()) else { return Vec::new(); };
+    let mut providers = BTreeSet::new();
+    for entry in WalkDir::new(custom_nodes_dir).min_depth(1).max_depth(4).into_iter().filter_map(|entry| entry.ok()) {
+        if !entry.file_type().is_file() || entry.path().extension().and_then(|ext| ext.to_str()) != Some("py") { continue; }
+        let Ok(content) = fs::read_to_string(entry.path()) else { continue; };
+        if node_types.iter().any(|node_type| content.contains(&format!("\"{}\"", node_type)) || content.contains(&format!("'{}'", node_type))) {
+            if let Ok(relative) = entry.path().strip_prefix(custom_nodes_dir) {
+                if let Some(provider) = relative.components().next().and_then(|component| component.as_os_str().to_str()) { providers.insert(provider.to_string()); }
+            }
+        }
+    }
+    providers.into_iter().collect()
 }
 
 #[tauri::command]

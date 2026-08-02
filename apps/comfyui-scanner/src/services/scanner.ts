@@ -1,6 +1,6 @@
 ﻿// @ts-ignore - Tauri API will be available at runtime
 import { invoke } from '@tauri-apps/api/core';
-import type { ScanResult, SavedPath } from '@/types';
+import type { ScanResult, SavedPath, WorkflowDependencyIndex } from '@/types';
 
 export async function scanComfyuiDirectory(path: string): Promise<ScanResult> {
     return invoke('scan_comfyui_directory', { path });
@@ -16,6 +16,10 @@ export async function findComfyuiInstallations(): Promise<SavedPath[]> {
 
 export async function getSavedPaths(): Promise<SavedPath[]> {
     return invoke('get_saved_paths');
+}
+
+export async function buildWorkflowDependencyIndex(path: string): Promise<WorkflowDependencyIndex> {
+    return invoke('build_workflow_dependency_index', { path });
 }
 
 export async function saveExportFile(path: string, content: string): Promise<void> {
