@@ -8,7 +8,7 @@ import type { Renderer } from './renderer';
 
 const ICON_MAP: Record<string, string> = {
     'diffusion': '🔮', 'lora': '🎨', 'vae': '🔧',
-    'text-encoder': '📝', 'custom-node': '📦', 'generic': '📄',
+    'text-encoder': '📝', 'custom-node': '📦', 'workflow': '🧩', 'generic': '📄',
 };
 
 function renderCard(card: Card): string {

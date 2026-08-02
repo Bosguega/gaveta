@@ -9,6 +9,9 @@ export function renderJson(inventory: Inventory): string {
         comfyui_path: inventory.comfyuiPath,
         scan_date: inventory.scanDate,
         summary: inventory.summary,
+        workflows: inventory.items
+            .filter(item => item.category === 'Workflows')
+            .map(item => ({ name: item.name, path: item.path, size_mb: item.sizeMb, file_type: item.fileType })),
         items: inventory.items.map(item => ({
             name: item.name,
             path: item.path,

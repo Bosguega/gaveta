@@ -10,6 +10,7 @@ const SECTION_TITLES: Record<string, string> = {
     'vae': 'VAEs',
     'text-encoder': 'Text Encoders',
     'custom-node': 'Custom Nodes',
+    'workflow': 'Workflows',
     'generic': 'Other',
 };
 

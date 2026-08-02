@@ -25,6 +25,10 @@ export function createCards(items: InventoryEnrichedItem[]): Card[] {
                 return TextEncoderBuilder.build(item);
             case 'Custom Nodes':
                 return CustomNodeBuilder.build(item);
+            case 'Workflows': {
+                const card = GenericBuilder.build(item);
+                return { ...card, type: 'workflow', icon: 'workflow', subtitle: 'Workflow' };
+            }
             default:
                 return GenericBuilder.build(item);
         }
