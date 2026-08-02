@@ -1,0 +1,11 @@
+{
+    "identifier": "default",
+    "description": "Permissões principais da aplicação ComfyUI Scanner",
+    "windows": [
+        "main"
+    ],
+    "permissions": [
+        "core:default",
+        "dialog:default"
+    ]
+}

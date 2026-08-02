@@ -1,0 +1,95 @@
+/**
+ * InventoryEnricher — adds derived information to InventoryItems.
+ * Does NOT mutate the original Inventory. Produces a new InventoryEnrichedItem.
+ * Does NOT know about HTML, Markdown, or Cards.
+ */
+
+import type { InventoryItem } from '@/inventory/inventory';
+import type { Metadata } from '@/metadata/metadata';
+import { parseFilename } from '@/metadata/metadata-parser';
+
+export interface InventoryEnrichedItem extends InventoryItem {
+    metadata: Metadata;
+    formattedSize: string;
+    friendlyName: string;
+    warnings: string[];
+}
+
+/**
+ * Enriches a single InventoryItem with parsed metadata and derived fields.
+ * Returns a new object — the original is never mutated.
+ */
+export function enrichItem(item: InventoryItem): InventoryEnrichedItem {
+    const metadata = parseFilename(item.name);
+    const formattedSize = formatSize(item.sizeMb);
+    const friendlyName = buildFriendlyName(item.name, metadata);
+    const warnings = buildWarnings(item);
+
+    return {
+        ...item,
+        metadata,
+        formattedSize,
+        friendlyName,
+        warnings,
+    };
+}
+
+/**
+ * Enriches an array of InventoryItems. Returns new objects.
+ */
+export function enrichItems(items: InventoryItem[]): InventoryEnrichedItem[] {
+    return items.map(enrichItem);
+}
+
+function formatSize(sizeMb: number): string {
+    if (sizeMb >= 1024) {
+        return `${(sizeMb / 1024).toFixed(2)} GB`;
+    }
+    if (sizeMb < 0.01) {
+        return '< 0.01 MB';
+    }
+    return `${sizeMb.toFixed(2)} MB`;
+}
+
+function buildFriendlyName(filename: string, metadata: Metadata): string {
+    const parts: string[] = [];
+
+    if (metadata.baseModel) {
+        parts.push(metadata.baseModel);
+    }
+    if (metadata.variant) {
+        parts.push(metadata.variant);
+    }
+    if (metadata.loraType) {
+        parts.push(metadata.loraType);
+    }
+
+    if (parts.length > 0) {
+        return parts.join(' ');
+    }
+
+    // Fallback: use filename without extension, title-cased
+    const nameWithoutExt = filename.includes('.')
+        ? filename.substring(0, filename.lastIndexOf('.'))
+        : filename;
+
+    return nameWithoutExt
+        .split(/[_\-.]+/)
+        .filter(t => t.length > 0)
+        .map(t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase())
+        .join(' ');
+}
+
+function buildWarnings(item: InventoryItem): string[] {
+    const warnings: string[] = [];
+
+    if (item.sizeMb > 10240) {
+        warnings.push('Very large file (>10 GB)');
+    }
+
+    if (item.fileType === 'ckpt') {
+        warnings.push('CKPT format — consider migrating to safetensors');
+    }
+
+    return warnings;
+}

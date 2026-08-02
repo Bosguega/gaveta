@@ -1,0 +1,12 @@
+﻿/**
+ * Section — groups Cards by category for organized rendering.
+ * Produced by SectionBuilder. Renderers iterate over Sections.
+ */
+
+import type { Card } from './card';
+
+export interface Section {
+    id: string;
+    title: string;
+    cards: Card[];
+}

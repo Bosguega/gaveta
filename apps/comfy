@@ -1,0 +1,196 @@
+/**
+ * MetadataParser — interprets model filenames to extract metadata.
+ * Tolerant: never throws, uses "Unknown" for unidentified fields.
+ * Reusable by any part of the system.
+ */
+
+import type { Metadata } from './metadata';
+
+const BASE_MODELS: Record<string, string> = {
+    'krea': 'Krea',
+    'krea2': 'Krea2',
+    'flux': 'Flux',
+    'flux1': 'Flux',
+    'sdxl': 'SDXL',
+    'sd15': 'SD 1.5',
+    'sd1.5': 'SD 1.5',
+    'sd3': 'SD 3',
+    'sd35': 'SD 3.5',
+    'sd3.5': 'SD 3.5',
+    'qwen': 'Qwen',
+    'wan': 'WAN',
+    'hunyuan': 'Hunyuan',
+    'pixart': 'PixArt',
+    'playground': 'Playground',
+    'dreamshaper': 'DreamShaper',
+    'realistic': 'Realistic Vision',
+    'anything': 'Anything',
+    'ghost': 'Ghost',
+    'juggernaut': 'Juggernaut',
+    'cyberrealistic': 'CyberRealistic',
+    'deliberate': 'Deliberate',
+    'epicrealism': 'EpicRealism',
+    'majicmix': 'MajicMix',
+    'realvisxl': 'RealVisXL',
+};
+
+const PRECISION_TOKENS: Record<string, string> = {
+    'fp8': 'FP8',
+    'fp16': 'FP16',
+    'bf16': 'BF16',
+    'fp32': 'FP32',
+    'fp8_e4m3fn': 'FP8 E4M3FN',
+    'fp8_e5m2': 'FP8 E5M2',
+    'fp8_e4m3fn_scaled': 'FP8 E4M3FN Scaled',
+};
+
+const QUANTIZATION_TOKENS: Record<string, string> = {
+    'q4': 'Q4',
+    'q8': 'Q8',
+    'q4_k_m': 'Q4_K_M',
+    'q4_k_s': 'Q4_K_S',
+    'q5_k_m': 'Q5_K_M',
+    'q5_k_s': 'Q5_K_S',
+    'q6_k': 'Q6_K',
+    'q8_0': 'Q8_0',
+    'q3_k_m': 'Q3_K_M',
+    'q3_k_s': 'Q3_K_S',
+    'q2_k': 'Q2_K',
+};
+
+const VARIANT_TOKENS: Record<string, string> = {
+    'raw': 'RAW',
+    'scaled': 'Scaled',
+    'pruned': 'Pruned',
+    'ema': 'EMA',
+    'vae': 'VAE',
+    'turbo': 'Turbo',
+    'lightning': 'Lightning',
+    'lcm': 'LCM',
+    'dev': 'Dev',
+    'schnell': 'Schnell',
+    'pro': 'Pro',
+    'fp16': 'FP16',
+    'gguf': 'GGUF',
+};
+
+const LORA_TYPE_TOKENS: Record<string, string> = {
+    'realism': 'Realism',
+    'anime': 'Anime',
+    'portrait': 'Portrait',
+    'lighting': 'Lighting',
+    'style': 'Style',
+    'character': 'Character',
+    'detail': 'Detail',
+    'texture': 'Texture',
+    'enhance': 'Enhance',
+    'booster': 'Booster',
+    'turbo': 'Turbo',
+    'dream': 'Dream',
+    'fantasy': 'Fantasy',
+    'cyberpunk': 'Cyberpunk',
+    'photorealistic': 'Photorealistic',
+};
+
+/**
+ * Parses a filename to extract metadata.
+ * Never throws — returns partial Metadata with "Unknown" for unidentified fields.
+ */
+export function parseFilename(filename: string): Metadata {
+    try {
+        const nameWithoutExt = removeExtension(filename);
+        const tokens = nameWithoutExt
+            .toLowerCase()
+            .split(/[_\-.]+/)
+            .filter(t => t.length > 0);
+
+        const metadata: Metadata = {
+            extra: [],
+        };
+
+        const usedTokens = new Set<string>();
+
+        // Identify base model
+        for (const token of tokens) {
+            const normalized = token.replace(/[^a-z0-9]/g, '');
+            if (BASE_MODELS[normalized] && !metadata.baseModel) {
+                metadata.baseModel = BASE_MODELS[normalized];
+                usedTokens.add(token);
+            }
+            // Check partial matches (e.g., "krea2" in "krea2_raw_fp8")
+            if (!metadata.baseModel) {
+                for (const [key, value] of Object.entries(BASE_MODELS)) {
+                    if (normalized.includes(key) && key.length >= 4) {
+                        metadata.baseModel = value;
+                        usedTokens.add(token);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Identify precision
+        for (const token of tokens) {
+            const normalized = token.replace(/[^a-z0-9_]/g, '');
+            if (PRECISION_TOKENS[normalized] && !metadata.precision) {
+                metadata.precision = PRECISION_TOKENS[normalized];
+                usedTokens.add(token);
+            }
+            if (PRECISION_TOKENS[token] && !metadata.precision) {
+                metadata.precision = PRECISION_TOKENS[token];
+                usedTokens.add(token);
+            }
+        }
+
+        // Identify quantization
+        for (const token of tokens) {
+            const normalized = token.replace(/[^a-z0-9_]/g, '');
+            if (QUANTIZATION_TOKENS[normalized] && !metadata.quantization) {
+                metadata.quantization = QUANTIZATION_TOKENS[normalized];
+                usedTokens.add(token);
+            }
+            if (QUANTIZATION_TOKENS[token] && !metadata.quantization) {
+                metadata.quantization = QUANTIZATION_TOKENS[token];
+                usedTokens.add(token);
+            }
+        }
+
+        // Identify variant
+        for (const token of tokens) {
+            if (VARIANT_TOKENS[token] && !metadata.variant) {
+                metadata.variant = VARIANT_TOKENS[token];
+                usedTokens.add(token);
+            }
+        }
+
+        // Identify scaled
+        if (tokens.includes('scaled')) {
+            metadata.scaled = true;
+            usedTokens.add('scaled');
+        }
+
+        // Identify LoRA type
+        for (const token of tokens) {
+            if (LORA_TYPE_TOKENS[token] && !metadata.loraType) {
+                metadata.loraType = LORA_TYPE_TOKENS[token];
+                usedTokens.add(token);
+            }
+        }
+
+        // Collect remaining tokens as extra
+        for (const token of tokens) {
+            if (!usedTokens.has(token) && token.length > 1) {
+                metadata.extra?.push(token);
+            }
+        }
+
+        return metadata;
+    } catch {
+        return { extra: [] };
+    }
+}
+
+function removeExtension(filename: string): string {
+    const lastDot = filename.lastIndexOf('.');
+    return lastDot > 0 ? filename.substring(0, lastDot) : filename;
+}
