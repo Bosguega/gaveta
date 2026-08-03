@@ -52,5 +52,12 @@ export interface UsefulPath {
     label: string;
     path: string;
     builtin: boolean;
+    exists: boolean;
+}
+
+export interface ScanProgress {
+    stage: string;
+    current: number;
+    total: number;
 }
 

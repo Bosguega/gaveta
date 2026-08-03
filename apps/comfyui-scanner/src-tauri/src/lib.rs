@@ -9,6 +9,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             scan_comfyui_directory,
+            scan_comfyui_directory_with_progress,
+            cancel_comfyui_scan,
             build_workflow_dependency_index,
             get_common_comfyui_paths,
             find_comfyui_installations,
@@ -16,7 +18,9 @@ pub fn run() {
             save_export_file,
             get_useful_paths,
             save_useful_paths,
-            open_in_explorer
+            open_in_explorer,
+            rename_model_file,
+            delete_model_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

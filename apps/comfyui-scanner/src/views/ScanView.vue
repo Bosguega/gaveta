@@ -5,7 +5,10 @@ import WorkflowDependencyIndex from '@/components/WorkflowDependencyIndex.vue';
 import {
     scanResult,
     scanError,
-    isScanning
+    isScanning,
+    scanStageText,
+    scanProgressPercent,
+    cancelScan
 } from '@/composables/useComfyUIScan';
 </script>
 
@@ -21,7 +24,14 @@ import {
 
         <div v-if="isScanning" class="scanning-status">
             <div class="spinner"></div>
-            <p>Escaneando diretório...</p>
+            <p>{{ scanStageText || 'Escaneando diretório...' }}</p>
+            <div class="progress-bar">
+                <div class="progress-fill" :style="{ width: scanProgressPercent() + '%' }"></div>
+            </div>
+            <span class="progress-text">{{ scanProgressPercent() }}%</span>
+            <button class="cancel-scan-btn" @click="cancelScan">
+                Cancelar Scan
+            </button>
         </div>
 
         <div v-if="scanError" class="error-message">
@@ -97,6 +107,44 @@ h1 {
     font-size: 14px;
     color: #6b7280;
     margin: 0;
+}
+
+.progress-bar {
+    width: 100%;
+    max-width: 360px;
+    height: 8px;
+    background: #e5e7eb;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #7c3aed, #4f46e5);
+    border-radius: 999px;
+    transition: width .3s ease;
+}
+
+.progress-text {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6d28d9;
+}
+
+.cancel-scan-btn {
+    padding: 8px 18px;
+    background: #fee2e2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .2s;
+}
+
+.cancel-scan-btn:hover {
+    background: #fecaca;
 }
 
 .error-message {

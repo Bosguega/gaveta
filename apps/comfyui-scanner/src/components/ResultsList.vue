@@ -14,10 +14,20 @@ import {
     sortBy,
     filteredItems,
     exportStatus,
-    isExporting
+    isExporting,
+    renameModel,
+    deleteModel,
+    openFolder,
+    startScan
 } from '@/composables/useComfyUIScan';
 
 const expandedCategories = ref<Set<string>>(new Set());
+const showRenameModal = ref(false);
+const renameTarget = ref<ScannedItem | null>(null);
+const renameValue = ref('');
+const actionError = ref<string | null>(null);
+const showDeleteConfirm = ref(false);
+const deleteTarget = ref<ScannedItem | null>(null);
 
 function toggleCategory(category: string) {
     if (expandedCategories.value.has(category)) {
@@ -54,6 +64,43 @@ function getFileIcon(fileType: string): string {
         'py': '🐍',
     };
     return icons[fileType.toLowerCase()] || '📄';
+}
+
+function openRenameModal(item: ScannedItem) {
+    renameTarget.value = item;
+    renameValue.value = item.name;
+    actionError.value = null;
+    showRenameModal.value = true;
+}
+
+async function confirmRename() {
+    if (!renameTarget.value || !renameValue.value.trim()) return;
+    try {
+        await renameModel(renameTarget.value.path, renameValue.value.trim());
+        showRenameModal.value = false;
+        // Re-scan para atualizar a lista
+        await startScan();
+    } catch (error) {
+        actionError.value = error instanceof Error ? error.message : 'Erro ao renomear arquivo';
+    }
+}
+
+function openDeleteConfirm(item: ScannedItem) {
+    deleteTarget.value = item;
+    actionError.value = null;
+    showDeleteConfirm.value = true;
+}
+
+async function confirmDelete() {
+    if (!deleteTarget.value) return;
+    try {
+        await deleteModel(deleteTarget.value.path);
+        showDeleteConfirm.value = false;
+        // Re-scan para atualizar a lista
+        await startScan();
+    } catch (error) {
+        actionError.value = error instanceof Error ? error.message : 'Erro ao excluir arquivo';
+    }
 }
 </script>
 
@@ -147,7 +194,40 @@ function getFileIcon(fileType: string): string {
                                 <span class="item-type">{{ item.file_type }}</span>
                             </div>
                         </div>
+                        <div class="item-actions">
+                            <button class="item-action-btn" title="Abrir pasta" @click="openFolder(item.path)">📂</button>
+                            <button class="item-action-btn" title="Renomear" @click="openRenameModal(item)">✏️</button>
+                            <button class="item-action-btn danger" title="Excluir" @click="openDeleteConfirm(item)">🗑️</button>
+                        </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal de renomear -->
+        <div v-if="showRenameModal" class="modal-overlay" @click.self="showRenameModal = false">
+            <div class="modal">
+                <h3>Renomear Arquivo</h3>
+                <p class="modal-path">{{ renameTarget?.path }}</p>
+                <input v-model="renameValue" type="text" class="modal-input" @keyup.enter="confirmRename" />
+                <p v-if="actionError" class="modal-error">{{ actionError }}</p>
+                <div class="modal-actions">
+                    <button class="modal-cancel-btn" @click="showRenameModal = false">Cancelar</button>
+                    <button class="modal-save-btn" @click="confirmRename">Renomear</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal de confirmação de exclusão -->
+        <div v-if="showDeleteConfirm" class="modal-overlay" @click.self="showDeleteConfirm = false">
+            <div class="modal">
+                <h3>Excluir Arquivo</h3>
+                <p>Tem certeza que deseja excluir <strong>{{ deleteTarget?.name }}</strong>?</p>
+                <p class="modal-path">{{ deleteTarget?.path }}</p>
+                <p v-if="actionError" class="modal-error">{{ actionError }}</p>
+                <div class="modal-actions">
+                    <button class="modal-cancel-btn" @click="showDeleteConfirm = false">Cancelar</button>
+                    <button class="modal-delete-btn" @click="confirmDelete">Excluir</button>
                 </div>
             </div>
         </div>
@@ -437,6 +517,24 @@ h2 { font-size: 22px; font-weight: 750; letter-spacing: -.025em; color: #18233a;
 .item-card:hover { background: #fafaff; border-color: #e0e7ff; transform: translateX(2px); }
 .item-icon { background: linear-gradient(135deg, #eef2ff, #ecfeff); border-radius: 12px; }
 .item-type { padding: 2px 7px; border-radius: 999px; background: #f1f5f9; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
+.item-actions { display: flex; gap: 4px; align-items: center; }
+.item-action-btn { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer; font-size: 14px; transition: all .2s; }
+.item-action-btn:hover { background: #f5f3ff; border-color: #c4b5fd; transform: scale(1.05); }
+.item-action-btn.danger:hover { background: #fee2e2; border-color: #fecaca; }
+.modal-overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(15, 23, 42, .5); z-index: 1000; backdrop-filter: blur(4px); }
+.modal { width: 100%; max-width: 440px; padding: 24px; background: white; border-radius: 16px; box-shadow: 0 24px 64px rgba(15, 23, 42, .25); }
+.modal h3 { margin: 0 0 12px; font-size: 18px; font-weight: 700; color: #1e293b; }
+.modal-path { font-size: 12px; color: #6b7280; margin: 0 0 12px; word-break: break-all; }
+.modal-input { width: 100%; padding: 10px 14px; border: 1px solid #d9dfeb; border-radius: 10px; font-size: 14px; outline: none; box-sizing: border-box; }
+.modal-input:focus { border-color: #7c3aed; box-shadow: 0 0 0 4px rgba(124, 58, 237, .12); }
+.modal-error { color: #dc2626; font-size: 13px; margin: 8px 0 0; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.modal-cancel-btn { padding: 10px 18px; background: #f8fafc; border: 1px solid #d9dfeb; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 500; }
+.modal-cancel-btn:hover { background: #e5e7eb; }
+.modal-save-btn { padding: 10px 18px; background: #7c3aed; color: white; border: none; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 600; }
+.modal-save-btn:hover { background: #6d28d9; }
+.modal-delete-btn { padding: 10px 18px; background: #dc2626; color: white; border: none; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 600; }
+.modal-delete-btn:hover { background: #b91c1c; }
 @media (max-width: 820px) { .results-header { flex-direction: column; } .header-actions { width: 100%; justify-content: flex-start; } .search-input { flex: 1 1 220px; } }
 @media (max-width: 520px) { .header-actions > * { flex: 1 1 45%; } .search-input { flex-basis: 100%; } .stats { flex-wrap: wrap; } }
 </style>

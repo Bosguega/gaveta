@@ -1,9 +1,11 @@
 ﻿import { ref, watch } from 'vue'
 import { save } from '@tauri-apps/plugin-dialog';
+import { listen } from '@tauri-apps/api/event';
 import { computed } from 'vue'
-import type { ScanResult, SavedPath, WorkflowDependencyIndex, UsefulPath } from '@/types'
+import type { ScanProgress, ScanResult, SavedPath, WorkflowDependencyIndex, UsefulPath } from '@/types'
 import {
-    scanComfyuiDirectory,
+    scanComfyuiDirectoryWithProgress,
+    cancelComfyuiScan,
     getCommonComfyuiPaths,
     findComfyuiInstallations,
     getSavedPaths,
@@ -11,7 +13,9 @@ import {
     buildWorkflowDependencyIndex,
     getUsefulPaths,
     saveUsefulPaths,
-    openInExplorer
+    openInExplorer,
+    renameModelFile,
+    deleteModelFile
 } from '@/services/scanner'
 import { toInventory, filterImageCategories } from '@/inventory/inventory'
 import { enrichItems } from '@/enrichment/inventory-enricher'
@@ -44,6 +48,9 @@ export const workflowIndexError = ref<string | null>(null)
 export const usefulPaths = ref<UsefulPath[]>([])
 export const usefulPathsError = ref<string | null>(null)
 export const isSavingUsefulPaths = ref(false)
+export const scanProgress = ref<ScanProgress | null>(null)
+export const scanStageText = ref<string>('')
+let progressUnlisten: (() => void) | undefined
 
 export async function loadCommonPaths() {
     try {
@@ -124,9 +131,23 @@ export async function startScan() {
     isScanning.value = true
     scanError.value = null
     scanResult.value = null
+    scanProgress.value = null
+    scanStageText.value = 'Iniciando scan...'
+
+    // Registra listener de progresso
+    try {
+        progressUnlisten = await listen<ScanProgress>('scan-progress', (event) => {
+            scanProgress.value = event.payload
+            if (event.payload.stage) {
+                scanStageText.value = event.payload.stage
+            }
+        })
+    } catch (error) {
+        console.error('Failed to listen for scan progress:', error)
+    }
 
     try {
-        scanResult.value = await scanComfyuiDirectory(selectedPath.value)
+        scanResult.value = await scanComfyuiDirectoryWithProgress(selectedPath.value)
         if (!scanResult.value.success) {
             scanError.value = scanResult.value.error || 'Erro desconhecido'
         } else {
@@ -137,7 +158,33 @@ export async function startScan() {
         scanError.value = error instanceof Error ? error.message : 'Erro ao escanear'
     } finally {
         isScanning.value = false
+        scanProgress.value = null
+        progressUnlisten?.()
+        progressUnlisten = undefined
     }
+}
+
+export async function cancelScan() {
+    try {
+        await cancelComfyuiScan()
+        scanStageText.value = 'Cancelando scan...'
+    } catch (error) {
+        console.error('Failed to cancel scan:', error)
+    }
+}
+
+export function scanProgressPercent(): number {
+    const progress = scanProgress.value
+    if (!progress || progress.total === 0) return 0
+    return Math.min(100, Math.round((progress.current / progress.total) * 100))
+}
+
+export async function renameModel(path: string, newName: string): Promise<void> {
+    await renameModelFile(path, newName)
+}
+
+export async function deleteModel(path: string): Promise<void> {
+    await deleteModelFile(path)
 }
 
 export async function refreshWorkflowIndex() {

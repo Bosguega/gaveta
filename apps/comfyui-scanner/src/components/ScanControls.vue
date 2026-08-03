@@ -112,7 +112,8 @@ async function saveShortcut() {
             id: 'custom:' + Date.now().toString(),
             label: shortcutLabel.value.trim(),
             path: shortcutPath.value.trim(),
-            builtin: false
+            builtin: false,
+            exists: true
         });
     }
 
@@ -123,6 +124,15 @@ async function saveShortcut() {
 function onShortcutContextMenu(event: MouseEvent, shortcut: UsefulPath) {
     event.preventDefault();
     openEditShortcutModal(shortcut);
+}
+
+async function removeShortcut(shortcut: UsefulPath) {
+    if (shortcut.builtin) return;
+    const confirmed = window.confirm(`Tem certeza que deseja excluir o atalho "${shortcut.label}"?`);
+    if (!confirmed) return;
+    usefulPaths.value = usefulPaths.value.filter(p => p.id !== shortcut.id);
+    await persistUsefulPaths();
+    showShortcutModal.value = false;
 }
 </script>
 
@@ -177,11 +187,12 @@ function onShortcutContextMenu(event: MouseEvent, shortcut: UsefulPath) {
                     v-for="shortcut in usefulPaths"
                     :key="shortcut.id"
                     class="useful-path-btn"
+                    :class="{ 'missing-path': !shortcut.exists }"
                     @click="openFolder(shortcut.path)"
                     @contextmenu.prevent="onShortcutContextMenu($event, shortcut)"
-                    :title="shortcut.path + ' (clique direito para editar)'"
+                    :title="shortcut.path + (shortcut.exists ? '' : ' (pasta não encontrada)') + ' • clique direito para editar'"
                 >
-                    <span class="useful-path-icon">📁</span>
+                    <span class="useful-path-icon">{{ shortcut.exists ? '📁' : '⚠️' }}</span>
                     <span class="useful-path-label">{{ shortcut.label }}</span>
                 </button>
             </div>
@@ -262,6 +273,15 @@ function onShortcutContextMenu(event: MouseEvent, shortcut: UsefulPath) {
                     </div>
                 </div>
                 <div class="modal-actions">
+                    <button
+                        v-if="editingShortcut && !editingShortcut.builtin"
+                        class="modal-delete-btn"
+                        @click="removeShortcut(editingShortcut)"
+                        :disabled="isSavingUsefulPaths"
+                    >
+                        Excluir Atalho
+                    </button>
+                    <div class="modal-actions-spacer"></div>
                     <button class="modal-cancel-btn" @click="showShortcutModal = false">Cancelar</button>
                     <button class="modal-save-btn" @click="saveShortcut" :disabled="isSavingUsefulPaths">
                         {{ isSavingUsefulPaths ? 'Salvando...' : 'Salvar' }}
@@ -451,6 +471,43 @@ function onShortcutContextMenu(event: MouseEvent, shortcut: UsefulPath) {
     color: #6d28d9;
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(124, 58, 237, .12);
+}
+
+.useful-path-btn.missing-path {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #b91c1c;
+}
+
+.useful-path-btn.missing-path:hover {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #991b1b;
+}
+
+.modal-actions-spacer {
+    flex: 1;
+}
+
+.modal-delete-btn {
+    padding: 10px 18px;
+    background: #dc2626;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all .2s;
+}
+
+.modal-delete-btn:hover:not(:disabled) {
+    background: #b91c1c;
+}
+
+.modal-delete-btn:disabled {
+    background: #9ca3af;
+    cursor: not-allowed;
 }
 
 .useful-path-icon {

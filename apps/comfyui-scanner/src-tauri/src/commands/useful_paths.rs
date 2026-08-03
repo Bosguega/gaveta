@@ -12,6 +12,12 @@ pub struct UsefulPath {
     pub label: String,
     pub path: String,
     pub builtin: bool,
+    #[serde(default = "default_true")]
+    pub exists: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -31,13 +37,18 @@ pub fn get_useful_paths(path: String, app: AppHandle) -> Vec<UsefulPath> {
             .get(&auto.id)
             .cloned()
             .unwrap_or_else(|| auto.path.clone());
+        let exists = Path::new(&final_path).exists();
         result.push(UsefulPath {
             path: final_path,
+            exists,
             ..auto
         });
     }
 
-    result.extend(data.custom);
+    for mut custom in data.custom {
+        custom.exists = Path::new(&custom.path).exists();
+        result.push(custom);
+    }
     result
 }
 
@@ -175,6 +186,7 @@ fn make_useful_path(id: &str, label: &str, path: &Path) -> UsefulPath {
         label: label.to_string(),
         path: path.to_string_lossy().to_string(),
         builtin: true,
+        exists: true,
     }
 }
 

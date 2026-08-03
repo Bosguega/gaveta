@@ -6,6 +6,14 @@ export async function scanComfyuiDirectory(path: string): Promise<ScanResult> {
     return invoke('scan_comfyui_directory', { path });
 }
 
+export async function scanComfyuiDirectoryWithProgress(path: string): Promise<ScanResult> {
+    return invoke('scan_comfyui_directory_with_progress', { path });
+}
+
+export async function cancelComfyuiScan(): Promise<boolean> {
+    return invoke('cancel_comfyui_scan');
+}
+
 export async function getCommonComfyuiPaths(): Promise<string[]> {
     return invoke('get_common_comfyui_paths');
 }
@@ -36,4 +44,12 @@ export async function saveUsefulPaths(installationPath: string, shortcuts: Usefu
 
 export async function openInExplorer(path: string): Promise<void> {
     return invoke('open_in_explorer', { path });
+}
+
+export async function renameModelFile(path: string, newName: string): Promise<void> {
+    return invoke('rename_model_file', { path, newName });
+}
+
+export async function deleteModelFile(path: string): Promise<void> {
+    return invoke('delete_model_file', { path });
 }

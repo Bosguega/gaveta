@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Manager};
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::{AppHandle, Emitter, Manager};
 use walkdir::WalkDir;
 use dirs;
 
@@ -60,6 +61,47 @@ pub struct ExportData {
     pub scan_date: String,
     pub summary: HashMap<String, usize>,
     pub items: Vec<ScannedItem>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ScanProgress {
+    pub stage: String,
+    pub current: usize,
+    pub total: usize,
+}
+
+static SCAN_CANCELLED: AtomicBool = AtomicBool::new(false);
+
+struct ScanContext<'a> {
+    app: Option<&'a AppHandle>,
+    cancel: &'a AtomicBool,
+}
+
+impl<'a> ScanContext<'a> {
+    fn new(app: Option<&'a AppHandle>) -> Self {
+        Self {
+            app,
+            cancel: &SCAN_CANCELLED,
+        }
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.cancel.load(Ordering::Relaxed)
+    }
+
+    fn emit_progress(&self, progress: ScanProgress) {
+        if let Some(app) = self.app {
+            let _ = app.emit("scan-progress", progress);
+        }
+    }
+
+    fn emit_stage(&self, stage: &str) {
+        self.emit_progress(ScanProgress {
+            stage: stage.to_string(),
+            current: 0,
+            total: 0,
+        });
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -120,12 +162,31 @@ const CATEGORY_PATTERNS: &[(&str, &[&str])] = &[
 
 #[tauri::command]
 pub fn scan_comfyui_directory(path: String) -> ScanResult {
-    let comfyui_path = Path::new(&path);
+    scan_comfyui_directory_internal(&path, None)
+}
+
+/// Versão com progresso: emite eventos "scan-progress" e respeita o cancelamento.
+/// O Tauri injeta o `AppHandle` automaticamente por ser o primeiro parâmetro.
+#[tauri::command]
+pub fn scan_comfyui_directory_with_progress(path: String, app: AppHandle) -> ScanResult {
+    SCAN_CANCELLED.store(false, Ordering::Relaxed);
+    let context = ScanContext::new(Some(&app));
+    scan_comfyui_directory_internal(&path, Some(&context))
+}
+
+#[tauri::command]
+pub fn cancel_comfyui_scan() -> bool {
+    SCAN_CANCELLED.store(true, Ordering::Relaxed);
+    true
+}
+
+fn scan_comfyui_directory_internal(path: &str, context: Option<&ScanContext>) -> ScanResult {
+    let comfyui_path = Path::new(path);
 
     if !comfyui_path.exists() {
         return ScanResult {
             success: false,
-            comfyui_path: path.clone(),
+            comfyui_path: path.to_string(),
             items: Vec::new(),
             summary: HashMap::new(),
             error: Some("Diretório não encontrado".to_string()),
@@ -138,7 +199,7 @@ pub fn scan_comfyui_directory(path: String) -> ScanResult {
     if desktop_paths.root.is_none() && !is_comfyui_installation(comfyui_path) {
         return ScanResult {
             success: false,
-            comfyui_path: path.clone(),
+            comfyui_path: path.to_string(),
             items: Vec::new(),
             summary: HashMap::new(),
             error: Some(
@@ -151,68 +212,102 @@ pub fn scan_comfyui_directory(path: String) -> ScanResult {
     let mut items: Vec<ScannedItem> = Vec::new();
     let mut summary: HashMap<String, usize> = HashMap::new();
 
+    if let Some(ctx) = context {
+        ctx.emit_stage("Resolvendo diretórios...");
+    }
+
     if desktop_paths.root.is_some() {
         // === Comfy Desktop ===
         if let Some(models) = &desktop_paths.shared_models {
             if models.exists() {
-                scan_directory(models, &mut items);
+                emit_stage_if_needed(context, "Escaneando modelos (shared)...");
+                scan_directory(models, &mut items, context);
+                if is_cancelled(context) { return cancelled_result(path); }
             }
         }
 
         if let Some(custom_nodes) = &desktop_paths.custom_nodes {
             if custom_nodes.exists() {
-                scan_custom_nodes(custom_nodes, &mut items);
+                emit_stage_if_needed(context, "Escaneando custom nodes...");
+                scan_custom_nodes(custom_nodes, &mut items, context);
+                if is_cancelled(context) { return cancelled_result(path); }
             }
         }
 
         if let Some(input) = &desktop_paths.shared_input {
             if input.exists() {
-                scan_images(input, &mut items, "Input Images");
+                emit_stage_if_needed(context, "Escaneando input...");
+                scan_images(input, &mut items, "Input Images", context);
+                if is_cancelled(context) { return cancelled_result(path); }
             }
         }
 
         if let Some(output) = &desktop_paths.shared_output {
             if output.exists() {
-                scan_images(output, &mut items, "Output Images");
+                emit_stage_if_needed(context, "Escaneando output...");
+                scan_images(output, &mut items, "Output Images", context);
+                if is_cancelled(context) { return cancelled_result(path); }
             }
         }
 
         if let Some(install_models) = &desktop_paths.install_models {
             if install_models.exists() {
-                scan_directory(install_models, &mut items);
+                emit_stage_if_needed(context, "Escaneando modelos (install)...");
+                scan_directory(install_models, &mut items, context);
+                if is_cancelled(context) { return cancelled_result(path); }
             }
         }
 
         if let Some(install_dir) = &desktop_paths.install_dir {
+            emit_stage_if_needed(context, "Escaneando workflows...");
             for workflows in discover_workflow_directories(install_dir) {
-                scan_workflows(&workflows, &mut items);
+                scan_workflows(&workflows, &mut items, context);
+                if is_cancelled(context) { return cancelled_result(path); }
             }
         }
     } else {
         // === ComfyUI clássico ===
         let models_dir = comfyui_path.join("models");
         if models_dir.exists() {
-            scan_directory(&models_dir, &mut items);
+            emit_stage_if_needed(context, "Escaneando modelos...");
+            scan_directory(&models_dir, &mut items, context);
+            if is_cancelled(context) { return cancelled_result(path); }
         }
 
         let custom_nodes_dir = comfyui_path.join("custom_nodes");
         if custom_nodes_dir.exists() {
-            scan_custom_nodes(&custom_nodes_dir, &mut items);
+            emit_stage_if_needed(context, "Escaneando custom nodes...");
+            scan_custom_nodes(&custom_nodes_dir, &mut items, context);
+            if is_cancelled(context) { return cancelled_result(path); }
         }
 
+        emit_stage_if_needed(context, "Escaneando workflows...");
         for workflows in discover_workflow_directories(comfyui_path) {
-            scan_workflows(&workflows, &mut items);
+            scan_workflows(&workflows, &mut items, context);
+            if is_cancelled(context) { return cancelled_result(path); }
         }
 
         let input_dir = comfyui_path.join("input");
         if input_dir.exists() {
-            scan_images(&input_dir, &mut items, "Input Images");
+            emit_stage_if_needed(context, "Escaneando input...");
+            scan_images(&input_dir, &mut items, "Input Images", context);
+            if is_cancelled(context) { return cancelled_result(path); }
         }
 
         let output_dir = comfyui_path.join("output");
         if output_dir.exists() {
-            scan_images(&output_dir, &mut items, "Output Images");
+            emit_stage_if_needed(context, "Escaneando output...");
+            scan_images(&output_dir, &mut items, "Output Images", context);
+            if is_cancelled(context) { return cancelled_result(path); }
         }
+    }
+
+    if let Some(ctx) = context {
+        ctx.emit_progress(ScanProgress {
+            stage: "Finalizando...".to_string(),
+            current: items.len(),
+            total: items.len(),
+        });
     }
 
     // Count by category
@@ -222,10 +317,30 @@ pub fn scan_comfyui_directory(path: String) -> ScanResult {
 
     ScanResult {
         success: true,
-        comfyui_path: path,
+        comfyui_path: path.to_string(),
         items,
         summary,
         error: None,
+    }
+}
+
+fn cancelled_result(path: &str) -> ScanResult {
+    ScanResult {
+        success: false,
+        comfyui_path: path.to_string(),
+        items: Vec::new(),
+        summary: HashMap::new(),
+        error: Some("Scan cancelado".to_string()),
+    }
+}
+
+fn is_cancelled(context: Option<&ScanContext>) -> bool {
+    context.map(|c| c.is_cancelled()).unwrap_or(false)
+}
+
+fn emit_stage_if_needed(context: Option<&ScanContext>, stage: &str) {
+    if let Some(ctx) = context {
+        ctx.emit_stage(stage);
     }
 }
 
@@ -296,13 +411,14 @@ fn is_comfyui_installation(path: &Path) -> bool {
         || installs_dir.exists()
 }
 
-fn scan_directory(base_path: &Path, items: &mut Vec<ScannedItem>) {
+fn scan_directory(base_path: &Path, items: &mut Vec<ScannedItem>, context: Option<&ScanContext>) {
     for entry in WalkDir::new(base_path)
         .min_depth(1)
         .max_depth(10)
         .into_iter()
         .filter_map(|e| e.ok())
     {
+        if is_cancelled(context) { break; }
         if entry.file_type().is_file() {
             if let Some(ext) = entry.path().extension() {
                 if let Some(ext_str) = ext.to_str() {
@@ -327,13 +443,14 @@ fn scan_directory(base_path: &Path, items: &mut Vec<ScannedItem>) {
     }
 }
 
-fn scan_custom_nodes(path: &Path, items: &mut Vec<ScannedItem>) {
+fn scan_custom_nodes(path: &Path, items: &mut Vec<ScannedItem>, context: Option<&ScanContext>) {
     for entry in WalkDir::new(path)
         .min_depth(1)
         .max_depth(1)
         .into_iter()
         .filter_map(|e| e.ok())
     {
+        if is_cancelled(context) { break; }
         if entry.file_type().is_dir() {
             let init_py = entry.path().join("__init__.py");
             if init_py.exists() {
@@ -362,13 +479,14 @@ fn get_dir_size(path: &Path) -> u64 {
         .sum()
 }
 
-fn scan_workflows(path: &Path, items: &mut Vec<ScannedItem>) {
+fn scan_workflows(path: &Path, items: &mut Vec<ScannedItem>, context: Option<&ScanContext>) {
     for entry in WalkDir::new(path)
         .min_depth(1)
         .max_depth(3)
         .into_iter()
         .filter_map(|e| e.ok())
     {
+        if is_cancelled(context) { break; }
         if entry.file_type().is_file() {
             if let Some(ext) = entry.path().extension() {
                 if let Some(ext_str) = ext.to_str() {
@@ -413,7 +531,7 @@ fn discover_workflow_directories(comfyui_root: &Path) -> Vec<PathBuf> {
     directories
 }
 
-fn scan_images(path: &Path, items: &mut Vec<ScannedItem>, category: &str) {
+fn scan_images(path: &Path, items: &mut Vec<ScannedItem>, category: &str, context: Option<&ScanContext>) {
     let image_extensions = &["png", "jpg", "jpeg", "gif", "bmp", "webp"];
 
     for entry in WalkDir::new(path)
@@ -422,6 +540,7 @@ fn scan_images(path: &Path, items: &mut Vec<ScannedItem>, category: &str) {
         .into_iter()
         .filter_map(|e| e.ok())
     {
+        if is_cancelled(context) { break; }
         if entry.file_type().is_file() {
             if let Some(ext) = entry.path().extension() {
                 if let Some(ext_str) = ext.to_str() {
@@ -734,6 +853,35 @@ pub fn export_results(data: ExportData, format: String) -> Result<String, String
         "txt" => export_as_txt(filtered_data),
         _ => Err("Formato não suportado".to_string()),
     }
+}
+
+#[tauri::command]
+pub fn rename_model_file(path: String, new_name: String) -> Result<(), String> {
+    let target = Path::new(&path);
+    if !target.exists() {
+        return Err("Arquivo não encontrado".to_string());
+    }
+
+    let parent = target.parent().ok_or_else(|| "Caminho inválido".to_string())?;
+    let new_path = parent.join(&new_name);
+
+    if new_path.exists() {
+        return Err(format!("Já existe um arquivo com o nome '{}'", new_name));
+    }
+
+    fs::rename(target, &new_path)
+        .map_err(|e| format!("Erro ao renomear arquivo: {}", e))
+}
+
+#[tauri::command]
+pub fn delete_model_file(path: String) -> Result<(), String> {
+    let target = Path::new(&path);
+    if !target.exists() {
+        return Err("Arquivo não encontrado".to_string());
+    }
+
+    fs::remove_file(target)
+        .map_err(|e| format!("Erro ao excluir arquivo: {}", e))
 }
 
 #[tauri::command]
