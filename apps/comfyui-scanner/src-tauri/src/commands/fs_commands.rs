@@ -63,15 +63,15 @@ pub struct ExportData {
 }
 
 #[derive(Debug, Clone, Default)]
-struct ComfyDesktopPaths {
-    root: Option<PathBuf>,
-    shared_models: Option<PathBuf>,
-    shared_input: Option<PathBuf>,
-    shared_output: Option<PathBuf>,
-    install_dir: Option<PathBuf>,
-    custom_nodes: Option<PathBuf>,
-    install_models: Option<PathBuf>,
-    workflows: Option<PathBuf>,
+pub struct ComfyDesktopPaths {
+    pub root: Option<PathBuf>,
+    pub shared_models: Option<PathBuf>,
+    pub shared_input: Option<PathBuf>,
+    pub shared_output: Option<PathBuf>,
+    pub install_dir: Option<PathBuf>,
+    pub custom_nodes: Option<PathBuf>,
+    pub install_models: Option<PathBuf>,
+    pub workflows: Option<PathBuf>,
 }
 
 const MODEL_EXTENSIONS: &[&str] = &[
@@ -232,7 +232,7 @@ pub fn scan_comfyui_directory(path: String) -> ScanResult {
 /// Detecta a estrutura do Comfy Desktop e resolve os caminhos relevantes.
 /// Se o path selecionado for uma subpasta (ex: ComfyUI-Shared), escala para cima
 /// até encontrar a raiz que contém ComfyUI-Shared ou ComfyUI-Installs.
-fn resolve_comfy_desktop_paths(path: &Path) -> ComfyDesktopPaths {
+pub fn resolve_comfy_desktop_paths(path: &Path) -> ComfyDesktopPaths {
     let mut result = ComfyDesktopPaths::default();
 
     // Escalar para cima até achar a raiz do Comfy Desktop

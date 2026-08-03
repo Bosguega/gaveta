@@ -1,14 +1,17 @@
-﻿import { ref } from 'vue'
+﻿import { ref, watch } from 'vue'
 import { save } from '@tauri-apps/plugin-dialog';
 import { computed } from 'vue'
-import type { ScanResult, SavedPath, WorkflowDependencyIndex } from '@/types'
+import type { ScanResult, SavedPath, WorkflowDependencyIndex, UsefulPath } from '@/types'
 import {
     scanComfyuiDirectory,
     getCommonComfyuiPaths,
     findComfyuiInstallations,
     getSavedPaths,
     saveExportFile,
-    buildWorkflowDependencyIndex
+    buildWorkflowDependencyIndex,
+    getUsefulPaths,
+    saveUsefulPaths,
+    openInExplorer
 } from '@/services/scanner'
 import { toInventory, filterImageCategories } from '@/inventory/inventory'
 import { enrichItems } from '@/enrichment/inventory-enricher'
@@ -38,6 +41,9 @@ export const scanningForInstallations = ref(false)
 export const workflowIndex = ref<WorkflowDependencyIndex | null>(null)
 export const isIndexingWorkflows = ref(false)
 export const workflowIndexError = ref<string | null>(null)
+export const usefulPaths = ref<UsefulPath[]>([])
+export const usefulPathsError = ref<string | null>(null)
+export const isSavingUsefulPaths = ref(false)
 
 export async function loadCommonPaths() {
     try {
@@ -54,6 +60,47 @@ export async function loadSavedPaths() {
         console.error('Failed to load saved paths:', error)
     }
 }
+
+export async function loadUsefulPaths() {
+    if (!selectedPath.value) {
+        usefulPaths.value = []
+        return
+    }
+    try {
+        usefulPaths.value = await getUsefulPaths(selectedPath.value)
+        usefulPathsError.value = null
+    } catch (error) {
+        usefulPathsError.value = error instanceof Error ? error.message : 'Não foi possível carregar os atalhos úteis.'
+        console.error('Failed to load useful paths:', error)
+    }
+}
+
+export async function persistUsefulPaths() {
+    if (!selectedPath.value) return
+    isSavingUsefulPaths.value = true
+    try {
+        usefulPaths.value = await saveUsefulPaths(selectedPath.value, usefulPaths.value)
+        usefulPathsError.value = null
+    } catch (error) {
+        usefulPathsError.value = error instanceof Error ? error.message : 'Não foi possível salvar os atalhos úteis.'
+        console.error('Failed to save useful paths:', error)
+    } finally {
+        isSavingUsefulPaths.value = false
+    }
+}
+
+export async function openFolder(path: string) {
+    try {
+        await openInExplorer(path)
+    } catch (error) {
+        usefulPathsError.value = error instanceof Error ? error.message : 'Não foi possível abrir a pasta.'
+        console.error('Failed to open folder:', error)
+    }
+}
+
+watch(selectedPath, () => {
+    void loadUsefulPaths()
+})
 
 export async function findInstallations() {
     scanningForInstallations.value = true
@@ -132,7 +179,7 @@ export async function handleExport() {
                 const sections = buildSections(cards)
                 content = exportFormat.value === 'html' ? htmlRenderer.render(sections)
                     : exportFormat.value === 'md' ? markdownRenderer.render(sections)
-                    : txtRenderer.render(sections)
+                        : txtRenderer.render(sections)
                 break
             }
         }
@@ -159,31 +206,31 @@ export async function handleExport() {
 }
 
 export const filteredItems = computed(() => {
-        if (!scanResult.value?.items) return []
-        let items = [...scanResult.value.items]
-        if (searchQuery.value) {
-            const query = searchQuery.value.toLowerCase()
-            items = items.filter(item =>
-                item.name.toLowerCase().includes(query) ||
-                item.category.toLowerCase().includes(query)
-            )
-        }
-        if (selectedCategory.value) {
-            items = items.filter(item => item.category === selectedCategory.value)
-        }
-        items.sort((a, b) => {
-            if (sortBy.value === 'size-desc') return b.size_mb - a.size_mb
-            if (sortBy.value === 'size-asc') return a.size_mb - b.size_mb
-            return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
-        })
-        return items
+    if (!scanResult.value?.items) return []
+    let items = [...scanResult.value.items]
+    if (searchQuery.value) {
+        const query = searchQuery.value.toLowerCase()
+        items = items.filter(item =>
+            item.name.toLowerCase().includes(query) ||
+            item.category.toLowerCase().includes(query)
+        )
+    }
+    if (selectedCategory.value) {
+        items = items.filter(item => item.category === selectedCategory.value)
+    }
+    items.sort((a, b) => {
+        if (sortBy.value === 'size-desc') return b.size_mb - a.size_mb
+        if (sortBy.value === 'size-asc') return a.size_mb - b.size_mb
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    })
+    return items
 })
 
 export const categories = computed(() => {
-        if (!scanResult.value?.summary) return []
-        return Object.entries(scanResult.value.summary)
-            .map(([name, count]) => ({ name, count }))
-            .sort((a, b) => b.count - a.count)
+    if (!scanResult.value?.summary) return []
+    return Object.entries(scanResult.value.summary)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count)
 })
 
 export const totalItems = computed(() => scanResult.value?.items.length || 0)

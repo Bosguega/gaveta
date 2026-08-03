@@ -47,3 +47,10 @@ export interface WorkflowDependencyIndex {
     unused_models: string[];
 }
 
+export interface UsefulPath {
+    id: string;
+    label: string;
+    path: string;
+    builtin: boolean;
+}
+
