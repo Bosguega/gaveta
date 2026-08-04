@@ -18,7 +18,8 @@ import {
     persistUsefulPaths,
     openFolder,
     usefulPathsError,
-    isSavingUsefulPaths
+    isSavingUsefulPaths,
+    showToast
 } from '@/composables/useComfyUIScan';
 
 const dialogError = ref<string | null>(null);
@@ -30,10 +31,18 @@ const editingShortcut = ref<UsefulPath | null>(null);
 const shortcutLabel = ref('');
 const shortcutPath = ref('');
 
-onMounted(() => {
+onMounted(async () => {
     loadCommonPaths();
     loadSavedPaths();
     loadUsefulPaths();
+
+    // Detecção automática de instalações ao abrir o app
+    if (!selectedPath.value) {
+        await handleFindInstallations();
+        if (foundPaths.value.length > 0 && !selectedPath.value) {
+            selectedPath.value = foundPaths.value[0].path;
+        }
+    }
 });
 
 async function browseFolder() {
@@ -119,6 +128,7 @@ async function saveShortcut() {
 
     await persistUsefulPaths();
     showShortcutModal.value = false;
+    showToast('success', editingShortcut.value ? 'Atalho atualizado com sucesso.' : 'Atalho adicionado com sucesso.');
 }
 
 function onShortcutContextMenu(event: MouseEvent, shortcut: UsefulPath) {
@@ -133,6 +143,7 @@ async function removeShortcut(shortcut: UsefulPath) {
     usefulPaths.value = usefulPaths.value.filter(p => p.id !== shortcut.id);
     await persistUsefulPaths();
     showShortcutModal.value = false;
+    showToast('success', `Atalho "${shortcut.label}" excluído.`);
 }
 </script>
 

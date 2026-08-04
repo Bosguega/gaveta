@@ -18,7 +18,8 @@ import {
     renameModel,
     deleteModel,
     openFolder,
-    startScan
+    startScan,
+    showToast
 } from '@/composables/useComfyUIScan';
 
 const expandedCategories = ref<Set<string>>(new Set());
@@ -78,10 +79,12 @@ async function confirmRename() {
     try {
         await renameModel(renameTarget.value.path, renameValue.value.trim());
         showRenameModal.value = false;
+        showToast('success', `Arquivo renomeado para "${renameValue.value.trim()}".`);
         // Re-scan para atualizar a lista
         await startScan();
     } catch (error) {
         actionError.value = error instanceof Error ? error.message : 'Erro ao renomear arquivo';
+        showToast('error', actionError.value);
     }
 }
 
@@ -96,10 +99,12 @@ async function confirmDelete() {
     try {
         await deleteModel(deleteTarget.value.path);
         showDeleteConfirm.value = false;
+        showToast('success', `Arquivo "${deleteTarget.value.name}" excluído.`);
         // Re-scan para atualizar a lista
         await startScan();
     } catch (error) {
         actionError.value = error instanceof Error ? error.message : 'Erro ao excluir arquivo';
+        showToast('error', actionError.value);
     }
 }
 </script>

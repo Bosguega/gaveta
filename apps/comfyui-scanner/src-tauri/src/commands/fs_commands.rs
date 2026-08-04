@@ -952,3 +952,95 @@ fn export_as_txt(data: ExportData) -> Result<String, String> {
 
     Ok(txt)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn create_temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("comfyui_scanner_test_{}_{}", name, std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn test_is_comfyui_installation_detects_main_py() {
+        let dir = create_temp_dir("main_py");
+        fs::write(dir.join("main.py"), "").unwrap();
+        assert!(is_comfyui_installation(&dir));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_is_comfyui_installation_detects_models_dir() {
+        let dir = create_temp_dir("models");
+        fs::create_dir_all(dir.join("models")).unwrap();
+        assert!(is_comfyui_installation(&dir));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_is_comfyui_installation_rejects_empty_dir() {
+        let dir = create_temp_dir("empty");
+        assert!(!is_comfyui_installation(&dir));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_determine_category_detects_checkpoints() {
+        let base = Path::new("C:/ComfyUI/models");
+        let file = Path::new("C:/ComfyUI/models/checkpoints/model.safetensors");
+        assert_eq!(determine_category(file, base), "Checkpoints");
+    }
+
+    #[test]
+    fn test_determine_category_detects_loras() {
+        let base = Path::new("C:/ComfyUI/models");
+        let file = Path::new("C:/ComfyUI/models/loras/style.safetensors");
+        assert_eq!(determine_category(file, base), "LoRAs");
+    }
+
+    #[test]
+    fn test_determine_category_falls_back_to_outros() {
+        let base = Path::new("C:/ComfyUI/models");
+        let file = Path::new("C:/ComfyUI/models/unknown/file.safetensors");
+        assert_eq!(determine_category(file, base), "Outros");
+    }
+
+    #[test]
+    fn test_resolve_comfy_desktop_paths_detects_shared() {
+        let root = create_temp_dir("desktop_root");
+        fs::create_dir_all(root.join("ComfyUI-Shared").join("models")).unwrap();
+        fs::create_dir_all(root.join("ComfyUI-Shared").join("input")).unwrap();
+        fs::create_dir_all(root.join("ComfyUI-Shared").join("output")).unwrap();
+
+        let paths = resolve_comfy_desktop_paths(&root);
+        assert!(paths.root.is_some());
+        assert!(paths.shared_models.is_some());
+        assert!(paths.shared_input.is_some());
+        assert!(paths.shared_output.is_some());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_resolve_comfy_desktop_paths_scales_up_from_subdir() {
+        let root = create_temp_dir("desktop_scale");
+        fs::create_dir_all(root.join("ComfyUI-Shared").join("models")).unwrap();
+        let subdir = root.join("some").join("nested").join("dir");
+        fs::create_dir_all(&subdir).unwrap();
+
+        let paths = resolve_comfy_desktop_paths(&subdir);
+        assert!(paths.root.is_some());
+        assert_eq!(paths.root.unwrap(), root);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_scan_comfyui_directory_rejects_invalid_path() {
+        let result = scan_comfyui_directory("Z:/nonexistent/path".to_string());
+        assert!(!result.success);
+        assert!(result.error.is_some());
+    }
+}

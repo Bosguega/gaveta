@@ -52,6 +52,23 @@ export const scanProgress = ref<ScanProgress | null>(null)
 export const scanStageText = ref<string>('')
 let progressUnlisten: (() => void) | undefined
 
+// Sistema de toasts
+export interface Toast {
+    id: number;
+    type: 'success' | 'error' | 'info';
+    message: string;
+}
+export const toasts = ref<Toast[]>([])
+let toastId = 0
+
+export function showToast(type: Toast['type'], message: string) {
+    const id = ++toastId
+    toasts.value.push({ id, type, message })
+    setTimeout(() => {
+        toasts.value = toasts.value.filter(t => t.id !== id)
+    }, 4000)
+}
+
 export async function loadCommonPaths() {
     try {
         commonPaths.value = await getCommonComfyuiPaths()

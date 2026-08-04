@@ -8,7 +8,8 @@ import {
     isScanning,
     scanStageText,
     scanProgressPercent,
-    cancelScan
+    cancelScan,
+    toasts
 } from '@/composables/useComfyUIScan';
 </script>
 
@@ -41,6 +42,21 @@ import {
 
         <ResultsList v-if="scanResult && scanResult.success" />
         <WorkflowDependencyIndex v-if="scanResult && scanResult.success" />
+
+        <!-- Container de toasts -->
+        <div class="toast-container">
+            <div
+                v-for="toast in toasts"
+                :key="toast.id"
+                class="toast"
+                :class="'toast-' + toast.type"
+            >
+                <span class="toast-icon">
+                    {{ toast.type === 'success' ? '✅' : toast.type === 'error' ? '❌' : 'ℹ️' }}
+                </span>
+                <span class="toast-message">{{ toast.message }}</span>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -146,6 +162,41 @@ h1 {
 .cancel-scan-btn:hover {
     background: #fecaca;
 }
+
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 2000;
+    max-width: 360px;
+}
+
+.toast {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .15);
+    border: 1px solid #e2e8f0;
+    animation: toast-in .3s ease;
+}
+
+@keyframes toast-in {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+.toast-success { border-left: 4px solid #22c55e; }
+.toast-error { border-left: 4px solid #ef4444; }
+.toast-info { border-left: 4px solid #3b82f6; }
+
+.toast-icon { font-size: 16px; }
+.toast-message { font-size: 13px; color: #1e293b; font-weight: 500; }
 
 .error-message {
     display: flex;
