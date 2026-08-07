@@ -23,6 +23,20 @@ pub struct ScannedItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SafetensorsMetadata {
+    pub base_model: Option<String>,
+    pub trigger_words: Vec<String>,
+    pub model_name: Option<String>,
+    pub architecture: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuplicateGroup {
+    pub size_mb: f64,
+    pub items: Vec<ScannedItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanResult {
     pub success: bool,
     pub comfyui_path: String,
@@ -864,6 +878,228 @@ pub fn save_export_file(path: String, content: String) -> Result<(), String> {
 
     fs::write(&path, content)
         .map_err(|e| format!("Erro ao salvar arquivo: {}", e))
+}
+
+#[tauri::command]
+pub fn read_safetensors_metadata(path: String) -> Result<SafetensorsMetadata, String> {
+    use std::io::Read;
+
+    let target = Path::new(&path);
+    if !target.exists() {
+        return Err("Arquivo não encontrado".to_string());
+    }
+
+    let mut file = fs::File::open(target).map_err(|e| format!("Erro ao abrir arquivo: {}", e))?;
+    let mut header_size_bytes = [0u8; 8];
+    file.read_exact(&mut header_size_bytes)
+        .map_err(|e| format!("Erro ao ler tamanho do cabeçalho: {}", e))?;
+
+    let header_size = u64::from_le_bytes(header_size_bytes);
+    if header_size > 50 * 1024 * 1024 {
+        return Err("Cabeçalho safetensors invalido ou muito grande".to_string());
+    }
+
+    let mut header_buf = vec![0u8; header_size as usize];
+    file.read_exact(&mut header_buf)
+        .map_err(|e| format!("Erro ao ler cabeçalho: {}", e))?;
+
+    let header_str = String::from_utf8(header_buf)
+        .map_err(|e| format!("Cabeçalho não é UTF-8 valido: {}", e))?;
+
+    let json: serde_json::Value = serde_json::from_str(&header_str)
+        .map_err(|e| format!("JSON do cabeçalho invalido: {}", e))?;
+
+    let mut base_model: Option<String> = None;
+    let mut trigger_words: BTreeSet<String> = BTreeSet::new();
+    let mut model_name: Option<String> = None;
+    let mut architecture: Option<String> = None;
+
+    if let Some(metadata) = json.get("__metadata__").and_then(|m| m.as_object()) {
+        // Base Model
+        if let Some(val) = metadata.get("ss_base_model_version").and_then(|v| v.as_str()) {
+            base_model = Some(format_base_model(val));
+        } else if let Some(val) = metadata.get("modelspec.architecture").and_then(|v| v.as_str()) {
+            architecture = Some(val.to_string());
+            if val.to_ascii_lowercase().contains("flux") {
+                base_model = Some("FLUX".to_string());
+            } else if val.to_ascii_lowercase().contains("sdxl") {
+                base_model = Some("SDXL".to_string());
+            } else if val.to_ascii_lowercase().contains("sd3") {
+                base_model = Some("SD3".to_string());
+            } else if val.to_ascii_lowercase().contains("v1") {
+                base_model = Some("SD 1.5".to_string());
+            }
+        }
+
+        // Model Name / Output Name
+        if let Some(val) = metadata.get("ss_output_name").and_then(|v| v.as_str()) {
+            model_name = Some(val.to_string());
+        } else if let Some(val) = metadata.get("modelspec.title").and_then(|v| v.as_str()) {
+            model_name = Some(val.to_string());
+        }
+
+        // Trigger words extraídos de ss_tag_frequency ou ss_trained_words ou modelspec.trigger_phrase
+        if let Some(val) = metadata.get("modelspec.trigger_phrase").and_then(|v| v.as_str()) {
+            for word in val.split(',').map(|w| w.trim()).filter(|w| !w.is_empty()) {
+                trigger_words.insert(word.to_string());
+            }
+        }
+
+        if let Some(val) = metadata.get("ss_trained_words").and_then(|v| v.as_str()) {
+            let parsed: Result<Vec<String>, _> = serde_json::from_str(val);
+            if let Ok(words) = parsed {
+                for w in words {
+                    if !w.trim().is_empty() {
+                        trigger_words.insert(w.trim().to_string());
+                    }
+                }
+            } else {
+                for word in val.split(',').map(|w| w.trim()).filter(|w| !w.is_empty()) {
+                    trigger_words.insert(word.to_string());
+                }
+            }
+        }
+
+        if let Some(tag_freq_str) = metadata.get("ss_tag_frequency").and_then(|v| v.as_str()) {
+            if let Ok(freq_obj) = serde_json::from_str::<serde_json::Value>(tag_freq_str) {
+                if let Some(freq_map) = freq_obj.as_object() {
+                    for dir_tags in freq_map.values() {
+                        if let Some(tags) = dir_tags.as_object() {
+                            let mut sorted_tags: Vec<(&String, u64)> = tags
+                                .iter()
+                                .filter_map(|(k, v)| v.as_u64().map(|count| (k, count)))
+                                .collect();
+                            sorted_tags.sort_by(|a, b| b.1.cmp(&a.1));
+                            for (tag, _) in sorted_tags.into_iter().take(15) {
+                                trigger_words.insert(tag.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(SafetensorsMetadata {
+        base_model,
+        trigger_words: trigger_words.into_iter().take(20).collect(),
+        model_name,
+        architecture,
+    })
+}
+
+fn format_base_model(raw: &str) -> String {
+    let lower = raw.to_ascii_lowercase();
+    if lower.contains("sdxl") || lower.contains("sd_xl") {
+        "SDXL".to_string()
+    } else if lower.contains("v1") || lower.contains("sd_v1") || lower.contains("1.5") {
+        "SD 1.5".to_string()
+    } else if lower.contains("v2") || lower.contains("sd_v2") || lower.contains("2.1") {
+        "SD 2.x".to_string()
+    } else if lower.contains("flux") {
+        "FLUX".to_string()
+    } else if lower.contains("sd3") {
+        "SD3".to_string()
+    } else if lower.contains("pony") {
+        "Pony".to_string()
+    } else if lower.contains("illustrious") {
+        "Illustrious".to_string()
+    } else {
+        raw.to_string()
+    }
+}
+
+#[tauri::command]
+pub fn find_duplicate_models(items: Vec<ScannedItem>) -> Vec<DuplicateGroup> {
+
+    // Agrupa itens por tamanho aproximado (arredondado a 0.001 MB)
+    let mut by_size: HashMap<u64, Vec<ScannedItem>> = HashMap::new();
+    for item in items {
+        if matches!(item.category.as_str(), "Workflows" | "Custom Nodes" | "Input Images" | "Output Images") {
+            continue;
+        }
+        let key = (item.size_mb * 1000.0) as u64;
+        by_size.entry(key).or_default().push(item);
+    }
+
+    let mut duplicate_groups = Vec::new();
+
+    for (_size_key, candidate_items) in by_size {
+        if candidate_items.len() < 2 {
+            continue;
+        }
+
+        // Calcula quick-hash (64KB inicio + 64KB fim + tamanho exato) para confirmar duplicatas
+        let mut by_hash: HashMap<String, Vec<ScannedItem>> = HashMap::new();
+        for item in candidate_items {
+            if let Ok(hash) = calculate_quick_hash(&item.path) {
+                by_hash.entry(hash).or_default().push(item);
+            }
+        }
+
+        for (_hash, items_group) in by_hash {
+            if items_group.len() >= 2 {
+                let size_mb = items_group[0].size_mb;
+                duplicate_groups.push(DuplicateGroup {
+                    size_mb,
+                    items: items_group,
+                });
+            }
+        }
+    }
+
+    duplicate_groups.sort_by(|a, b| b.size_mb.partial_cmp(&a.size_mb).unwrap_or(std::cmp::Ordering::Equal));
+    duplicate_groups
+}
+
+fn calculate_quick_hash(path_str: &str) -> Result<String, String> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let path = Path::new(path_str);
+    let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let len = file.metadata().map_err(|e| e.to_string())?.len();
+
+    if len == 0 {
+        return Ok("0_empty".to_string());
+    }
+
+    let chunk_size = 256 * 1024; // 256 KB
+    let mut hasher: u64 = len;
+
+    // FNV-1a 64-bit hash
+    let mut mix_bytes = |bytes: &[u8]| {
+        for &byte in bytes {
+            hasher ^= byte as u64;
+            hasher = hasher.wrapping_mul(0x100000001b3);
+        }
+    };
+
+    // 1. Inicio (Primeiros 256 KB)
+    let mut head_buf = vec![0u8; chunk_size];
+    let head_read = file.read(&mut head_buf).unwrap_or(0);
+    mix_bytes(&head_buf[..head_read]);
+
+    // 2. Ponto Médio (256 KB a 50% do arquivo)
+    if len > (chunk_size * 2) as u64 {
+        let mid_offset = len / 2;
+        if file.seek(SeekFrom::Start(mid_offset)).is_ok() {
+            let mut mid_buf = vec![0u8; chunk_size];
+            let mid_read = file.read(&mut mid_buf).unwrap_or(0);
+            mix_bytes(&mid_buf[..mid_read]);
+        }
+    }
+
+    // 3. Fim (Últimos 256 KB)
+    if len > chunk_size as u64 {
+        let tail_offset = len.saturating_sub(chunk_size as u64);
+        if file.seek(SeekFrom::Start(tail_offset)).is_ok() {
+            let mut tail_buf = vec![0u8; chunk_size];
+            let tail_read = file.read(&mut tail_buf).unwrap_or(0);
+            mix_bytes(&tail_buf[..tail_read]);
+        }
+    }
+
+    Ok(format!("{}_{:016x}", len, hasher))
 }
 
 fn export_as_json(data: ExportData) -> Result<String, String> {

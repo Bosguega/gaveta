@@ -61,3 +61,15 @@ export interface ScanProgress {
     total: number;
 }
 
+export interface SafetensorsMetadata {
+    base_model?: string;
+    trigger_words: string[];
+    model_name?: string;
+    architecture?: string;
+}
+
+export interface DuplicateGroup {
+    size_mb: number;
+    items: ScannedItem[];
+}
+

@@ -2,7 +2,7 @@ import { ref, watch } from 'vue'
 import { save } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
 import { computed } from 'vue'
-import type { ScanProgress, ScanResult, SavedPath, WorkflowDependencyIndex, UsefulPath } from '@/types'
+import type { ScanProgress, ScanResult, SavedPath, WorkflowDependencyIndex, UsefulPath, DuplicateGroup, SafetensorsMetadata } from '@/types'
 import {
     scanComfyuiDirectoryWithProgress,
     cancelComfyuiScan,
@@ -15,7 +15,9 @@ import {
     saveUsefulPaths,
     openInExplorer,
     renameModelFile,
-    deleteModelFile
+    deleteModelFile,
+    readSafetensorsMetadata,
+    findDuplicateModels
 } from '@/services/scanner'
 import { toInventory, filterImageCategories } from '@/inventory/inventory'
 import { enrichItems } from '@/enrichment/inventory-enricher'
@@ -37,6 +39,10 @@ export const selectedCategory = ref<string | null>(null)
 export const sortBy = ref<'name' | 'size-desc' | 'size-asc'>('name')
 export const exportStatus = ref<string | null>(null)
 export const isExporting = ref(false)
+
+export const duplicateGroups = ref<DuplicateGroup[]>([])
+export const isSearchingDuplicates = ref(false)
+export const safetensorsMetadataCache = ref<Record<string, SafetensorsMetadata>>({})
 
 export const commonPaths = ref<string[]>([])
 export const savedPaths = ref<SavedPath[]>([])
@@ -173,6 +179,7 @@ export async function startScan() {
             scanError.value = scanResult.value.error || 'Erro desconhecido'
         } else {
             void refreshWorkflowIndex()
+            void searchDuplicates()
         }
     } catch (error) {
         console.error('Scan error:', error)
@@ -206,6 +213,33 @@ export async function renameModel(path: string, newName: string): Promise<void> 
 
 export async function deleteModel(path: string): Promise<void> {
     await deleteModelFile(path)
+}
+
+export async function loadSafetensorsMetadata(path: string): Promise<SafetensorsMetadata | null> {
+    if (safetensorsMetadataCache.value[path]) {
+        return safetensorsMetadataCache.value[path]
+    }
+    try {
+        const metadata = await readSafetensorsMetadata(path)
+        safetensorsMetadataCache.value[path] = metadata
+        return metadata
+    } catch (error) {
+        console.error('Failed to read safetensors metadata:', error)
+        return null
+    }
+}
+
+export async function searchDuplicates() {
+    if (!scanResult.value?.items) return
+    isSearchingDuplicates.value = true
+    try {
+        duplicateGroups.value = await findDuplicateModels(scanResult.value.items)
+    } catch (error) {
+        console.error('Failed to search duplicates:', error)
+        duplicateGroups.value = []
+    } finally {
+        isSearchingDuplicates.value = false
+    }
 }
 
 export async function refreshWorkflowIndex() {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import type { ScannedItem } from '@/types';
+import { computed, ref, onMounted } from 'vue';
+import type { ScannedItem, SafetensorsMetadata } from '@/types';
 import {
     scanResult,
     categories,
@@ -19,7 +19,11 @@ import {
     deleteModel,
     openFolder,
     startScan,
-    showToast
+    showToast,
+    duplicateGroups,
+    isSearchingDuplicates,
+    loadSafetensorsMetadata,
+    safetensorsMetadataCache
 } from '@/composables/useComfyUIScan';
 
 const expandedCategories = ref<Set<string>>(new Set());
@@ -29,12 +33,30 @@ const renameValue = ref('');
 const actionError = ref<string | null>(null);
 const showDeleteConfirm = ref(false);
 const deleteTarget = ref<ScannedItem | null>(null);
+const showDuplicatesModal = ref(false);
+
+// Metadados carregados para os cards visíveis
+const loadedMetadata = ref<Record<string, SafetensorsMetadata>>({});
 
 function toggleCategory(category: string) {
     if (expandedCategories.value.has(category)) {
         expandedCategories.value.delete(category);
     } else {
         expandedCategories.value.add(category);
+        // Carrega metadados dos arquivos .safetensors da categoria quando expandida
+        loadMetadataForCategory(category);
+    }
+}
+
+async function loadMetadataForCategory(category: string) {
+    const items = getItemsByCategory(category);
+    for (const item of items) {
+        if (item.file_type.toLowerCase() === 'safetensors' && !loadedMetadata.value[item.path]) {
+            const meta = await loadSafetensorsMetadata(item.path);
+            if (meta) {
+                loadedMetadata.value[item.path] = meta;
+            }
+        }
     }
 }
 
@@ -43,6 +65,9 @@ function getItemsByCategory(category: string): ScannedItem[] {
 }
 
 function formatSize(size: number): string {
+    if (size >= 1024) {
+        return `${(size / 1024).toFixed(2)} GB`;
+    }
     if (size >= 1) {
         return `${size.toFixed(2)} MB`;
     }
@@ -84,7 +109,6 @@ async function confirmRename() {
         await renameModel(renameTarget.value.path, renameValue.value.trim());
         showRenameModal.value = false;
         showToast('success', `Arquivo renomeado para "${renameValue.value.trim()}".`);
-        // Re-scan para atualizar a lista
         await startScan();
     } catch (error) {
         actionError.value = error instanceof Error ? error.message : 'Erro ao renomear arquivo';
@@ -104,27 +128,82 @@ async function confirmDelete() {
         await deleteModel(deleteTarget.value.path);
         showDeleteConfirm.value = false;
         showToast('success', `Arquivo "${deleteTarget.value.name}" excluído.`);
-        // Re-scan para atualizar a lista
         await startScan();
     } catch (error) {
         actionError.value = error instanceof Error ? error.message : 'Erro ao excluir arquivo';
         showToast('error', actionError.value);
     }
 }
+
+function copyTriggerWord(word: string) {
+    navigator.clipboard.writeText(word);
+    showToast('success', `Trigger word "${word}" copiada!`);
+}
+
+// Cálculo da distribuição de disco por categoria
+const categoryDiskBreakdown = computed(() => {
+    if (!scanResult.value?.items || totalSize.value === 0) return [];
+    
+    const totals: Record<string, number> = {};
+    for (const item of scanResult.value.items) {
+        totals[item.category] = (totals[item.category] || 0) + item.size_mb;
+    }
+
+    const palette = [
+        '#7c3aed', '#3b82f6', '#10b981', '#f59e0b', '#ec4899',
+        '#8b5cf6', '#06b6d4', '#84cc16', '#f97316', '#64748b'
+    ];
+
+    return Object.entries(totals)
+        .map(([name, size], i) => ({
+            name,
+            size,
+            percent: (size / totalSize.value) * 100,
+            color: palette[i % palette.length]
+        }))
+        .sort((a, b) => b.size - a.size);
+});
+
+// Ignorar grupos marcados como falso positivo
+const ignoredGroupKeys = ref<Set<string>>(new Set());
+
+function getGroupKey(group: { size_mb: number; items: ScannedItem[] }): string {
+    return `${group.size_mb}_${group.items.map(i => i.path).sort().join('|')}`;
+}
+
+function ignoreDuplicateGroup(group: { size_mb: number; items: ScannedItem[] }) {
+    const key = getGroupKey(group);
+    ignoredGroupKeys.value.add(key);
+    showToast('info', 'Grupo de duplicatas ignorado.');
+}
+
+function areNamesIdentical(items: ScannedItem[]): boolean {
+    if (items.length <= 1) return true;
+    const firstName = items[0].name.toLowerCase();
+    return items.every(item => item.name.toLowerCase() === firstName);
+}
+
+const activeDuplicateGroups = computed(() => {
+    return duplicateGroups.value.filter(group => !ignoredGroupKeys.value.has(getGroupKey(group)));
+});
+
+// Estatísticas de duplicatas
+const totalWastedMb = computed(() => {
+    return activeDuplicateGroups.value.reduce((sum, group) => {
+        return sum + (group.size_mb * (group.items.length - 1));
+    }, 0);
+});
 </script>
 
 <template>
     <div class="results-list" v-if="scanResult && scanResult.success">
+        <!-- Cabeçalho -->
         <div class="results-header">
             <div class="header-left">
                 <h2>Resultados do Scan</h2>
                 <div class="stats">
-                    <span class="stat">
-                        📁 {{ totalItems }} itens
-                    </span>
-                    <span class="stat">
-                        💾 {{ formatSize(totalSize) }}
-                    </span>
+                    <span class="stat">📁 {{ totalItems }} itens</span>
+                    <span class="stat">💾 {{ formatSize(totalSize) }}</span>
                 </div>
             </div>
             <div class="header-actions">
@@ -152,6 +231,45 @@ async function confirmDelete() {
 
         <p v-if="exportStatus" class="export-status">{{ exportStatus }}</p>
 
+        <!-- 📊 Gráfico de Distribuição do Disco -->
+        <div class="disk-breakdown-card" v-if="categoryDiskBreakdown.length > 0">
+            <div class="disk-breakdown-header">
+                <span class="disk-breakdown-title">📊 Distribuição de Espaço em Disco</span>
+                <span class="disk-breakdown-total">Total: {{ formatSize(totalSize) }}</span>
+            </div>
+            <div class="disk-bar">
+                <div
+                    v-for="cat in categoryDiskBreakdown"
+                    :key="cat.name"
+                    class="disk-bar-segment"
+                    :style="{ width: cat.percent + '%', backgroundColor: cat.color }"
+                    :title="`${cat.name}: ${formatSize(cat.size)} (${cat.percent.toFixed(1)}%)`"
+                ></div>
+            </div>
+            <div class="disk-legend">
+                <div v-for="cat in categoryDiskBreakdown.slice(0, 6)" :key="cat.name" class="legend-item">
+                    <span class="legend-dot" :style="{ backgroundColor: cat.color }"></span>
+                    <span class="legend-name">{{ cat.name }}</span>
+                    <span class="legend-size">{{ formatSize(cat.size) }} ({{ cat.percent.toFixed(1) }}%)</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ⚡ Alerta de Modelos Duplicados -->
+        <div v-if="activeDuplicateGroups.length > 0" class="duplicate-alert-banner">
+            <div class="duplicate-alert-info">
+                <span class="duplicate-icon">⚡</span>
+                <div>
+                    <strong>{{ activeDuplicateGroups.length }} grupo(s) de modelos duplicados encontrados!</strong>
+                    <p>Espaço desperdiçado aproximado: <strong>{{ formatSize(totalWastedMb) }}</strong></p>
+                </div>
+            </div>
+            <button class="manage-duplicates-btn" @click="showDuplicatesModal = true">
+                Gerenciar Duplicatas
+            </button>
+        </div>
+
+        <!-- Resumo por categorias -->
         <div class="categories-summary">
             <button class="category-summary-item" :class="{ active: !selectedCategory }" @click="selectedCategory = null">
                 <span class="category-name">Todas</span>
@@ -169,6 +287,7 @@ async function confirmDelete() {
             </div>
         </div>
 
+        <!-- Lista por seções -->
         <div class="results-content">
             <div
                 v-for="category in categories.filter(category => !selectedCategory || category.name === selectedCategory)"
@@ -196,8 +315,28 @@ async function confirmDelete() {
                             {{ getFileIcon(item.file_type) }}
                         </div>
                         <div class="item-info">
-                            <div class="item-name">{{ item.name }}</div>
+                            <div class="item-name-row">
+                                <span class="item-name">{{ item.name }}</span>
+                                <span v-if="loadedMetadata[item.path]?.base_model" class="base-model-badge">
+                                    {{ loadedMetadata[item.path].base_model }}
+                                </span>
+                            </div>
                             <div class="item-path">{{ item.path }}</div>
+
+                            <!-- Metadados de Safetensors (Trigger Words) -->
+                            <div v-if="loadedMetadata[item.path]?.trigger_words?.length" class="trigger-words-list">
+                                <span class="trigger-label">Trigger words:</span>
+                                <button
+                                    v-for="word in loadedMetadata[item.path].trigger_words.slice(0, 6)"
+                                    :key="word"
+                                    class="trigger-tag"
+                                    @click="copyTriggerWord(word)"
+                                    title="Clique para copiar palavra de ativação"
+                                >
+                                    {{ word }} 📋
+                                </button>
+                            </div>
+
                             <div class="item-meta">
                                 <span class="item-size">{{ formatSize(item.size_mb) }}</span>
                                 <span class="item-type">{{ item.file_type }}</span>
@@ -209,6 +348,55 @@ async function confirmDelete() {
                             <button class="item-action-btn danger" title="Excluir" @click="openDeleteConfirm(item)">🗑️</button>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal de Gerenciamento de Duplicatas -->
+        <div v-if="showDuplicatesModal" class="modal-overlay" @click.self="showDuplicatesModal = false">
+            <div class="modal duplicates-modal">
+                <h3>⚡ Gerenciador de Duplicatas</h3>
+                <p class="modal-subtitle">Arquivos com mesmo conteúdo e tamanho em locais diferentes:</p>
+                
+                <div class="duplicate-groups-list">
+                    <div v-if="activeDuplicateGroups.length === 0" class="empty-state">
+                        Nenhum grupo de duplicatas ativo. Todos foram resolvidos ou ignorados.
+                    </div>
+                    <div v-for="(group, idx) in activeDuplicateGroups" :key="getGroupKey(group)" class="duplicate-group-card">
+                        <div class="duplicate-group-header">
+                            <div class="duplicate-header-left">
+                                <span>Grupo #{{ idx + 1 }} • Tamanho cada: {{ formatSize(group.size_mb) }}</span>
+                                <span v-if="areNamesIdentical(group.items)" class="confidence-badge exact">
+                                    🟢 Cópia Exata (Mesmo Nome)
+                                </span>
+                                <span v-else class="confidence-badge diff">
+                                    ⚠️ Nomes Diferentes (Verifique)
+                                </span>
+                            </div>
+                            <div class="duplicate-header-right">
+                                <span class="wasted-tag">Desperdício: {{ formatSize(group.size_mb * (group.items.length - 1)) }}</span>
+                                <button class="ignore-group-btn" @click="ignoreDuplicateGroup(group)" title="Marcar como falso positivo e ignorar">
+                                    🚫 Ignorar
+                                </button>
+                            </div>
+                        </div>
+                        <div class="duplicate-items">
+                            <div v-for="item in group.items" :key="item.path" class="duplicate-item-row">
+                                <div class="duplicate-item-info">
+                                    <strong>{{ item.name }}</strong>
+                                    <small>{{ item.path }}</small>
+                                </div>
+                                <div class="duplicate-item-actions">
+                                    <button class="item-action-btn" title="Abrir pasta" @click="openFolder(item.path)">📂</button>
+                                    <button class="item-action-btn danger" title="Excluir esta cópia" @click="openDeleteConfirm(item)">🗑️ Excluir</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="modal-cancel-btn" @click="showDuplicatesModal = false">Fechar</button>
                 </div>
             </div>
         </div>
@@ -228,6 +416,7 @@ async function confirmDelete() {
         </div>
 
         <!-- Modal de confirmação de exclusão -->
+        <!-- Modal de confirmação de exclusão -->
         <div v-if="showDeleteConfirm" class="modal-overlay" @click.self="showDeleteConfirm = false">
             <div class="modal">
                 <h3>Excluir Arquivo</h3>
@@ -244,6 +433,298 @@ async function confirmDelete() {
 </template>
 
 <style scoped>
+/* 📊 Gráfico de Distribuição do Disco */
+.disk-breakdown-card {
+    padding: 16px;
+    background: white;
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+}
+
+.disk-breakdown-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.disk-breakdown-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #334155;
+}
+
+.disk-breakdown-total {
+    font-size: 12px;
+    color: #64748b;
+    font-weight: 600;
+}
+
+.disk-bar {
+    display: flex;
+    height: 12px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: #e2e8f0;
+    margin-bottom: 12px;
+}
+
+.disk-bar-segment {
+    height: 100%;
+    transition: width 0.3s ease;
+}
+
+.disk-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 18px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+}
+
+.legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.legend-name {
+    color: #475569;
+    font-weight: 500;
+}
+
+.legend-size {
+    color: #94a3b8;
+}
+
+/* ⚡ Alerta de Duplicatas */
+.duplicate-alert-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 18px;
+    background: linear-gradient(115deg, #fff7ed, #ffedd5);
+    border: 1px solid #fed7aa;
+    border-radius: 14px;
+    color: #c2410c;
+}
+
+.duplicate-alert-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.duplicate-icon {
+    font-size: 24px;
+}
+
+.duplicate-alert-info p {
+    margin: 2px 0 0;
+    font-size: 13px;
+    color: #9a3412;
+}
+
+.manage-duplicates-btn {
+    padding: 8px 16px;
+    background: #ea580c;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+}
+
+.manage-duplicates-btn:hover {
+    background: #c2410c;
+}
+
+/* Modal de Duplicatas */
+.duplicates-modal {
+    max-width: 680px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-subtitle {
+    font-size: 13px;
+    color: #64748b;
+    margin: 0 0 16px;
+}
+
+.duplicate-groups-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+    max-height: 50vh;
+    padding-right: 4px;
+}
+
+.duplicate-group-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #f8fafc;
+    overflow: hidden;
+}
+
+.duplicate-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: #f1f5f9;
+    font-size: 12px;
+    font-weight: 600;
+    color: #334155;
+    border-bottom: 1px solid #e2e8f0;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.duplicate-header-left, .duplicate-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.confidence-badge {
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.confidence-badge.exact {
+    background: #dcfce7;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+}
+
+.confidence-badge.diff {
+    background: #fef3c7;
+    color: #b45309;
+    border: 1px solid #fde68a;
+}
+
+.ignore-group-btn {
+    padding: 4px 10px;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    color: #475569;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.ignore-group-btn:hover {
+    background: #e2e8f0;
+    color: #1e293b;
+}
+
+.wasted-tag {
+    color: #dc2626;
+    background: #fee2e2;
+    padding: 2px 8px;
+    border-radius: 6px;
+}
+
+.duplicate-items {
+    padding: 8px;
+}
+
+.duplicate-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+}
+
+.duplicate-item-row:hover {
+    background: white;
+}
+
+.duplicate-item-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+
+.duplicate-item-info small {
+    color: #94a3b8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.duplicate-item-actions {
+    display: flex;
+    gap: 6px;
+}
+
+/* Badges e Trigger Words */
+.item-name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.base-model-badge {
+    padding: 2px 8px;
+    background: #f5f3ff;
+    border: 1px solid #ddd6fe;
+    color: #6d28d9;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.trigger-words-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    margin: 6px 0;
+}
+
+.trigger-label {
+    font-size: 11px;
+    color: #64748b;
+    font-weight: 600;
+}
+
+.trigger-tag {
+    padding: 3px 8px;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    color: #334155;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.trigger-tag:hover {
+    background: #e0e7ff;
+    border-color: #a5b4fc;
+    color: #4338ca;
+}
 .results-list {
     display: flex;
     flex-direction: column;

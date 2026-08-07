@@ -20,7 +20,9 @@ pub fn run() {
             save_useful_paths,
             open_in_explorer,
             rename_model_file,
-            delete_model_file
+            delete_model_file,
+            read_safetensors_metadata,
+            find_duplicate_models
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,6 +1,6 @@
 // @ts-ignore - Tauri API will be available at runtime
 import { invoke } from '@tauri-apps/api/core';
-import type { ScanResult, ScannedItem, SavedPath, WorkflowDependencyIndex, UsefulPath } from '@/types';
+import type { ScanResult, ScannedItem, SavedPath, WorkflowDependencyIndex, UsefulPath, SafetensorsMetadata, DuplicateGroup } from '@/types';
 
 export async function scanComfyuiDirectory(path: string): Promise<ScanResult> {
     return invoke('scan_comfyui_directory', { path });
@@ -52,4 +52,12 @@ export async function renameModelFile(path: string, newName: string): Promise<vo
 
 export async function deleteModelFile(path: string): Promise<void> {
     return invoke('delete_model_file', { path });
+}
+
+export async function readSafetensorsMetadata(path: string): Promise<SafetensorsMetadata> {
+    return invoke('read_safetensors_metadata', { path });
+}
+
+export async function findDuplicateModels(items: ScannedItem[]): Promise<DuplicateGroup[]> {
+    return invoke('find_duplicate_models', { items });
 }
