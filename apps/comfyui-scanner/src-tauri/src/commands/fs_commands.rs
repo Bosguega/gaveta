@@ -584,13 +584,10 @@ fn determine_category(file_path: &Path, base_path: &Path) -> String {
 }
 
 #[tauri::command]
-pub fn build_workflow_dependency_index(path: String) -> Result<WorkflowDependencyIndex, String> {
-    let scan = scan_comfyui_directory(path.clone());
-    if !scan.success {
-        return Err(scan.error.unwrap_or_else(|| "Falha ao escanear instalação".to_string()));
-    }
-
-    let model_items: Vec<&ScannedItem> = scan.items.iter()
+/// Constrói o índice de dependências a partir dos itens já escaneados pelo frontend,
+/// evitando um segundo scan completo.
+pub fn build_workflow_dependency_index(path: String, scanned_items: Vec<ScannedItem>) -> Result<WorkflowDependencyIndex, String> {
+    let model_items: Vec<&ScannedItem> = scanned_items.iter()
         .filter(|item| !matches!(item.category.as_str(), "Workflows" | "Custom Nodes" | "Input Images" | "Output Images"))
         .collect();
     let models_by_name: HashMap<String, &ScannedItem> = model_items.iter()
@@ -643,11 +640,11 @@ pub fn build_workflow_dependency_index(path: String) -> Result<WorkflowDependenc
         }
     }
     workflows.sort_by(|a, b| a.name.cmp(&b.name));
-    let unused_models = model_items.into_iter()
+    let unused_model_names: Vec<String> = model_items.iter()
         .filter(|item| !model_usage.contains_key(&item.name))
         .map(|item| item.name.clone())
         .collect();
-    Ok(WorkflowDependencyIndex { workflows, model_usage, unused_models })
+    Ok(WorkflowDependencyIndex { workflows, model_usage, unused_models: unused_model_names })
 }
 
 fn extract_node_types(document: &serde_json::Value) -> Vec<String> {
@@ -705,84 +702,53 @@ fn find_custom_node_providers(node_types: &[String], custom_nodes_dir: Option<&P
     providers.into_iter().collect()
 }
 
+/// Retorna os candidatos canônicos de instalação do ComfyUI.
+/// Usada tanto para sugestões de caminho quanto para detecção automática.
+fn candidate_paths() -> Vec<(PathBuf, &'static str)> {
+    let mut candidates: Vec<(PathBuf, &'static str)> = Vec::new();
+
+    if let Some(home) = dirs::home_dir() {
+        candidates.push((home.join("ComfyUI"), "installation"));
+        candidates.push((home.join("ComfyUI_windows_portable"), "portable"));
+        candidates.push((home.join("Desktop").join("ComfyUI"), "installation"));
+        candidates.push((home.join("Documents").join("ComfyUI"), "installation"));
+    }
+
+    if let Some(local_app_data) = dirs::data_local_dir() {
+        candidates.push((local_app_data.join("Comfy-Desktop"), "comfy-desktop"));
+    }
+
+    candidates.push((PathBuf::from("C:/Program Files/ComfyUI"), "installation"));
+    candidates.push((PathBuf::from("C:/Program Files (x86)/ComfyUI"), "installation"));
+    candidates.push((PathBuf::from("D:/ComfyUI"), "installation"));
+    candidates.push((PathBuf::from("D:/ComfyUI_windows_portable"), "portable"));
+    candidates.push((PathBuf::from("D:/Program Files/ComfyUI"), "installation"));
+
+    candidates
+}
+
 #[tauri::command]
 pub fn get_common_comfyui_paths() -> Vec<String> {
-    let mut paths: Vec<String> = Vec::new();
-
-    // Windows common paths
-    if let Some(home) = dirs::home_dir() {
-        paths.push(home.join("ComfyUI").to_string_lossy().to_string());
-        paths.push(home.join("ComfyUI_windows_portable").to_string_lossy().to_string());
-        paths.push(home.join("Desktop").join("ComfyUI").to_string_lossy().to_string());
-        paths.push(home.join("Documents").join("ComfyUI").to_string_lossy().to_string());
-    }
-
-    // Comfy Desktop (app oficial) — %LOCALAPPDATA%\Comfy-Desktop
-    if let Some(local_app_data) = dirs::data_local_dir() {
-        paths.push(local_app_data.join("Comfy-Desktop").to_string_lossy().to_string());
-    }
-
-    // D: drive common for installations
-    paths.push("D:\\ComfyUI".to_string());
-    paths.push("D:\\ComfyUI_windows_portable".to_string());
-
-    paths
+    candidate_paths()
+        .into_iter()
+        .map(|(path, _)| path.to_string_lossy().to_string())
+        .collect()
 }
 
 #[tauri::command]
 pub fn find_comfyui_installations(app: AppHandle) -> Result<Vec<SavedPath>, String> {
     let mut found_paths: Vec<SavedPath> = Vec::new();
 
-    // Common ComfyUI installation locations on Windows
-    let search_paths: Vec<PathBuf> = vec![
-        PathBuf::from("C:/Program Files/ComfyUI"),
-        PathBuf::from("C:/Program Files (x86)/ComfyUI"),
-        PathBuf::from("D:/ComfyUI"),
-        PathBuf::from("D:/Program Files/ComfyUI"),
-    ];
-
-    // Check common installation paths
-    for path in &search_paths {
-        if path.exists() && is_comfyui_installation(path) {
+    for (path, path_type) in candidate_paths() {
+        if path.exists() && is_comfyui_installation(&path) {
             found_paths.push(SavedPath {
                 path: path.to_string_lossy().to_string(),
-                path_type: "installation".to_string(),
+                path_type: path_type.to_string(),
             });
         }
     }
 
-    // Check home directory
-    if let Some(home) = dirs::home_dir() {
-        let home_comfyui = home.join("ComfyUI");
-        if home_comfyui.exists() && is_comfyui_installation(&home_comfyui) {
-            found_paths.push(SavedPath {
-                path: home_comfyui.to_string_lossy().to_string(),
-                path_type: "installation".to_string(),
-            });
-        }
-
-        // Check for portable version
-        let portable = home.join("ComfyUI_windows_portable");
-        if portable.exists() && is_comfyui_installation(&portable) {
-            found_paths.push(SavedPath {
-                path: portable.to_string_lossy().to_string(),
-                path_type: "portable".to_string(),
-            });
-        }
-    }
-
-    // Check Comfy Desktop in %LOCALAPPDATA%
-    if let Some(local_app_data) = dirs::data_local_dir() {
-        let comfy_desktop = local_app_data.join("Comfy-Desktop");
-        if comfy_desktop.exists() {
-            found_paths.push(SavedPath {
-                path: comfy_desktop.to_string_lossy().to_string(),
-                path_type: "comfy-desktop".to_string(),
-            });
-        }
-    }
-
-    // Preserve previous discoveries, but never return duplicate directories.
+    // Preserva descobertas anteriores sem duplicar.
     let mut saved_paths = get_saved_paths(app.clone())?;
     saved_paths.append(&mut found_paths);
     let mut seen = HashSet::new();
@@ -906,6 +872,11 @@ fn export_as_json(data: ExportData) -> Result<String, String> {
     Ok(json)
 }
 
+/// Escapa um campo de texto para CSV (RFC 4180): substitui `"` por `""`.
+fn csv_escape(value: &str) -> String {
+    value.replace('"', "\"\"")
+}
+
 fn export_as_csv(data: ExportData) -> Result<String, String> {
     let mut csv = String::new();
     csv.push_str("Nome,Caminho,Tamanho (MB),Categoria,Tipo\n");
@@ -913,11 +884,11 @@ fn export_as_csv(data: ExportData) -> Result<String, String> {
     for item in &data.items {
         csv.push_str(&format!(
             "\"{}\",\"{}\",{:.2},\"{}\",\"{}\"\n",
-            item.name,
-            item.path,
+            csv_escape(&item.name),
+            csv_escape(&item.path),
             item.size_mb,
-            item.category,
-            item.file_type
+            csv_escape(&item.category),
+            csv_escape(&item.file_type)
         ));
     }
 

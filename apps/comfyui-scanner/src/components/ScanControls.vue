@@ -4,15 +4,11 @@ import { open } from '@tauri-apps/plugin-dialog';
 import type { UsefulPath } from '@/types';
 import {
     selectedPath,
-    commonPaths,
-    loadCommonPaths,
     startScan,
     isScanning,
     findInstallations,
     scanningForInstallations,
     foundPaths,
-    savedPaths,
-    loadSavedPaths,
     usefulPaths,
     loadUsefulPaths,
     persistUsefulPaths,
@@ -32,8 +28,6 @@ const shortcutLabel = ref('');
 const shortcutPath = ref('');
 
 onMounted(async () => {
-    loadCommonPaths();
-    loadSavedPaths();
     loadUsefulPaths();
 
     // Detecção automática de instalações ao abrir o app
@@ -64,10 +58,16 @@ async function browseFolder() {
 
 async function handleFindInstallations() {
     noInstallationsFound.value = false;
+    dialogError.value = null;
     await findInstallations();
 
     if (foundPaths.value.length === 0) {
         noInstallationsFound.value = true;
+    } else {
+        // Preenche automaticamente com a primeira instalação encontrada
+        if (!selectedPath.value) {
+            selectedPath.value = foundPaths.value[0].path;
+        }
     }
 }
 
@@ -149,19 +149,7 @@ async function removeShortcut(shortcut: UsefulPath) {
 
 <template>
     <div class="scan-controls">
-        <button 
-            class="find-btn" 
-            @click="handleFindInstallations"
-            :disabled="scanningForInstallations"
-        >
-            {{ scanningForInstallations ? '🔍 Buscando instalações...' : '🔍 Buscar Instalações Automaticamente' }}
-        </button>
-
-        <div class="divider">
-            <span>ou selecione manualmente</span>
-        </div>
-
-        <div class="path-input-group">
+        <div class="path-row">
             <input
                 v-model="selectedPath"
                 type="text"
@@ -169,29 +157,40 @@ async function removeShortcut(shortcut: UsefulPath) {
                 class="path-input"
                 @keyup.enter="startScan"
             />
-            <button class="browse-btn" @click="browseFolder">
-                Procurar
+            <button class="browse-btn" @click="browseFolder" title="Procurar pasta">
+                📂
             </button>
-        </div>
-
-        <div class="quick-paths" v-if="commonPaths.length > 0">
-            <span class="quick-paths-label">Caminhos comuns:</span>
             <button
-                v-for="path in commonPaths"
-                :key="path"
-                class="quick-path-btn"
-                @click="selectedPath = path; startScan()"
+                class="find-btn"
+                @click="handleFindInstallations"
+                :disabled="scanningForInstallations"
+                title="Detectar instalações automaticamente"
             >
-                {{ path }}
+                {{ scanningForInstallations ? '🔍 Buscando...' : '🔍 Detectar' }}
+            </button>
+            <button
+                class="scan-btn"
+                @click="startScan"
+                :disabled="!selectedPath || isScanning"
+            >
+                {{ isScanning ? 'Escaneando...' : 'Escanear' }}
             </button>
         </div>
 
-        <div class="useful-paths" v-if="usefulPaths.length > 0">
+        <div v-if="dialogError" class="inline-error">
+            <span>⚠️</span>
+            <span>{{ dialogError }}</span>
+        </div>
+
+        <div v-if="noInstallationsFound" class="inline-info">
+            <span>ℹ️</span>
+            <span>Nenhuma instalação encontrada automaticamente. Selecione o diretório manualmente.</span>
+        </div>
+
+        <div v-if="usefulPaths.length > 0" class="useful-paths">
             <div class="useful-paths-header">
                 <span class="useful-paths-label">Atalhos Úteis</span>
-                <button class="add-shortcut-btn" @click="openAddShortcutModal" title="Adicionar atalho">
-                    +
-                </button>
+                <button class="add-shortcut-btn" @click="openAddShortcutModal" title="Adicionar atalho">+</button>
             </div>
             <div class="useful-paths-list">
                 <button
@@ -214,49 +213,6 @@ async function removeShortcut(shortcut: UsefulPath) {
             <span>⚠️</span>
             <span>{{ usefulPathsError }}</span>
         </div>
-
-        <div v-if="dialogError" class="inline-error">
-            <span>⚠️</span>
-            <span>{{ dialogError }}</span>
-        </div>
-
-        <div v-if="noInstallationsFound" class="inline-info">
-            <span>ℹ️</span>
-            <span>Nenhuma instalação do ComfyUI encontrada automaticamente. Selecione o diretório manualmente.</span>
-        </div>
-
-        <div v-if="savedPaths.length > 0" class="saved-paths">
-            <span class="saved-paths-label">Caminhos salvos:</span>
-            <div class="saved-paths-list">
-                <button
-                    v-for="saved in savedPaths"
-                    :key="saved.path"
-                    class="saved-path-btn"
-                    @click="selectedPath = saved.path; startScan()"
-                >
-                    {{ saved.path }} ({{ saved.path_type }})
-                </button>
-            </div>
-        </div>
-
-        <div v-if="foundPaths.length > 0" class="found-paths">
-            <span class="found-paths-label">Instalações encontradas:</span>
-            <div class="found-paths-list">
-                <div v-for="found in foundPaths" :key="found.path" class="found-path-item">
-                    <span class="path-type">{{ found.path_type }}</span>
-                    <span class="path">{{ found.path }}</span>
-                    <button class="use-path-btn" @click="selectedPath = found.path; startScan()">Usar</button>
-                </div>
-            </div>
-        </div>
-
-        <button
-            class="scan-btn"
-            @click="startScan"
-            :disabled="!selectedPath || isScanning"
-        >
-            {{ isScanning ? 'Escaneando...' : 'Iniciar Scan' }}
-        </button>
 
         <!-- Modal de adicionar/editar atalho -->
         <div v-if="showShortcutModal" class="modal-overlay" @click.self="showShortcutModal = false">
@@ -304,6 +260,112 @@ async function removeShortcut(shortcut: UsefulPath) {
 </template>
 
 <style scoped>
+.scan-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 28px;
+    padding: 20px 24px;
+    border: 1px solid rgba(148, 163, 184, .22);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, .78);
+    box-shadow: 0 18px 48px rgba(15, 23, 42, .07);
+    backdrop-filter: blur(12px);
+}
+
+/* === Linha principal === */
+.path-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.path-input {
+    flex: 1;
+    padding: 11px 16px;
+    border: 1px solid #d9dfeb;
+    border-radius: 12px;
+    font-size: 14px;
+    outline: none;
+    background: #fff;
+    transition: border-color .2s, box-shadow .2s;
+    min-width: 0;
+}
+
+.path-input:focus {
+    border-color: #7c3aed;
+    box-shadow: 0 0 0 4px rgba(124, 58, 237, .12);
+}
+
+.browse-btn {
+    flex-shrink: 0;
+    padding: 11px 14px;
+    background: #f8fafc;
+    border: 1px solid #d9dfeb;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all .2s;
+}
+
+.browse-btn:hover {
+    background: #e5e7eb;
+    border-color: #d1d5db;
+}
+
+.find-btn {
+    flex-shrink: 0;
+    padding: 11px 14px;
+    background: #ecfeff;
+    border: 1px solid #a5f3fc;
+    border-radius: 12px;
+    color: #0e7490;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all .2s;
+}
+
+.find-btn:hover:not(:disabled) {
+    background: #cffafe;
+    border-color: #67e8f9;
+}
+
+.find-btn:disabled {
+    opacity: .65;
+    cursor: wait;
+}
+
+.scan-btn {
+    flex-shrink: 0;
+    padding: 11px 22px;
+    background: linear-gradient(115deg, #7c3aed, #4f46e5);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    box-shadow: 0 6px 18px rgba(79, 70, 229, .22);
+    transition: all .2s;
+}
+
+.scan-btn:hover:not(:disabled) {
+    background: linear-gradient(115deg, #6d28d9, #4338ca);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 22px rgba(99, 102, 241, .3);
+}
+
+.scan-btn:disabled {
+    background: #9ca3af;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* === Mensagens inline === */
 .inline-error {
     display: flex;
     align-items: center;
@@ -311,7 +373,7 @@ async function removeShortcut(shortcut: UsefulPath) {
     padding: 10px 14px;
     background: #fee2e2;
     border: 1px solid #fecaca;
-    border-radius: 8px;
+    border-radius: 10px;
     color: #dc2626;
     font-size: 13px;
 }
@@ -323,88 +385,9 @@ async function removeShortcut(shortcut: UsefulPath) {
     padding: 10px 14px;
     background: #eff6ff;
     border: 1px solid #bfdbfe;
-    border-radius: 8px;
+    border-radius: 10px;
     color: #1d4ed8;
     font-size: 13px;
-}
-
-.scan-controls {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    margin-bottom: 28px;
-    padding: 24px;
-    border: 1px solid rgba(148, 163, 184, .22);
-    border-radius: 20px;
-    background: rgba(255, 255, 255, .78);
-    box-shadow: 0 18px 48px rgba(15, 23, 42, .07);
-    backdrop-filter: blur(12px);
-}
-
-.path-input-group {
-    display: flex;
-    gap: 8px;
-}
-
-.path-input {
-    flex: 1;
-    padding: 12px 16px;
-    border: 1px solid #d9dfeb;
-    border-radius: 12px;
-    font-size: 14px;
-    outline: none;
-    background: #fff;
-    transition: border-color .2s, box-shadow .2s;
-}
-
-.path-input:focus {
-    border-color: #7c3aed;
-    box-shadow: 0 0 0 4px rgba(124, 58, 237, .12);
-}
-
-.browse-btn {
-    padding: 12px 20px;
-    background: #f8fafc;
-    border: 1px solid #d9dfeb;
-    border-radius: 12px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    transition: all 0.2s;
-}
-
-.browse-btn:hover {
-    background: #e5e7eb;
-    border-color: #d1d5db;
-}
-
-.quick-paths {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-}
-
-.quick-paths-label {
-    font-size: 12px;
-    color: #6b7280;
-    font-weight: 500;
-}
-
-.quick-path-btn {
-    padding: 6px 12px;
-    background: #f5f3ff;
-    border: 1px solid #ddd6fe;
-    border-radius: 999px;
-    color: #6d28d9;
-    font-size: 12px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.quick-path-btn:hover {
-    background: #fde68a;
-    border-color: #f59e0b;
 }
 
 /* === Atalhos Úteis === */
@@ -426,23 +409,24 @@ async function removeShortcut(shortcut: UsefulPath) {
 }
 
 .useful-paths-label {
-    font-size: 13px;
-    color: #334155;
+    font-size: 12px;
+    color: #475569;
     font-weight: 700;
-    letter-spacing: .02em;
+    letter-spacing: .04em;
+    text-transform: uppercase;
 }
 
 .add-shortcut-btn {
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
     background: #7c3aed;
     color: white;
     border: none;
-    border-radius: 8px;
-    font-size: 18px;
+    border-radius: 6px;
+    font-size: 16px;
     font-weight: 700;
     line-height: 1;
     cursor: pointer;
@@ -457,14 +441,14 @@ async function removeShortcut(shortcut: UsefulPath) {
 .useful-paths-list {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
 }
 
 .useful-path-btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 14px;
+    padding: 7px 12px;
     background: white;
     border: 1px solid #e2e8f0;
     border-radius: 10px;
@@ -496,34 +480,7 @@ async function removeShortcut(shortcut: UsefulPath) {
     color: #991b1b;
 }
 
-.modal-actions-spacer {
-    flex: 1;
-}
-
-.modal-delete-btn {
-    padding: 10px 18px;
-    background: #dc2626;
-    color: white;
-    border: none;
-    border-radius: 10px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 600;
-    transition: all .2s;
-}
-
-.modal-delete-btn:hover:not(:disabled) {
-    background: #b91c1c;
-}
-
-.modal-delete-btn:disabled {
-    background: #9ca3af;
-    cursor: not-allowed;
-}
-
-.useful-path-icon {
-    font-size: 14px;
-}
+.useful-path-icon { font-size: 13px; }
 
 .useful-paths-hint {
     margin: 0;
@@ -618,6 +575,8 @@ async function removeShortcut(shortcut: UsefulPath) {
     margin-top: 20px;
 }
 
+.modal-actions-spacer { flex: 1; }
+
 .modal-cancel-btn {
     padding: 10px 18px;
     background: #f8fafc;
@@ -654,33 +613,31 @@ async function removeShortcut(shortcut: UsefulPath) {
     cursor: not-allowed;
 }
 
-.scan-btn {
-    padding: 14px 24px;
-    background: linear-gradient(115deg, #7c3aed, #4f46e5);
+.modal-delete-btn {
+    padding: 10px 18px;
+    background: #dc2626;
     color: white;
     border: none;
-    border-radius: 12px;
-    font-size: 16px;
-    font-weight: 600;
+    border-radius: 10px;
     cursor: pointer;
-    box-shadow: 0 10px 22px rgba(79, 70, 229, .22);
+    font-size: 14px;
+    font-weight: 600;
     transition: all .2s;
 }
 
-.scan-btn:hover:not(:disabled) {
-    background: linear-gradient(115deg, #6d28d9, #4338ca);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+.modal-delete-btn:hover:not(:disabled) {
+    background: #b91c1c;
 }
 
-.scan-btn:disabled {
+.modal-delete-btn:disabled {
     background: #9ca3af;
     cursor: not-allowed;
-    transform: none;
 }
 
-.find-btn { align-self: flex-start; padding: 10px 14px; border: 0; border-radius: 10px; background: #ecfeff; color: #0e7490; font-weight: 700; cursor: pointer; }
-.divider { display: flex; align-items: center; gap: 12px; color: #94a3b8; font-size: 12px; }
-.divider::before, .divider::after { content: ''; height: 1px; flex: 1; background: #e2e8f0; }
-@media (max-width: 640px) { .scan-controls { padding: 16px; } .path-input-group { flex-direction: column; } .browse-btn { width: 100%; } }
+@media (max-width: 640px) {
+    .scan-controls { padding: 16px; }
+    .path-row { flex-wrap: wrap; }
+    .path-input { flex-basis: 100%; }
+    .find-btn, .scan-btn { flex: 1; }
+}
 </style>

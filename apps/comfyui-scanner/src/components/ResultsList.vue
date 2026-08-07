@@ -43,10 +43,14 @@ function getItemsByCategory(category: string): ScannedItem[] {
 }
 
 function formatSize(size: number): string {
-    if (size < 0.01) {
-        return '< 0.01 MB';
+    if (size >= 1) {
+        return `${size.toFixed(2)} MB`;
     }
-    return `${size.toFixed(2)} MB`;
+    const kb = size * 1024;
+    if (kb < 0.1) {
+        return '< 0.1 KB';
+    }
+    return `${kb.toFixed(1)} KB`;
 }
 
 function getFileIcon(fileType: string): string {

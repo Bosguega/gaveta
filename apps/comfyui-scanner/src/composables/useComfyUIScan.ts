@@ -1,4 +1,4 @@
-﻿import { ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { save } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
 import { computed } from 'vue'
@@ -151,6 +151,10 @@ export async function startScan() {
     scanProgress.value = null
     scanStageText.value = 'Iniciando scan...'
 
+    // Cancela o listener anterior antes de registrar um novo (evita race condition)
+    progressUnlisten?.()
+    progressUnlisten = undefined
+
     // Registra listener de progresso
     try {
         progressUnlisten = await listen<ScanProgress>('scan-progress', (event) => {
@@ -205,11 +209,14 @@ export async function deleteModel(path: string): Promise<void> {
 }
 
 export async function refreshWorkflowIndex() {
-    if (!selectedPath.value) return
+    if (!selectedPath.value || !scanResult.value?.success) return
     isIndexingWorkflows.value = true
     workflowIndexError.value = null
     try {
-        workflowIndex.value = await buildWorkflowDependencyIndex(selectedPath.value)
+        workflowIndex.value = await buildWorkflowDependencyIndex(
+            selectedPath.value,
+            scanResult.value.items
+        )
     } catch (error) {
         workflowIndexError.value = error instanceof Error ? error.message : 'Não foi possível indexar os workflows.'
     } finally {
@@ -306,6 +313,11 @@ export function resetScan() {
     scanError.value = null
     searchQuery.value = ''
     selectedCategory.value = null
+    sortBy.value = 'name'
+    exportFormat.value = 'json'
+    exportStatus.value = null
     workflowIndex.value = null
     workflowIndexError.value = null
+    scanProgress.value = null
+    scanStageText.value = ''
 }

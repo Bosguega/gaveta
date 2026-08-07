@@ -54,6 +54,9 @@ function toggle(path: string) {
 
             <div class="workflow-list">
                 <h3>Workflows catalogados</h3>
+                <p v-if="workflowIndex.workflows.length === 0" class="empty-state workflow-empty">
+                    Nenhum workflow JSON encontrado na instalação. Salve workflows em formato API no ComfyUI para que apareçam aqui.
+                </p>
                 <article v-for="workflow in workflowIndex.workflows" :key="workflow.path" class="workflow-row">
                     <button class="workflow-title" @click="toggle(workflow.path)">
                         <span>{{ expanded.has(workflow.path) ? '⌄' : '›' }}</span>

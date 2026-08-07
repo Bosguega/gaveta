@@ -95,10 +95,18 @@ pub fn open_in_explorer(path: String) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("explorer")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| format!("Erro ao abrir no explorador: {}", e))?;
+        if target.is_file() {
+            // Abre o Explorer com o arquivo selecionado
+            std::process::Command::new("explorer")
+                .arg(format!("/select,{}", path))
+                .spawn()
+                .map_err(|e| format!("Erro ao abrir no explorador: {}", e))?;
+        } else {
+            std::process::Command::new("explorer")
+                .arg(&path)
+                .spawn()
+                .map_err(|e| format!("Erro ao abrir no explorador: {}", e))?;
+        }
     }
 
     #[cfg(not(target_os = "windows"))]

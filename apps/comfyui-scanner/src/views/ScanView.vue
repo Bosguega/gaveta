@@ -7,6 +7,7 @@ import {
     scanError,
     isScanning,
     scanStageText,
+    scanProgress,
     scanProgressPercent,
     cancelScan,
     toasts
@@ -27,9 +28,13 @@ import {
             <div class="spinner"></div>
             <p>{{ scanStageText || 'Escaneando diretório...' }}</p>
             <div class="progress-bar">
-                <div class="progress-fill" :style="{ width: scanProgressPercent() + '%' }"></div>
+                <div
+                    class="progress-fill"
+                    :class="{ 'is-indeterminate': !scanProgress?.total }"
+                    :style="scanProgress?.total ? { width: scanProgressPercent() + '%' } : {}"
+                ></div>
             </div>
-            <span class="progress-text">{{ scanProgressPercent() }}%</span>
+            <span class="progress-text" v-if="scanProgress?.total">{{ scanProgressPercent() }}%</span>
             <button class="cancel-scan-btn" @click="cancelScan">
                 Cancelar Scan
             </button>
@@ -139,6 +144,17 @@ h1 {
     background: linear-gradient(90deg, #7c3aed, #4f46e5);
     border-radius: 999px;
     transition: width .3s ease;
+}
+
+.progress-fill.is-indeterminate {
+    width: 35%;
+    transition: none;
+    animation: progress-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes progress-slide {
+    0%   { transform: translateX(-150%); }
+    100% { transform: translateX(400%); }
 }
 
 .progress-text {
