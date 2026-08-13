@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { BarChart3, TrendingUp, ShoppingBag, ArrowLeft, PieChart, Package, DollarSign, Store } from 'lucide-react'
 import { useAnalysisData } from '../../hooks/useAnalysisData'
 import { formatBRL } from '../../utils/currency'
@@ -31,6 +32,7 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
         categories,
         topProducts,
         priceEvolution,
+        quantityEvolution,
         totalEvolution,
         establishmentSpending,
         availableMonths,
@@ -38,6 +40,14 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
         resolved,
         setFilter,
     } = useAnalysisData(receipts)
+
+    const [showQuantity, setShowQuantity] = useState(false)
+    const activeEvolution = showQuantity ? quantityEvolution : priceEvolution
+
+    const priceChartMax =
+        activeEvolution.length > 0
+            ? Math.max(...activeEvolution.map((point) => point.total))
+            : 1
 
     /**
      * Toggle de categoria: clica de novo na mesma para limpar.
@@ -47,11 +57,6 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
     const handleCategoryClick = (categoryName: string) => {
         setFilter('category', resolved.category === categoryName ? null : categoryName)
     }
-
-    const priceChartMax =
-        priceEvolution.length > 0
-            ? Math.max(...priceEvolution.map((point) => point.total))
-            : 1
 
     const totalChartMax =
         totalEvolution.length > 0
@@ -334,7 +339,7 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
                                 <div className="analysis-card-header">
                                     <span className="analysis-card-title">
                                         <ShoppingBag size={16} />
-                                        Evolução de Preços
+                                        {showQuantity ? 'Quantidade por Mês' : 'Evolução de Preços'}
                                     </span>
                                     <div
                                         className="analysis-card-icon"
@@ -344,13 +349,21 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
                                     </div>
                                 </div>
 
-                                {priceEvolution.length > 0 && resolved.product ? (
+                                {activeEvolution.length > 0 && resolved.product ? (
                                     <>
                                         <div className="price-evolution-product">
                                             Produto: {resolved.product}
                                         </div>
+                                        <button
+                                            type="button"
+                                            className="price-toggle"
+                                            onClick={() => setShowQuantity((prev) => !prev)}
+                                            aria-pressed={showQuantity}
+                                        >
+                                            {showQuantity ? 'Ver preços' : 'Ver quantidades'}
+                                        </button>
                                         <div className="price-chart">
-                                            {priceEvolution.map((item) => {
+                                            {activeEvolution.map((item) => {
                                                 const barHeight =
                                                     (item.total / priceChartMax) * PRICE_CHART_HEIGHT
                                                 return (
@@ -360,8 +373,9 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
                                                             className="price-bar"
                                                             style={{
                                                                 height: `${Math.max(barHeight, 8)}px`,
-                                                                background:
-                                                                    'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)',
+                                                                background: showQuantity
+                                                                    ? 'linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%)'
+                                                                    : 'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)',
                                                             }}
                                                         />
                                                         <div className="price-bar-label">{item.month}</div>
@@ -372,7 +386,7 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
                                     </>
                                 ) : (
                                     <div className="analysis-empty">
-                                        <p>Sem dados de evolução de preços.</p>
+                                        <p>Sem dados de evolução do produto.</p>
                                     </div>
                                 )}
                             </div>

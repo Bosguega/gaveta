@@ -65,6 +65,8 @@ export interface AnalysisEngine {
     categories: CategorySummary[]
     topProducts: ProductRank[]
     priceEvolution: MonthlyTotal[]
+    /** Quantidade comprada do produto selecionado por mês (últimos 6 meses) */
+    quantityEvolution: MonthlyTotal[]
     totalEvolution: MonthlyTotal[]
     establishmentSpending: EstablishmentSpending[]
     availableMonths: { value: string; label: string }[]
@@ -293,18 +295,23 @@ export function buildAnalysisEngine(
             ? filters.product
             : null
 
-    // ── Price evolution (only when a product is resolved) ──
+    // ── Price & quantity evolution (only when a product is resolved) ──
+    // Limits to the 6 most recent months to avoid visual clutter.
+    const evolutionMonths = uniqueMonths.slice(-6)
     const priceEvolution: MonthlyTotal[] = []
+    const quantityEvolution: MonthlyTotal[] = []
 
     if (resolvedProduct) {
-        for (const yearMonth of uniqueMonths) {
+        for (const yearMonth of evolutionMonths) {
             let totalUnitPrice = 0
             let count = 0
+            let totalQty = 0
 
             for (const { receipt } of receiptDates.filter((item) => item.yearMonth === yearMonth)) {
                 for (const item of receipt.items ?? []) {
                     if (getProductKey(item) === resolvedProduct) {
                         totalUnitPrice += parseBRL(item.paid_price ?? item.price)
+                        totalQty += getCountableQty(item)
                         count += 1
                     }
                 }
@@ -317,12 +324,17 @@ export function buildAnalysisEngine(
                     label: `R$ ${averagePrice.toFixed(2).replace('.', ',')}`,
                     total: averagePrice,
                 })
+                quantityEvolution.push({
+                    month: formatShortMonth(yearMonth),
+                    label: `${totalQty}`,
+                    total: totalQty,
+                })
             }
         }
     }
 
-    // ── Total evolution ──
-    const totalEvolution = uniqueMonths.map((yearMonth) => {
+    // ── Total evolution (last 6 months) ──
+    const totalEvolution = evolutionMonths.map((yearMonth) => {
         let monthTotal = 0
 
         for (const { receipt } of receiptDates.filter((item) => item.yearMonth === yearMonth)) {
@@ -343,6 +355,7 @@ export function buildAnalysisEngine(
         categories,
         topProducts,
         priceEvolution,
+        quantityEvolution,
         totalEvolution,
         establishmentSpending,
         availableMonths: computedAvailableMonths,

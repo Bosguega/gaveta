@@ -386,6 +386,38 @@
     text-align: center;
 }
 
+/* Botão de alternância no card de evolução de preços/quantidades */
+.price-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    font-size: 0.75rem;
+    font-weight: var(--weight-semibold);
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    padding: 0.35rem 0.75rem;
+    margin-bottom: var(--space-3);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.price-toggle:hover,
+.price-toggle:focus-visible {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(139, 92, 246, 0.4);
+    color: var(--text-primary);
+    outline: none;
+}
+
+.price-toggle[aria-pressed='true'] {
+    background: rgba(139, 92, 246, 0.12);
+    border-color: rgba(139, 92, 246, 0.35);
+    color: var(--primary);
+}
+
 /* Responsivo */
 @media (max-width: 640px) {
     .analysis-grid {

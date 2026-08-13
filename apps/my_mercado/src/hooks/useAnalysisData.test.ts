@@ -157,6 +157,57 @@ describe("buildAnalysisEngine", () => {
     ]);
   });
 
+  it("builds quantity evolution for the selected product", () => {
+    const data = buildAnalysisEngine(
+      receipts,
+      { month: "2026-03", product: "Cafe", category: null },
+      false,
+    );
+
+    expect(data.quantityEvolution.map((point) => [point.month, point.total])).toEqual([
+      ["Mar/26", 2],
+      ["Abr/26", 1],
+    ]);
+  });
+
+  it("limits evolution to the 6 most recent months", () => {
+    const manyMonthsReceipts: Receipt[] = Array.from({ length: 9 }, (_, index) => ({
+      id: `r-${index}`,
+      establishment: "Mercado",
+      date: `2026-0${index + 1}-10`,
+      items: [
+        {
+          name: "Cafe",
+          normalized_name: "Cafe",
+          category: "Mercearia",
+          quantity: 1,
+          price: 10,
+          total: 10,
+        },
+      ],
+    }));
+
+    const data = buildAnalysisEngine(
+      manyMonthsReceipts,
+      { month: "2026-09", product: "Cafe", category: null },
+      false,
+    );
+
+    expect(data.priceEvolution).toHaveLength(6);
+    expect(data.quantityEvolution).toHaveLength(6);
+    expect(data.totalEvolution).toHaveLength(6);
+
+    // Os 6 mais recentes: Abr/26, Mai/26, Jun/26, Jul/26, Ago/26 e Set/26
+    expect(data.priceEvolution.map((p) => p.month)).toEqual([
+      "Abr/26",
+      "Mai/26",
+      "Jun/26",
+      "Jul/26",
+      "Ago/26",
+      "Set/26",
+    ]);
+  });
+
   it("returns null for resolved.product when selected product is not in current month", () => {
     const data = buildAnalysisEngine(
       receipts,
@@ -166,6 +217,7 @@ describe("buildAnalysisEngine", () => {
 
     expect(data.resolved.product).toBeNull();
     expect(data.priceEvolution).toEqual([]);
+    expect(data.quantityEvolution).toEqual([]);
   });
 
   it("returns null for resolved.product when no product filter is provided", () => {
