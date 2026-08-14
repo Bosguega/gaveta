@@ -41,7 +41,7 @@ const receipts: Receipt[] = [
   },
 ];
 
-const emptyFilters = { month: null, product: null, category: null } as const;
+const emptyFilters = { month: null, product: null, category: null, establishment: null } as const;
 
 describe("buildAnalysisEngine", () => {
   it("builds monthly summary and categories using item.total when present", () => {
@@ -234,7 +234,7 @@ describe("buildAnalysisEngine", () => {
   it("builds establishment spending by receipt establishment", () => {
     const data = buildAnalysisEngine(
       receipts,
-      { month: "2026-03", product: null, category: null },
+      { month: "2026-03", product: null, category: null, establishment: null },
       false,
     );
 
@@ -244,8 +244,32 @@ describe("buildAnalysisEngine", () => {
     expect(data.establishmentSpending[0].percent).toBe(100);
   });
 
+  it("calculates MoM comparison metrics when previous month exists", () => {
+    const data = buildAnalysisEngine(
+      receipts,
+      { month: "2026-04", product: null, category: null, establishment: null },
+      false,
+    );
+
+    expect(data.momComparison).not.toBeNull();
+    expect(data.momComparison?.hasPreviousMonth).toBe(true);
+    expect(data.momComparison?.previousMonthLabel).toBe("Mar/26");
+    expect(data.momComparison?.spentDiff).toBe(24 - 43);
+  });
+
+  it("generates smart insights and price breakdown by establishment", () => {
+    const data = buildAnalysisEngine(
+      receipts,
+      { month: "2026-04", product: "Cafe", category: null, establishment: null },
+      false,
+    );
+
+    expect(data.insights.length).toBeGreaterThan(0);
+    expect(data.productEstablishmentPrices.length).toBeGreaterThan(0);
+    expect(data.productEstablishmentPrices[0].establishmentName).toBeDefined();
+  });
+
   it("exports emptyFilters helper for reuse", () => {
-    // Smoke test: garante que emptyFilters tem a forma esperada
-    expect(emptyFilters).toEqual({ month: null, product: null, category: null });
+    expect(emptyFilters).toEqual({ month: null, product: null, category: null, establishment: null });
   });
 });

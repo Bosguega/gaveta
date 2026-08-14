@@ -1,8 +1,28 @@
 import { useState } from 'react'
-import { BarChart3, TrendingUp, ShoppingBag, ArrowLeft, PieChart, Package, DollarSign, Store } from 'lucide-react'
+import {
+    BarChart3,
+    TrendingUp,
+    ShoppingBag,
+    ArrowLeft,
+    PieChart,
+    Package,
+    DollarSign,
+    Store,
+    Printer,
+    Trophy,
+    Medal,
+    ArrowUpRight,
+    ArrowDownRight,
+    ChevronDown,
+    ChevronUp,
+    Filter,
+} from 'lucide-react'
 import { useAnalysisData } from '../../hooks/useAnalysisData'
 import { formatBRL } from '../../utils/currency'
 import type { Receipt } from '../../types/domain'
+import DonutChart from './DonutChart'
+import InteractiveBarChart from './InteractiveBarChart'
+import InsightsCard from './InsightsCard'
 import './AnalysisTab.css'
 
 interface AnalysisTabProps {
@@ -10,10 +30,6 @@ interface AnalysisTabProps {
     receipts?: Receipt[]
     scopeLabel?: string
 }
-
-const PRICE_CHART_HEIGHT = 130
-
-const TOTAL_CHART_HEIGHT = 140
 
 function formatMoney(value: number): string {
     return `R$ ${formatBRL(value)}`
@@ -29,6 +45,7 @@ function formatQuantity(value: number): string {
 export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: AnalysisTabProps) {
     const {
         monthlySummary,
+        momComparison,
         categories,
         topProducts,
         priceEvolution,
@@ -36,38 +53,37 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
         totalEvolution,
         establishmentSpending,
         availableMonths,
+        availableEstablishments,
+        insights,
+        priceHighlights,
+        productEstablishmentPrices,
         isLoading,
         resolved,
         setFilter,
     } = useAnalysisData(receipts)
 
     const [showQuantity, setShowQuantity] = useState(false)
+    const [viewModeCategories, setViewModeCategories] = useState<'donut' | 'list'>('donut')
+    const [viewModeStores, setViewModeStores] = useState<'donut' | 'list'>('list')
+    const [expandProducts, setExpandProducts] = useState(false)
+
     const activeEvolution = showQuantity ? quantityEvolution : priceEvolution
+    const grandTotal = totalEvolution.reduce((acc, current) => acc + current.total, 0)
 
-    const priceChartMax =
-        activeEvolution.length > 0
-            ? Math.max(...activeEvolution.map((point) => point.total))
-            : 1
-
-    /**
-     * Toggle de categoria: clica de novo na mesma para limpar.
-     * Como a UI so permite clicar em categorias validas do mes,
-     * o toggle aqui e sempre sobre a `resolved.category`.
-     */
     const handleCategoryClick = (categoryName: string) => {
         setFilter('category', resolved.category === categoryName ? null : categoryName)
     }
 
-    const totalChartMax =
-        totalEvolution.length > 0
-            ? Math.max(...totalEvolution.map((point) => point.total))
-            : 1
+    const handlePrintReport = () => {
+        window.print()
+    }
 
-    const grandTotal = totalEvolution.reduce((acc, current) => acc + current.total, 0)
+    const visibleProducts = expandProducts ? topProducts : topProducts.slice(0, 5)
 
     return (
         <div className="analysis-container">
-            <div className="analysis-header">
+            {/* Header com ações */}
+            <div className="analysis-header no-print">
                 <div className="analysis-header-left">
                     <button className="analysis-back-btn" onClick={onClose} aria-label="Voltar">
                         <ArrowLeft size={20} />
@@ -75,103 +91,211 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
                     <div>
                         <h2>
                             <BarChart3 size={22} color="var(--primary)" />
-                            Análises
+                            Análises & Insights
                         </h2>
                         <div className="analysis-scope">{scopeLabel}</div>
                     </div>
+                </div>
+
+                <div className="analysis-header-actions">
+                    <button
+                        type="button"
+                        className="analysis-action-btn"
+                        onClick={handlePrintReport}
+                        title="Imprimir ou Exportar PDF"
+                    >
+                        <Printer size={18} />
+                        <span className="btn-label">Exportar</span>
+                    </button>
                 </div>
             </div>
 
             {isLoading ? (
                 <div className="analysis-loading">
-                    <p>Carregando dados...</p>
+                    <p>Carregando análises...</p>
+                </div>
+            ) : availableMonths.length === 0 ? (
+                <div className="analysis-empty analysis-empty-large">
+                    <p>Nenhum dado disponível. Adicione notas fiscais para ver análises detalhadas.</p>
                 </div>
             ) : (
                 <>
-                    {availableMonths.length > 0 && (
-                        <div className="analysis-month-selector">
+                    {/* Barra de Filtros Globais */}
+                    <div className="analysis-filter-bar no-print">
+                        <div className="filter-group">
                             <label htmlFor="month-select">Mês:</label>
                             <select
                                 id="month-select"
                                 className="month-select"
                                 value={resolved.month}
-                                onChange={(event) => setFilter('month', event.target.value)}
+                                onChange={(e) => setFilter('month', e.target.value)}
                             >
-                                {availableMonths.map((month) => (
-                                    <option key={month.value} value={month.value}>
-                                        {month.label}
+                                {availableMonths.map((m) => (
+                                    <option key={m.value} value={m.value}>
+                                        {m.label}
                                     </option>
                                 ))}
                             </select>
                         </div>
+
+                        {availableEstablishments.length > 0 && (
+                            <div className="filter-group">
+                                <label htmlFor="est-select">Mercado:</label>
+                                <select
+                                    id="est-select"
+                                    className="month-select"
+                                    value={resolved.establishment ?? ''}
+                                    onChange={(e) => setFilter('establishment', e.target.value || null)}
+                                >
+                                    <option value="">Todos os estabelecimentos</option>
+                                    {availableEstablishments.map((est) => (
+                                        <option key={est} value={est}>
+                                            {est}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Barra de Chips de Filtros Ativos */}
+                    {(resolved.category || resolved.product || resolved.establishment) && (
+                        <div className="analysis-active-chips no-print">
+                            <span className="chips-label">
+                                <Filter size={14} /> Filtros aplicados:
+                            </span>
+                            {resolved.establishment && (
+                                <span className="active-chip">
+                                    Mercado: <strong>{resolved.establishment}</strong>
+                                    <button type="button" onClick={() => setFilter('establishment', null)}>×</button>
+                                </span>
+                            )}
+                            {resolved.category && (
+                                <span className="active-chip">
+                                    Categoria: <strong>{resolved.category}</strong>
+                                    <button type="button" onClick={() => setFilter('category', null)}>×</button>
+                                </span>
+                            )}
+                            {resolved.product && (
+                                <span className="active-chip">
+                                    Produto: <strong>{resolved.product}</strong>
+                                    <button type="button" onClick={() => setFilter('product', null)}>×</button>
+                                </span>
+                            )}
+                        </div>
                     )}
 
-                    {availableMonths.length === 0 ? (
-                        <div className="analysis-empty analysis-empty-large">
-                            <p>Nenhum dado disponível. Adicione notas fiscais para ver análises.</p>
-                        </div>
-                    ) : (
-                        <div className="analysis-grid">
-                            <div className="analysis-card analysis-card-full">
-                                <div className="analysis-card-header">
-                                    <span className="analysis-card-title">
-                                        <TrendingUp size={16} />
-                                        Resumo Mensal
-                                    </span>
-                                    <div
-                                        className="analysis-card-icon"
-                                        style={{ background: 'rgba(16, 185, 129, 0.12)' }}
-                                    >
-                                        <TrendingUp size={18} className="text-primary-green" />
-                                    </div>
+                    <div className="analysis-grid">
+                        {/* KPI Cards / Resumo Mensal com Comparativo MoM */}
+                        <div className="analysis-card analysis-card-full summary-kpi-container">
+                            <div className="analysis-card-header">
+                                <span className="analysis-card-title">
+                                    <TrendingUp size={16} />
+                                    Resumo do Período ({monthlySummary?.periodLabel})
+                                </span>
+                                <div
+                                    className="analysis-card-icon"
+                                    style={{ background: 'rgba(16, 185, 129, 0.12)' }}
+                                >
+                                    <TrendingUp size={18} className="text-primary-green" />
                                 </div>
-
-                                {monthlySummary ? (
-                                    <>
-                                        <div className="summary-month">
-                                            {formatMoney(monthlySummary.totalSpent)}
-                                        </div>
-                                        <div className="summary-period">{monthlySummary.periodLabel}</div>
-
-                                        <div className="summary-stats">
-                                            <div className="summary-stat">
-                                                <div className="summary-stat-label">Produtos lançados</div>
-                                                <div className="summary-stat-value">{monthlySummary.totalProductLines}</div>
-                                                <div className="summary-stat-sub">
-                                                    qtd. total: {formatQuantity(monthlySummary.totalItems)}
-                                                </div>
-                                            </div>
-                                            <div className="summary-stat">
-                                                <div className="summary-stat-label">Ticket médio</div>
-                                                <div className="summary-stat-value">
-                                                    {formatMoney(monthlySummary.avgTicket)}
-                                                </div>
-                                                <div className="summary-stat-sub">por nota</div>
-                                            </div>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <div className="analysis-empty">
-                                        <p>Nenhum dado para este mês.</p>
-                                    </div>
-                                )}
                             </div>
 
-                            <div className="analysis-card analysis-card-products">
-                                <div className="analysis-card-header">
-                                    <span className="analysis-card-title">
-                                        <PieChart size={16} />
-                                        Categorias
-                                    </span>
-                                    <div
-                                        className="analysis-card-icon"
-                                        style={{ background: 'rgba(59, 130, 246, 0.12)' }}
+                            {monthlySummary ? (
+                                <div className="kpi-cards-grid">
+                                    {/* KPI 1: Gasto Total */}
+                                    <div className="kpi-widget">
+                                        <div className="kpi-widget-label">Gasto Total</div>
+                                        <div className="kpi-widget-value">{formatMoney(monthlySummary.totalSpent)}</div>
+                                        {momComparison?.hasPreviousMonth && (
+                                            <div className={`mom-badge ${momComparison.spentPercent > 0 ? 'is-up' : 'is-down'}`}>
+                                                {momComparison.spentPercent > 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                                                {momComparison.spentPercent > 0 ? '+' : ''}{momComparison.spentPercent}% vs. {momComparison.previousMonthLabel}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* KPI 2: Ticket Médio */}
+                                    <div className="kpi-widget">
+                                        <div className="kpi-widget-label">Ticket Médio por Nota</div>
+                                        <div className="kpi-widget-value">{formatMoney(monthlySummary.avgTicket)}</div>
+                                        {momComparison?.hasPreviousMonth && (
+                                            <div className={`mom-badge ${momComparison.ticketPercent > 0 ? 'is-up' : 'is-down'}`}>
+                                                {momComparison.ticketPercent > 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                                                {momComparison.ticketPercent > 0 ? '+' : ''}{momComparison.ticketPercent}% vs. {momComparison.previousMonthLabel}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* KPI 3: Total de Notas e Linhas */}
+                                    <div className="kpi-widget">
+                                        <div className="kpi-widget-label">Notas Fiscais / Itens</div>
+                                        <div className="kpi-widget-value">
+                                            {monthlySummary.totalReceipts} <span className="kpi-widget-subtext">notas ({monthlySummary.totalProductLines} prods.)</span>
+                                        </div>
+                                        <div className="kpi-widget-foot">
+                                            Qtd. total comprada: {formatQuantity(monthlySummary.totalItems)} un.
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="analysis-empty">
+                                    <p>Nenhum dado para este período.</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Card Categorias (Com toggle Donut / Lista) */}
+                        <div className="analysis-card">
+                            <div className="analysis-card-header">
+                                <span className="analysis-card-title">
+                                    <PieChart size={16} />
+                                    Categorias
+                                </span>
+                                <div className="card-header-actions">
+                                    <button
+                                        type="button"
+                                        className="card-toggle-view"
+                                        onClick={() => setViewModeCategories(v => v === 'donut' ? 'list' : 'donut')}
                                     >
+                                        {viewModeCategories === 'donut' ? 'Ver Lista' : 'Ver Gráfico'}
+                                    </button>
+                                    <div className="analysis-card-icon" style={{ background: 'rgba(59, 130, 246, 0.12)' }}>
                                         <PieChart size={18} className="text-primary-blue" />
                                     </div>
                                 </div>
+                            </div>
 
-                                {categories.length > 0 ? (
+                            {categories.length > 0 ? (
+                                viewModeCategories === 'donut' ? (
+                                    <div className="donut-section">
+                                        <DonutChart
+                                            data={categories.map((c) => ({
+                                                name: c.name,
+                                                value: c.amount,
+                                                percent: c.percent,
+                                                color: c.color,
+                                            }))}
+                                            centerLabel="Total Categorias"
+                                            centerValue={`${categories.length} cat.`}
+                                            onSelectSegment={handleCategoryClick}
+                                        />
+                                        <div className="donut-legend-grid">
+                                            {categories.slice(0, 6).map((c) => (
+                                                <button
+                                                    type="button"
+                                                    key={c.name}
+                                                    className={`donut-legend-item ${resolved.category === c.name ? 'is-selected' : ''}`}
+                                                    onClick={() => handleCategoryClick(c.name)}
+                                                >
+                                                    <span className="dot" style={{ background: c.color }} />
+                                                    <span className="name">{c.name}</span>
+                                                    <span className="pct">{c.percent}%</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
                                     <div className="categories-scroll">
                                         {categories.map((category) => {
                                             const isSelected = resolved.category === category.name
@@ -181,77 +305,49 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
                                                     key={category.name}
                                                     className={`category-item category-item-button ${isSelected ? 'is-selected' : ''}`}
                                                     onClick={() => handleCategoryClick(category.name)}
-                                                    aria-pressed={isSelected}
-                                                    title={
-                                                        isSelected
-                                                            ? 'Clique para limpar o filtro'
-                                                            : 'Filtrar produtos desta categoria'
-                                                    }
                                                 >
-                                                    <div
-                                                        className="category-dot"
-                                                        style={{ background: category.color }}
-                                                    />
+                                                    <div className="category-dot" style={{ background: category.color }} />
                                                     <div className="category-info">
                                                         <div className="category-name">{category.name}</div>
                                                         <div className="category-bar">
                                                             <div
                                                                 className="category-bar-fill"
-                                                                style={{
-                                                                    width: `${category.percent}%`,
-                                                                    background: category.color,
-                                                                }}
+                                                                style={{ width: `${category.percent}%`, background: category.color }}
                                                             />
                                                         </div>
                                                     </div>
                                                     <div>
-                                                        <div className="category-amount">
-                                                            {formatMoney(category.amount)}
-                                                        </div>
+                                                        <div className="category-amount">{formatMoney(category.amount)}</div>
                                                         <div className="category-percent">{category.percent}%</div>
                                                     </div>
                                                 </button>
                                             )
                                         })}
                                     </div>
-                                ) : (
-                                    <div className="analysis-empty">
-                                        <p>Nenhuma categoria neste mês.</p>
-                                    </div>
-                                )}
+                                )
+                            ) : (
+                                <div className="analysis-empty">
+                                    <p>Nenhuma categoria neste mês.</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Card Ranking de Produtos Mais Comprados */}
+                        <div className="analysis-card analysis-card-ranked">
+                            <div className="analysis-card-header">
+                                <span className="analysis-card-title">
+                                    <Package size={16} />
+                                    Produtos Mais Comprados
+                                </span>
+                                <div className="analysis-card-icon" style={{ background: 'rgba(139, 92, 246, 0.12)' }}>
+                                    <Package size={18} className="text-primary-purple" />
+                                </div>
                             </div>
 
-                            <div className="analysis-card analysis-card-ranked">
-                                <div className="analysis-card-header">
-                                    <span className="analysis-card-title">
-                                        <Package size={16} />
-                                        Produtos Mais Comprados
-                                    </span>
-                                    <div
-                                        className="analysis-card-icon"
-                                        style={{ background: 'rgba(139, 92, 246, 0.12)' }}
-                                    >
-                                        <Package size={18} className="text-primary-purple" />
-                                    </div>
-                                </div>
-
-                                {resolved.category && (
-                                    <div className="top-products-filter-label">
-                                        Filtrando por: <strong>{resolved.category}</strong>{' '}
-                                        <button
-                                            type="button"
-                                            className="top-products-filter-clear"
-                                            onClick={() => setFilter('category', null)}
-                                            aria-label="Limpar filtro de categoria"
-                                        >
-                                            ×
-                                        </button>
-                                    </div>
-                                )}
-
-                                {topProducts.length > 0 ? (
+                            {topProducts.length > 0 ? (
+                                <>
                                     <div className="products-scroll">
-                                        {topProducts.map((product, index) => (
+                                        {visibleProducts.map((product, index) => (
                                             <button
                                                 type="button"
                                                 className={`product-item product-item-button ${product.name === resolved.product ? 'is-selected' : ''}`}
@@ -261,187 +357,186 @@ export function AnalysisTab({ onClose, receipts, scopeLabel = 'Dados gerais' }: 
                                                 <div
                                                     className={`product-rank ${index === 0 ? 'top-1' : ''}${index === 1 ? 'top-2' : ''}${index === 2 ? 'top-3' : ''}`}
                                                 >
-                                                    {index + 1}
+                                                    {index === 0 ? <Trophy size={13} color="#fbbf24" /> : index === 1 ? <Medal size={13} color="#94a3b8" /> : index === 2 ? <Medal size={13} color="#b45309" /> : index + 1}
                                                 </div>
                                                 <div className="product-info">
                                                     <div className="product-name">{product.name}</div>
-                                                    <div className="product-qty">
-                                                        {formatQuantity(product.qty)}x comprado
-                                                    </div>
+                                                    <div className="product-qty">{formatQuantity(product.qty)}x comprado</div>
                                                 </div>
-                                                <div className="product-total">
-                                                    {formatMoney(product.total)}
-                                                </div>
+                                                <div className="product-total">{formatMoney(product.total)}</div>
                                             </button>
                                         ))}
                                     </div>
-                                ) : (
-                                    <div className="analysis-empty">
-                                        <p>Nenhum produto neste mês.</p>
-                                    </div>
-                                )}
-                            </div>
 
-                            <div className="analysis-card analysis-card-establishments">
-                                <div className="analysis-card-header">
-                                    <span className="analysis-card-title">
-                                        <Store size={16} />
-                                        Gastos por Estabelecimento
-                                    </span>
-                                    <div
-                                        className="analysis-card-icon"
-                                        style={{ background: 'rgba(236, 72, 153, 0.12)' }}
+                                    {topProducts.length > 5 && (
+                                        <button
+                                            type="button"
+                                            className="expand-products-btn"
+                                            onClick={() => setExpandProducts((v) => !v)}
+                                        >
+                                            {expandProducts ? (
+                                                <>Mostrar Menos <ChevronUp size={14} /></>
+                                            ) : (
+                                                <>Ver todos os {topProducts.length} produtos <ChevronDown size={14} /></>
+                                            )}
+                                        </button>
+                                    )}
+                                </>
+                            ) : (
+                                <div className="analysis-empty">
+                                    <p>Nenhum produto encontrado com os filtros atuais.</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Card Gastos por Estabelecimento */}
+                        <div className="analysis-card">
+                            <div className="analysis-card-header">
+                                <span className="analysis-card-title">
+                                    <Store size={16} />
+                                    Gastos por Estabelecimento
+                                </span>
+                                <div className="card-header-actions">
+                                    <button
+                                        type="button"
+                                        className="card-toggle-view"
+                                        onClick={() => setViewModeStores(v => v === 'donut' ? 'list' : 'donut')}
                                     >
+                                        {viewModeStores === 'donut' ? 'Ver Lista' : 'Ver Gráfico'}
+                                    </button>
+                                    <div className="analysis-card-icon" style={{ background: 'rgba(236, 72, 153, 0.12)' }}>
                                         <Store size={18} className="text-primary-pink" />
                                     </div>
                                 </div>
+                            </div>
 
-                                {establishmentSpending.length > 0 ? (
+                            {establishmentSpending.length > 0 ? (
+                                viewModeStores === 'donut' ? (
+                                    <div className="donut-section">
+                                        <DonutChart
+                                            data={establishmentSpending.map((e) => ({
+                                                name: e.name,
+                                                value: e.amount,
+                                                percent: e.percent,
+                                                color: e.color,
+                                            }))}
+                                            centerLabel="Mercados"
+                                            centerValue={`${establishmentSpending.length} loj.`}
+                                        />
+                                    </div>
+                                ) : (
                                     <div className="categories-scroll">
                                         {establishmentSpending.map((est) => (
-                                            <div
-                                                key={est.name}
-                                                className="category-item"
-                                            >
-                                                <div
-                                                    className="category-dot"
-                                                    style={{ background: est.color }}
-                                                />
+                                            <div key={est.name} className="category-item">
+                                                <div className="category-dot" style={{ background: est.color }} />
                                                 <div className="category-info">
                                                     <div className="category-name">{est.name}</div>
                                                     <div className="category-bar">
                                                         <div
                                                             className="category-bar-fill"
-                                                            style={{
-                                                                width: `${est.percent}%`,
-                                                                background: est.color,
-                                                            }}
+                                                            style={{ width: `${est.percent}%`, background: est.color }}
                                                         />
                                                     </div>
                                                 </div>
                                                 <div>
-                                                    <div className="category-amount">
-                                                        {formatMoney(est.amount)}
-                                                    </div>
+                                                    <div className="category-amount">{formatMoney(est.amount)}</div>
                                                     <div className="category-percent">{est.percent}%</div>
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
-                                ) : (
-                                    <div className="analysis-empty">
-                                        <p>Nenhum estabelecimento neste mês.</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="analysis-card">
-                                <div className="analysis-card-header">
-                                    <span className="analysis-card-title">
-                                        <ShoppingBag size={16} />
-                                        {showQuantity ? 'Quantidade por Mês' : 'Evolução de Preços'}
-                                    </span>
-                                    <div
-                                        className="analysis-card-icon"
-                                        style={{ background: 'rgba(245, 158, 11, 0.12)' }}
-                                    >
-                                        <ShoppingBag size={18} className="text-primary-orange" />
-                                    </div>
+                                )
+                            ) : (
+                                <div className="analysis-empty">
+                                    <p>Nenhum estabelecimento neste mês.</p>
                                 </div>
-
-                                {activeEvolution.length > 0 && resolved.product ? (
-                                    <>
-                                        <div className="price-evolution-product">
-                                            Produto: {resolved.product}
-                                        </div>
-                                        <button
-                                            type="button"
-                                            className="price-toggle"
-                                            onClick={() => setShowQuantity((prev) => !prev)}
-                                            aria-pressed={showQuantity}
-                                        >
-                                            {showQuantity ? 'Ver preços' : 'Ver quantidades'}
-                                        </button>
-                                        <div className="price-chart">
-                                            {activeEvolution.map((item) => {
-                                                const barHeight =
-                                                    (item.total / priceChartMax) * PRICE_CHART_HEIGHT
-                                                return (
-                                                    <div className="price-bar-wrapper" key={item.month}>
-                                                        <div className="price-bar-value">{item.label}</div>
-                                                        <div
-                                                            className="price-bar"
-                                                            style={{
-                                                                height: `${Math.max(barHeight, 8)}px`,
-                                                                background: showQuantity
-                                                                    ? 'linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%)'
-                                                                    : 'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)',
-                                                            }}
-                                                        />
-                                                        <div className="price-bar-label">{item.month}</div>
-                                                    </div>
-                                                )
-                                            })}
-                                        </div>
-                                    </>
-                                ) : (
-                                    <div className="analysis-empty">
-                                        <p>Sem dados de evolução do produto.</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="analysis-card analysis-card-full">
-                                <div className="analysis-card-header">
-                                    <span className="analysis-card-title">
-                                        <DollarSign size={16} />
-                                        Evolução de Gastos Totais
-                                    </span>
-                                    <div
-                                        className="analysis-card-icon"
-                                        style={{ background: 'rgba(239, 68, 68, 0.12)' }}
-                                    >
-                                        <DollarSign size={18} className="text-primary-red" />
-                                    </div>
-                                </div>
-
-                                {totalEvolution.length > 0 ? (
-                                    <>
-                                        <div className="total-evolution-summary">
-                                            <span className="label">Total no período:</span>
-                                            <span className="value">
-                                                {formatMoney(grandTotal)}
-                                            </span>
-                                        </div>
-                                        <div className="price-chart" style={{ height: TOTAL_CHART_HEIGHT }}>
-                                            {totalEvolution.map((item) => {
-                                                const barHeight =
-                                                    (item.total / totalChartMax) * TOTAL_CHART_HEIGHT
-                                                return (
-                                                    <div className="price-bar-wrapper" key={item.month}>
-                                                        <div className="price-bar-value">{item.label}</div>
-                                                        <div
-                                                            className="price-bar"
-                                                            style={{
-                                                                height: `${Math.max(barHeight, 8)}px`,
-                                                                background:
-                                                                    'linear-gradient(180deg, #10b981 0%, #059669 100%)',
-                                                            }}
-                                                        />
-                                                        <div className="price-bar-label">{item.month}</div>
-                                                    </div>
-                                                )
-                                            })}
-                                        </div>
-                                    </>
-                                ) : (
-                                    <div className="analysis-empty">
-                                        <p>Sem dados de gastos.</p>
-                                    </div>
-                                )}
-                            </div>
+                            )}
                         </div>
-                    )}
+
+                        {/* Card Evolução de Preços / Quantidades de Produto */}
+                        <div className="analysis-card">
+                            <div className="analysis-card-header">
+                                <span className="analysis-card-title">
+                                    <ShoppingBag size={16} />
+                                    {showQuantity ? 'Quantidade por Mês' : 'Evolução de Preço'}
+                                </span>
+                                <div className="analysis-card-icon" style={{ background: 'rgba(245, 158, 11, 0.12)' }}>
+                                    <ShoppingBag size={18} className="text-primary-orange" />
+                                </div>
+                            </div>
+
+                            {activeEvolution.length > 0 && resolved.product ? (
+                                <>
+                                    <div className="price-evolution-product">
+                                        Produto selecionado: <strong>{resolved.product}</strong>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="price-toggle"
+                                        onClick={() => setShowQuantity((prev) => !prev)}
+                                        aria-pressed={showQuantity}
+                                    >
+                                        {showQuantity ? 'Ver evolução de preços' : 'Ver quantidade comprada'}
+                                    </button>
+
+                                    <InteractiveBarChart
+                                        data={activeEvolution}
+                                        height={140}
+                                        barGradient={
+                                            showQuantity
+                                                ? 'linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%)'
+                                                : 'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)'
+                                        }
+                                        unitLabel={showQuantity ? 'un.' : ''}
+                                    />
+                                </>
+                            ) : (
+                                <div className="analysis-empty">
+                                    <p>Clique em um produto da lista acima para ver o histórico de preços.</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Card Insights Inteligentes e Comparador */}
+                        <InsightsCard
+                            insights={insights}
+                            priceHighlights={priceHighlights}
+                            productEstablishmentPrices={productEstablishmentPrices}
+                            selectedProduct={resolved.product}
+                        />
+
+                        {/* Card Evolução de Gastos Totais */}
+                        <div className="analysis-card analysis-card-full">
+                            <div className="analysis-card-header">
+                                <span className="analysis-card-title">
+                                    <DollarSign size={16} />
+                                    Histórico de Gastos Totais (Últimos Mêses)
+                                </span>
+                                <div className="analysis-card-icon" style={{ background: 'rgba(239, 68, 68, 0.12)' }}>
+                                    <DollarSign size={18} className="text-primary-red" />
+                                </div>
+                            </div>
+
+                            {totalEvolution.length > 0 ? (
+                                <>
+                                    <div className="total-evolution-summary">
+                                        <span className="label">Total acumulado no período:</span>
+                                        <span className="value">{formatMoney(grandTotal)}</span>
+                                    </div>
+
+                                    <InteractiveBarChart
+                                        data={totalEvolution}
+                                        height={150}
+                                        barGradient="linear-gradient(180deg, #10b981 0%, #059669 100%)"
+                                    />
+                                </>
+                            ) : (
+                                <div className="analysis-empty">
+                                    <p>Sem dados de gastos.</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </>
             )}
         </div>

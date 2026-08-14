@@ -16,6 +16,17 @@ export interface MonthlySummary {
     periodLabel: string
 }
 
+export interface MoMComparison {
+    spentDiff: number
+    spentPercent: number
+    ticketDiff: number
+    ticketPercent: number
+    itemsDiff: number
+    itemsPercent: number
+    hasPreviousMonth: boolean
+    previousMonthLabel: string
+}
+
 export interface CategorySummary {
     name: string
     amount: number
@@ -42,13 +53,39 @@ export interface EstablishmentSpending {
     color: string
 }
 
+export interface InsightItem {
+    id: string
+    type: 'info' | 'warning' | 'success'
+    title: string
+    description: string
+    icon: 'trending' | 'store' | 'category' | 'sparkles' | 'alert'
+}
+
+export interface PriceHighlight {
+    productName: string
+    oldPrice: number
+    currentPrice: number
+    percentChange: number
+    direction: 'up' | 'down'
+}
+
+export interface ProductEstablishmentPrice {
+    establishmentName: string
+    avgPrice: number
+    count: number
+    minPrice: number
+    maxPrice: number
+}
+
 export interface AnalysisFilters {
     /** "YYYY-MM" ou null (null = último mês disponível) */
-    month: string | null
+    month?: string | null
     /** Nome exato do produto ou null */
-    product: string | null
+    product?: string | null
     /** Nome exato da categoria ou null (null = todas) */
-    category: string | null
+    category?: string | null
+    /** Nome do estabelecimento ou null (null = todos) */
+    establishment?: string | null
 }
 
 export interface AnalysisResolved {
@@ -58,10 +95,13 @@ export interface AnalysisResolved {
     product: string | null
     /** Categoria selecionada que existe no mês atual, ou null se inválida/não selecionada */
     category: string | null
+    /** Estabelecimento selecionado que existe no mês atual, ou null se inválido/não selecionado */
+    establishment: string | null
 }
 
 export interface AnalysisEngine {
     monthlySummary: MonthlySummary | null
+    momComparison: MoMComparison | null
     categories: CategorySummary[]
     topProducts: ProductRank[]
     priceEvolution: MonthlyTotal[]
@@ -70,6 +110,10 @@ export interface AnalysisEngine {
     totalEvolution: MonthlyTotal[]
     establishmentSpending: EstablishmentSpending[]
     availableMonths: { value: string; label: string }[]
+    availableEstablishments: string[]
+    insights: InsightItem[]
+    priceHighlights: PriceHighlight[]
+    productEstablishmentPrices: ProductEstablishmentPrice[]
     isLoading: boolean
 
     /** O que o usuário pediu (pode ser inválido) */
@@ -192,9 +236,30 @@ export function buildAnalysisEngine(
             ? filters.month
             : uniqueMonths[uniqueMonths.length - 1] ?? getCurrentYearMonth()
 
-    const monthReceipts = receiptDates
+    // ── Available Establishments in month ──
+    const monthAllReceipts = receiptDates
         .filter((item) => item.yearMonth === resolvedMonth)
         .map((item) => item.receipt)
+
+    const availableEstablishments = [...new Set(
+        monthAllReceipts
+            .map((r) => r.establishment_display || r.establishment)
+            .filter((name): name is string => Boolean(name))
+    )].sort()
+
+    // ── Resolved Establishment ──
+    const requestedEst = filters.establishment ?? null
+    const resolvedEstablishment =
+        requestedEst !== null && availableEstablishments.includes(requestedEst)
+            ? requestedEst
+            : null
+
+    // ── Filtered Month Receipts (considering establishment filter if present) ──
+    const monthReceipts = monthAllReceipts.filter((receipt) => {
+        if (!resolvedEstablishment) return true
+        const estName = receipt.establishment_display || receipt.establishment
+        return estName === resolvedEstablishment
+    })
 
     // ── Monthly computation ──
     let totalSpent = 0
@@ -221,6 +286,52 @@ export function buildAnalysisEngine(
         }
         : null
 
+    // ── MoM Comparison (Month over Month) ──
+    let momComparison: MoMComparison | null = null
+    const resolvedMonthIdx = uniqueMonths.indexOf(resolvedMonth)
+    if (resolvedMonthIdx > 0) {
+        const prevMonth = uniqueMonths[resolvedMonthIdx - 1]
+        const prevReceipts = receiptDates
+            .filter((item) => item.yearMonth === prevMonth)
+            .map((item) => item.receipt)
+            .filter((receipt) => {
+                if (!resolvedEstablishment) return true
+                const estName = receipt.establishment_display || receipt.establishment
+                return estName === resolvedEstablishment
+            })
+
+        let prevSpent = 0
+        let prevItems = 0
+        for (const receipt of prevReceipts) {
+            for (const item of receipt.items ?? []) {
+                prevSpent += calculateItemTotal(item, parseBRL)
+                prevItems += getCountableQty(item)
+            }
+        }
+        const prevReceiptsCount = prevReceipts.length
+        const prevAvgTicket = prevReceiptsCount > 0 ? prevSpent / prevReceiptsCount : 0
+
+        const spentDiff = totalSpent - prevSpent
+        const spentPercent = prevSpent > 0 ? (spentDiff / prevSpent) * 100 : 0
+
+        const ticketDiff = (monthlySummary?.avgTicket ?? 0) - prevAvgTicket
+        const ticketPercent = prevAvgTicket > 0 ? (ticketDiff / prevAvgTicket) * 100 : 0
+
+        const itemsDiff = totalItems - prevItems
+        const itemsPercent = prevItems > 0 ? (itemsDiff / prevItems) * 100 : 0
+
+        momComparison = {
+            spentDiff,
+            spentPercent: Math.round(spentPercent * 10) / 10,
+            ticketDiff,
+            ticketPercent: Math.round(ticketPercent * 10) / 10,
+            itemsDiff,
+            itemsPercent: Math.round(itemsPercent * 10) / 10,
+            hasPreviousMonth: true,
+            previousMonthLabel: formatShortMonth(prevMonth),
+        }
+    }
+
     // ── Establishment spending ──
     const establishmentMap = new Map<string, number>()
     for (const receipt of monthReceipts) {
@@ -246,8 +357,6 @@ export function buildAnalysisEngine(
     // ── Categories ──
     const categoryMap = new Map<string, number>()
     for (const item of allItems) {
-        // Defesa em profundidade: normaliza categoria para a grafia canonica
-        // mesmo que algum caminho de leitura nao tenha normalizado.
         const category = normalizeCategory(item.category)
         categoryMap.set(
             category,
@@ -264,17 +373,16 @@ export function buildAnalysisEngine(
         }))
         .sort((a, b) => b.amount - a.amount)
 
-    // ── Resolved category (NO silent fallback) ──
+    // ── Resolved category ──
     const requestedCategory = filters.category ?? null
     const resolvedCategory =
         requestedCategory !== null && categories.some((c) => c.name === requestedCategory)
             ? requestedCategory
             : null
 
-    // ── Products ranking (filtrado pela categoria selecionada, se houver) ──
+    // ── Products ranking ──
     const productMap = new Map<string, { qty: number; total: number }>()
     for (const item of allItems) {
-        // Se uma categoria esta selecionada, ignora items de outras categorias
         if (resolvedCategory !== null && normalizeCategory(item.category) !== resolvedCategory) {
             continue
         }
@@ -289,14 +397,13 @@ export function buildAnalysisEngine(
         .map(([name, data]) => ({ name, qty: data.qty, total: data.total }))
         .sort((a, b) => b.qty - a.qty || b.total - a.total)
 
-    // ── Resolved product (NO silent fallback) ──
+    // ── Resolved product ──
     const resolvedProduct =
-        filters.product !== null && topProducts.some((p) => p.name === filters.product)
+        filters.product != null && topProducts.some((p) => p.name === filters.product)
             ? filters.product
             : null
 
-    // ── Price & quantity evolution (only when a product is resolved) ──
-    // Limits to the 6 most recent months to avoid visual clutter.
+    // ── Price & quantity evolution (last 6 months) ──
     const evolutionMonths = uniqueMonths.slice(-6)
     const priceEvolution: MonthlyTotal[] = []
     const quantityEvolution: MonthlyTotal[] = []
@@ -308,6 +415,10 @@ export function buildAnalysisEngine(
             let totalQty = 0
 
             for (const { receipt } of receiptDates.filter((item) => item.yearMonth === yearMonth)) {
+                if (resolvedEstablishment) {
+                    const estName = receipt.establishment_display || receipt.establishment
+                    if (estName !== resolvedEstablishment) continue
+                }
                 for (const item of receipt.items ?? []) {
                     if (getProductKey(item) === resolvedProduct) {
                         totalUnitPrice += parseBRL(item.paid_price ?? item.price)
@@ -338,6 +449,10 @@ export function buildAnalysisEngine(
         let monthTotal = 0
 
         for (const { receipt } of receiptDates.filter((item) => item.yearMonth === yearMonth)) {
+            if (resolvedEstablishment) {
+                const estName = receipt.establishment_display || receipt.establishment
+                if (estName !== resolvedEstablishment) continue
+            }
             for (const item of receipt.items ?? []) {
                 monthTotal += calculateItemTotal(item, parseBRL)
             }
@@ -350,8 +465,149 @@ export function buildAnalysisEngine(
         }
     })
 
+    // ── Product price breakdown across establishments ──
+    const productEstablishmentPrices: ProductEstablishmentPrice[] = []
+    if (resolvedProduct) {
+        const estPriceMap = new Map<string, { totalUnitPrice: number; count: number; prices: number[] }>()
+        for (const { receipt } of receiptDates) {
+            const estName = receipt.establishment_display || receipt.establishment || 'Outros'
+            for (const item of receipt.items ?? []) {
+                if (getProductKey(item) === resolvedProduct) {
+                    const unitPrice = parseBRL(item.paid_price ?? item.price)
+                    if (unitPrice > 0) {
+                        const current = estPriceMap.get(estName) || { totalUnitPrice: 0, count: 0, prices: [] }
+                        current.totalUnitPrice += unitPrice
+                        current.count += 1
+                        current.prices.push(unitPrice)
+                        estPriceMap.set(estName, current)
+                    }
+                }
+            }
+        }
+
+        for (const [estName, data] of estPriceMap.entries()) {
+            productEstablishmentPrices.push({
+                establishmentName: estName,
+                avgPrice: data.totalUnitPrice / data.count,
+                count: data.count,
+                minPrice: Math.min(...data.prices),
+                maxPrice: Math.max(...data.prices),
+            })
+        }
+        productEstablishmentPrices.sort((a, b) => a.avgPrice - b.avgPrice)
+    }
+
+    // ── Price Highlights (Inflation / Price Drops across recent 2 months) ──
+    const priceHighlights: PriceHighlight[] = []
+    if (resolvedMonthIdx > 0) {
+        const prevMonth = uniqueMonths[resolvedMonthIdx - 1]
+        const currentItemsMap = new Map<string, number[]>()
+        const prevItemsMap = new Map<string, number[]>()
+
+        for (const { receipt } of receiptDates.filter((i) => i.yearMonth === resolvedMonth)) {
+            for (const item of receipt.items ?? []) {
+                const key = getProductKey(item)
+                const price = parseBRL(item.paid_price ?? item.price)
+                if (price > 0) {
+                    const list = currentItemsMap.get(key) || []
+                    list.push(price)
+                    currentItemsMap.set(key, list)
+                }
+            }
+        }
+
+        for (const { receipt } of receiptDates.filter((i) => i.yearMonth === prevMonth)) {
+            for (const item of receipt.items ?? []) {
+                const key = getProductKey(item)
+                const price = parseBRL(item.paid_price ?? item.price)
+                if (price > 0) {
+                    const list = prevItemsMap.get(key) || []
+                    list.push(price)
+                    prevItemsMap.set(key, list)
+                }
+            }
+        }
+
+        for (const [productName, currentPrices] of currentItemsMap.entries()) {
+            const prevPrices = prevItemsMap.get(productName)
+            if (prevPrices && prevPrices.length > 0) {
+                const avgCurrent = currentPrices.reduce((a, b) => a + b, 0) / currentPrices.length
+                const avgPrev = prevPrices.reduce((a, b) => a + b, 0) / prevPrices.length
+                const diff = avgCurrent - avgPrev
+                const percentChange = ((avgCurrent - avgPrev) / avgPrev) * 100
+
+                if (Math.abs(percentChange) >= 3 && Math.abs(diff) >= 0.2) {
+                    priceHighlights.push({
+                        productName,
+                        oldPrice: avgPrev,
+                        currentPrice: avgCurrent,
+                        percentChange: Math.round(percentChange * 10) / 10,
+                        direction: percentChange > 0 ? 'up' : 'down',
+                    })
+                }
+            }
+        }
+        priceHighlights.sort((a, b) => Math.abs(b.percentChange) - Math.abs(a.percentChange))
+    }
+
+    // ── Smart Insights Generation ──
+    const insights: InsightItem[] = []
+    if (categories.length > 0) {
+        const topCat = categories[0]
+        insights.push({
+            id: 'top-category',
+            type: 'info',
+            title: 'Categoria Dominante',
+            description: `A categoria ${topCat.name} representou ${topCat.percent}% (R$ ${topCat.amount.toFixed(2).replace('.', ',')}) do seu orçamento este mês.`,
+            icon: 'category',
+        })
+    }
+
+    if (establishmentSpending.length > 0) {
+        const topEst = establishmentSpending[0]
+        insights.push({
+            id: 'top-store',
+            type: 'info',
+            title: 'Estabelecimento Principal',
+            description: `Seu local de compras mais frequentado foi ${topEst.name}, onde concentrou ${topEst.percent}% dos seus gastos.`,
+            icon: 'store',
+        })
+    }
+
+    if (momComparison && momComparison.hasPreviousMonth) {
+        if (momComparison.spentPercent > 8) {
+            insights.push({
+                id: 'mom-warning',
+                type: 'warning',
+                title: 'Alerta de Aumento de Gastos',
+                description: `Seus gastos aumentaram +${momComparison.spentPercent}% em relação a ${momComparison.previousMonthLabel} (+R$ ${momComparison.spentDiff.toFixed(2).replace('.', ',')}).`,
+                icon: 'alert',
+            })
+        } else if (momComparison.spentPercent < -5) {
+            insights.push({
+                id: 'mom-success',
+                type: 'success',
+                title: 'Economia no Período',
+                description: `Você economizou ${Math.abs(momComparison.spentPercent)}% em relação a ${momComparison.previousMonthLabel} (R$ ${Math.abs(momComparison.spentDiff).toFixed(2).replace('.', ',')} a menos).`,
+                icon: 'sparkles',
+            })
+        }
+    }
+
+    if (topProducts.length > 0) {
+        const topProd = topProducts[0]
+        insights.push({
+            id: 'top-product',
+            type: 'info',
+            title: 'Item Mais Comprado',
+            description: `${topProd.name} foi o produto mais adquirido no período, com ${topProd.qty} unidades compradas.`,
+            icon: 'trending',
+        })
+    }
+
     return {
         monthlySummary,
+        momComparison,
         categories,
         topProducts,
         priceEvolution,
@@ -359,12 +615,17 @@ export function buildAnalysisEngine(
         totalEvolution,
         establishmentSpending,
         availableMonths: computedAvailableMonths,
+        availableEstablishments,
+        insights,
+        priceHighlights: priceHighlights.slice(0, 4),
+        productEstablishmentPrices,
         isLoading,
         filters,
         resolved: {
             month: resolvedMonth,
             product: resolvedProduct,
             category: resolvedCategory,
+            establishment: resolvedEstablishment,
         },
         setFilter: () => {
             // Will be overridden in the hook
@@ -385,6 +646,7 @@ export function useAnalysisData(
         month: null,
         product: null,
         category: null,
+        establishment: null,
     })
 
     const setFilter = useCallback(
@@ -392,13 +654,12 @@ export function useAnalysisData(
             setFiltersState((prev) => {
                 const next = { ...prev, [name]: value }
 
-                // Changing the month resets the product filter
+                // Changing the month resets product filter
                 if (name === 'month') {
                     next.product = null
                 }
 
-                // Changing the category also resets the product filter
-                // (o produto filtrado pode nao existir na nova categoria)
+                // Changing category resets product filter
                 if (name === 'category') {
                     next.product = null
                 }
