@@ -57,12 +57,15 @@ impl FileType {
 
     /// Flat list of extensions the scanner should discover. Only formats that
     /// have a working renderer/processor are enabled; when a new handler lands
-    /// (image, embroidery), append its `FileType` variant here. This is the
+    /// (embroidery), append its `FileType` variant here. This is the
     /// single source of truth for the discoverable extensions, replacing the
     /// former `SUPPORTED_EXTENSIONS` constant in commands.rs.
-    pub fn enabled_extensions() -> &'static [&'static str] {
-        // Only Pdf has a working thumbnail renderer in the current version.
-        FileType::Pdf.supported_extensions()
+    pub fn enabled_extensions() -> Vec<&'static str> {
+        // Pdf and Image have working thumbnail renderers; Embroidery is
+        // classified but has no renderer yet, so it stays disabled.
+        let mut exts = FileType::Pdf.supported_extensions().to_vec();
+        exts.extend_from_slice(FileType::Image.supported_extensions());
+        exts
     }
 }
 

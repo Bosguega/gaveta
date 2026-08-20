@@ -1,5 +1,6 @@
 use crate::file_types::FileType;
 use image::codecs::webp::WebPEncoder;
+use image::imageops::FilterType;
 use image::ImageEncoder;
 use pdfium_render::prelude::*;
 use sha2::{Digest, Sha256};
@@ -49,7 +50,13 @@ pub fn render_thumbnail(
             Err(e) => Err(e),
         },
         FileType::Embroidery => Err("Renderizador de miniatura para bordado não implementado".to_string()),
-        FileType::Image => Err("Renderizador de miniatura para imagem não implementado".to_string()),
+        FileType::Image => match generate_image_thumbnail(path, cache_dir) {
+            Ok(_) => Ok(ThumbnailOutput {
+                thumbnail_key: key,
+                page_count: None,
+            }),
+            Err(e) => Err(e),
+        },
         FileType::Unknown => Err(format!("Tipo de arquivo sem renderizador: {file_type}")),
     }
 }
@@ -123,6 +130,43 @@ fn generate_pdf_thumbnail(
         .map_err(|e| format!("Falha ao salvar thumbnail: {e}"))?;
 
     Ok(Some(page_count))
+}
+
+/// Renders an image file (png/jpg/bmp/gif/webp/…) to a WebP thumbnail in the
+/// cache directory, preserving aspect ratio so the longest side is
+/// `THUMBNAIL_WIDTH`. Returns `None` for `page_count` (images have no pages).
+fn generate_image_thumbnail(
+    image_path: &str,
+    cache_dir: &Path,
+) -> Result<(), String> {
+    let key = thumbnail_key(image_path);
+    let output_path = cache_dir.join(&key);
+
+    let img = image::open(image_path).map_err(|e| format!("Falha ao abrir imagem: {e}"))?;
+
+    // Scale down preserving aspect ratio; keep the original size when smaller
+    // than the target width.
+    let (w, h) = (img.width(), img.height());
+    let scale = THUMBNAIL_WIDTH as f32 / w.max(h) as f32;
+    let (tw, th) = if scale < 1.0 {
+        ((w as f32 * scale) as u32, (h as f32 * scale) as u32)
+    } else {
+        (w, h)
+    };
+
+    let resized = img.resize(tw, th, FilterType::Lanczos3);
+    let rgba = resized.to_rgba8();
+
+    let mut encoded = Vec::new();
+    let encoder = WebPEncoder::new_lossless(&mut encoded);
+    encoder
+        .write_image(&rgba, tw, th, image::ExtendedColorType::Rgba8)
+        .map_err(|e| format!("Falha ao codificar WebP: {e}"))?;
+
+    fs::write(&output_path, &encoded)
+        .map_err(|e| format!("Falha ao salvar thumbnail: {e}"))?;
+
+    Ok(())
 }
 
 /// Checks if a thumbnail file exists in the cache.

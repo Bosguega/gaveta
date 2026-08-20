@@ -8,7 +8,10 @@ export function formatBytes(bytes: number): string {
     return `${value.toFixed(value >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-export function formatPageCount(pages: number | null): string {
+export function formatPageCount(pages: number | null, fileType: string = 'pdf'): string {
+    if (fileType === 'image') {
+        return 'imagem';
+    }
     if (pages === null) {
         return 'págs ?';
     }

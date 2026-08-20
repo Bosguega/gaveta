@@ -95,7 +95,7 @@ export function ItemCard({ item, selected, onSelect, onOpen, onToggleFavorite }:
                     {item.filename}
                 </div>
                 <div className="text-xs text-slate-500 mt-0.5">
-                    {formatBytes(item.size)} · {formatPageCount(item.page_count)}
+                    {formatBytes(item.size)} · {formatPageCount(item.page_count, item.file_type)}
                 </div>
             </div>
         </div>
