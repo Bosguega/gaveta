@@ -6,7 +6,7 @@ import { listCollections, createCollection, updateCollection, deleteCollection, 
 import type { CollectionDetail } from '@/types';
 
 export function HomePage() {
-    const { collections, setCollections, openCollection } = useAppStore();
+    const { collections, setCollections, openCollection, currentCollectionId } = useAppStore();
     const [showForm, setShowForm] = useState(false);
     const [editing, setEditing] = useState<CollectionDetail | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
@@ -22,8 +22,10 @@ export function HomePage() {
     };
 
     useEffect(() => {
-        loadCollections();
-    }, []);
+        if (currentCollectionId === null) {
+            loadCollections();
+        }
+    }, [currentCollectionId]);
 
     const handleCreate = async (data: { name: string; icon: string; paths: string[]; includeSubfolders: boolean }) => {
         await createCollection(data.name, data.icon, data.paths, data.includeSubfolders);
@@ -53,9 +55,13 @@ export function HomePage() {
 
     const handleDelete = async () => {
         if (!confirmDelete) return;
-        await deleteCollection(confirmDelete.id);
-        setConfirmDelete(null);
-        await loadCollections();
+        try {
+            await deleteCollection(confirmDelete.id);
+            setConfirmDelete(null);
+            await loadCollections();
+        } catch (reason) {
+            setError(reason instanceof Error ? reason.message : 'Não foi possível excluir a coleção.');
+        }
     };
 
     return (

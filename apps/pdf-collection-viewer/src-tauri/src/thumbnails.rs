@@ -1,3 +1,4 @@
+use crate::file_types::FileType;
 use image::codecs::webp::WebPEncoder;
 use image::ImageEncoder;
 use pdfium_render::prelude::*;
@@ -15,13 +16,51 @@ pub fn thumbnail_key(full_path: &str) -> String {
     format!("{digest:x}.webp")
 }
 
+/// Output of a thumbnail rendering attempt.
+///
+/// `page_count` is currently only populated for PDFs; other file types
+/// leave it as `None` until their respective renderers are implemented.
+#[derive(Debug)]
+pub struct ThumbnailOutput {
+    pub thumbnail_key: String,
+    pub page_count: Option<i64>,
+}
+
+/// Dispatches thumbnail generation to the appropriate renderer based on
+/// the item's `file_type`.
+///
+/// This is the single entry point the scan pipeline calls. Adding support
+/// for a new file type is a matter of adding a new arm to the `match` below.
+pub fn render_thumbnail(
+    path: &str,
+    file_type: &str,
+    cache_dir: &Path,
+    resource_dir: &Path,
+) -> Result<ThumbnailOutput, String> {
+    let key = thumbnail_key(path);
+    let ft = FileType::from_str(file_type);
+
+    match ft {
+        FileType::Pdf => match generate_pdf_thumbnail(path, cache_dir, resource_dir) {
+            Ok(page_count) => Ok(ThumbnailOutput {
+                thumbnail_key: key,
+                page_count,
+            }),
+            Err(e) => Err(e),
+        },
+        FileType::Embroidery => Err("Renderizador de miniatura para bordado não implementado".to_string()),
+        FileType::Image => Err("Renderizador de miniatura para imagem não implementado".to_string()),
+        FileType::Unknown => Err(format!("Tipo de arquivo sem renderizador: {file_type}")),
+    }
+}
+
 /// Renders the first page of a PDF to a WebP thumbnail in the cache directory.
-/// Returns (page_count, Ok(())) on success or (None, Err(msg)) on failure.
-pub fn generate_thumbnail(
+/// Returns the page count on success.
+fn generate_pdf_thumbnail(
     pdf_path: &str,
     cache_dir: &Path,
     resource_dir: &Path,
-) -> Result<(Option<i64>, ()), String> {
+) -> Result<Option<i64>, String> {
     let key = thumbnail_key(pdf_path);
     let output_path = cache_dir.join(&key);
 
@@ -83,7 +122,7 @@ pub fn generate_thumbnail(
     fs::write(&output_path, &encoded)
         .map_err(|e| format!("Falha ao salvar thumbnail: {e}"))?;
 
-    Ok((Some(page_count), ()))
+    Ok(Some(page_count))
 }
 
 /// Checks if a thumbnail file exists in the cache.

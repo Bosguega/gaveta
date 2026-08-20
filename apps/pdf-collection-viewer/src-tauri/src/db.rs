@@ -57,17 +57,19 @@ impl rusqlite::types::FromSql for ThumbnailStatus {
     }
 }
 
+/// High-level metadata about a collection (summary, not detail).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Collection {
     pub id: i64,
     pub name: String,
     pub icon: String,
     pub include_subfolders: bool,
-    pub pdf_count: i64,
+    pub item_count: i64,
     pub created_at: String,
     pub updated_at: String,
 }
 
+/// Full detail of a collection including its configured paths.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CollectionDetail {
     pub id: i64,
@@ -79,8 +81,13 @@ pub struct CollectionDetail {
     pub updated_at: String,
 }
 
+/// A single file belonging to a collection.
+///
+/// Formerly named `Pdf`, this struct is collection-agnostic. The `file_type`
+/// field identifies the content kind (pdf, embroidery, image, …) so the
+/// frontend and thumbnail dispatch can branch appropriately.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Pdf {
+pub struct CollectionItem {
     pub id: i64,
     pub collection_id: i64,
     pub path: String,
@@ -88,6 +95,7 @@ pub struct Pdf {
     pub size: i64,
     pub modified_at: String,
     pub page_count: Option<i64>,
+    pub file_type: String,
     pub thumbnail_key: Option<String>,
     pub thumbnail_status: String,
     pub is_favorite: bool,
@@ -108,6 +116,7 @@ pub struct UpdateResult {
     pub updated: usize,
     pub thumbnails_generated: usize,
     pub unavailable_paths: Vec<String>,
+    pub errored_paths: Vec<String>,
 }
 
 fn database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -160,7 +169,7 @@ pub fn open_and_migrate(app: &tauri::AppHandle) -> Result<Connection, String> {
             UNIQUE(collection_id, path)
         );
 
-        CREATE TABLE IF NOT EXISTS pdfs (
+        CREATE TABLE IF NOT EXISTS files (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
             path TEXT NOT NULL,
@@ -168,21 +177,104 @@ pub fn open_and_migrate(app: &tauri::AppHandle) -> Result<Connection, String> {
             size INTEGER NOT NULL,
             modified_at TEXT NOT NULL,
             page_count INTEGER,
+            file_type TEXT NOT NULL DEFAULT 'pdf',
             thumbnail_key TEXT,
             thumbnail_status TEXT NOT NULL DEFAULT 'pending',
             is_favorite INTEGER NOT NULL DEFAULT 0,
             UNIQUE(collection_id, path)
         );
 
-        CREATE INDEX IF NOT EXISTS idx_pdfs_collection ON pdfs(collection_id);
-        CREATE INDEX IF NOT EXISTS idx_pdfs_path ON pdfs(path);
+        CREATE INDEX IF NOT EXISTS idx_files_collection ON files(collection_id);
+        CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);
         ",
     )
     .map_err(|e| format!("Não foi possível inicializar o banco: {e}"))?;
 
-    // Migration: add is_favorite column if missing (older databases)
+    // ── Migrations for legacy databases ──
+
+    // Migration 1: rename legacy `pdfs` table → `files` and legacy indexes
+    let has_pdfs_table: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='pdfs'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Falha ao verificar tabela pdfs: {e}"))?;
+
+    if has_pdfs_table {
+        let has_files_table: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='files'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("Falha ao verificar tabela files: {e}"))?;
+
+        let should_rename_pdfs = if has_files_table {
+            // Legacy upgrade: CREATE TABLE files may have created an empty sibling
+            // table while data still lives in pdfs.
+            let files_count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+                .map_err(|e| format!("Falha ao contar registros em files: {e}"))?;
+            let pdfs_count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM pdfs", [], |row| row.get(0))
+                .map_err(|e| format!("Falha ao contar registros em pdfs: {e}"))?;
+
+            if files_count == 0 && pdfs_count > 0 {
+                conn.execute("DROP INDEX IF EXISTS idx_files_collection", [])
+                    .map_err(|e| format!("Falha ao dropar idx_files_collection: {e}"))?;
+                conn.execute("DROP INDEX IF EXISTS idx_files_path", [])
+                    .map_err(|e| format!("Falha ao dropar idx_files_path: {e}"))?;
+                conn.execute("DROP TABLE files", [])
+                    .map_err(|e| format!("Falha ao dropar tabela files vazia: {e}"))?;
+                true
+            } else {
+                false
+            }
+        } else {
+            true
+        };
+
+        if should_rename_pdfs {
+            conn.execute("DROP INDEX IF EXISTS idx_pdfs_collection", [])
+                .map_err(|e| format!("Falha ao dropar idx_pdfs_collection: {e}"))?;
+            conn.execute("DROP INDEX IF EXISTS idx_pdfs_path", [])
+                .map_err(|e| format!("Falha ao dropar idx_pdfs_path: {e}"))?;
+
+            conn.execute("ALTER TABLE pdfs RENAME TO files", [])
+                .map_err(|e| format!("Falha ao renomear pdfs → files: {e}"))?;
+
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_files_collection ON files(collection_id)",
+                [],
+            )
+            .map_err(|e| format!("Falha ao recriar idx_files_collection: {e}"))?;
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)", [])
+                .map_err(|e| format!("Falha ao recriar idx_files_path: {e}"))?;
+        }
+    }
+
+    // Migration 2: add file_type column if missing
+    let has_file_type: bool = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('files') WHERE name = 'file_type'")
+        .map_err(|e| format!("Falha ao verificar coluna file_type: {e}"))?
+        .query_row([], |row| {
+            let count: i64 = row.get(0)?;
+            Ok(count > 0)
+        })
+        .map_err(|e| format!("Falha ao verificar coluna file_type: {e}"))?;
+
+    if !has_file_type {
+        conn.execute(
+            "ALTER TABLE files ADD COLUMN file_type TEXT NOT NULL DEFAULT 'pdf'",
+            [],
+        )
+        .map_err(|e| format!("Falha ao adicionar coluna file_type: {e}"))?;
+    }
+
+    // Migration 3: add is_favorite column if missing (older databases)
     let has_favorite: bool = conn
-        .prepare("SELECT COUNT(*) FROM pragma_table_info('pdfs') WHERE name = 'is_favorite'")
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('files') WHERE name = 'is_favorite'")
         .map_err(|e| format!("Falha ao verificar coluna is_favorite: {e}"))?
         .query_row([], |row| {
             let count: i64 = row.get(0)?;
@@ -192,7 +284,7 @@ pub fn open_and_migrate(app: &tauri::AppHandle) -> Result<Connection, String> {
 
     if !has_favorite {
         conn.execute(
-            "ALTER TABLE pdfs ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE files ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0",
             [],
         )
         .map_err(|e| format!("Falha ao adicionar coluna is_favorite: {e}"))?;
@@ -207,7 +299,7 @@ pub fn list_collections(conn: &Connection) -> Result<Vec<Collection>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT c.id, c.name, c.icon, c.include_subfolders, c.created_at, c.updated_at,
-                    (SELECT COUNT(*) FROM pdfs p WHERE p.collection_id = c.id) as pdf_count
+                    (SELECT COUNT(*) FROM files f WHERE f.collection_id = c.id) as item_count
              FROM collections c
              ORDER BY c.name COLLATE NOCASE",
         )
@@ -221,7 +313,7 @@ pub fn list_collections(conn: &Connection) -> Result<Vec<Collection>, String> {
                 name: row.get(1)?,
                 icon: row.get(2)?,
                 include_subfolders: include != 0,
-                pdf_count: row.get(6)?,
+                item_count: row.get(6)?,
                 created_at: row.get(4)?,
                 updated_at: row.get(5)?,
             })
@@ -307,7 +399,7 @@ pub fn create_collection(
         name: name.to_string(),
         icon: icon.to_string(),
         include_subfolders,
-        pdf_count: 0,
+        item_count: 0,
         created_at: now.clone(),
         updated_at: now,
     })
@@ -354,22 +446,22 @@ pub fn delete_collection(conn: &Connection, id: i64) -> Result<(), String> {
     Ok(())
 }
 
-// ── PDFs ──
+// ── Files (items) ──
 
-pub fn list_pdfs(conn: &Connection, collection_id: i64) -> Result<Vec<Pdf>, String> {
+pub fn list_items(conn: &Connection, collection_id: i64) -> Result<Vec<CollectionItem>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, collection_id, path, filename, size, modified_at, page_count, thumbnail_key, thumbnail_status, is_favorite
-             FROM pdfs WHERE collection_id = ?1
+            "SELECT id, collection_id, path, filename, size, modified_at, page_count, file_type, thumbnail_key, thumbnail_status, is_favorite
+             FROM files WHERE collection_id = ?1
              ORDER BY filename COLLATE NOCASE",
         )
-        .map_err(|e| format!("Falha ao preparar listagem de PDFs: {e}"))?;
+        .map_err(|e| format!("Falha ao preparar listagem de itens: {e}"))?;
 
-    let pdfs = stmt
+    let items = stmt
         .query_map(params![collection_id], |row| {
-            let status: ThumbnailStatus = row.get(8)?;
-            let favorite: i64 = row.get(9)?;
-            Ok(Pdf {
+            let status: ThumbnailStatus = row.get(9)?;
+            let favorite: i64 = row.get(10)?;
+            Ok(CollectionItem {
                 id: row.get(0)?,
                 collection_id: row.get(1)?,
                 path: row.get(2)?,
@@ -377,31 +469,36 @@ pub fn list_pdfs(conn: &Connection, collection_id: i64) -> Result<Vec<Pdf>, Stri
                 size: row.get(4)?,
                 modified_at: row.get(5)?,
                 page_count: row.get(6)?,
-                thumbnail_key: row.get(7)?,
+                file_type: row.get(7)?,
+                thumbnail_key: row.get(8)?,
                 thumbnail_status: status.to_string(),
                 is_favorite: favorite != 0,
             })
         })
-        .map_err(|e| format!("Falha ao listar PDFs: {e}"))?
+        .map_err(|e| format!("Falha ao listar itens: {e}"))?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("Falha ao ler PDFs: {e}"))?;
+        .map_err(|e| format!("Falha ao ler itens: {e}"))?;
 
-    Ok(pdfs)
+    Ok(items)
 }
 
-pub fn get_pdf_by_path(conn: &Connection, collection_id: i64, path: &str) -> Result<Option<Pdf>, String> {
+pub fn get_item_by_path(
+    conn: &Connection,
+    collection_id: i64,
+    path: &str,
+) -> Result<Option<CollectionItem>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, collection_id, path, filename, size, modified_at, page_count, thumbnail_key, thumbnail_status, is_favorite
-             FROM pdfs WHERE collection_id = ?1 AND path = ?2",
+            "SELECT id, collection_id, path, filename, size, modified_at, page_count, file_type, thumbnail_key, thumbnail_status, is_favorite
+             FROM files WHERE collection_id = ?1 AND path = ?2",
         )
-        .map_err(|e| format!("Falha ao preparar consulta de PDF: {e}"))?;
+        .map_err(|e| format!("Falha ao preparar consulta de item: {e}"))?;
 
     let result = stmt
         .query_row(params![collection_id, path], |row| {
-            let status: ThumbnailStatus = row.get(8)?;
-            let favorite: i64 = row.get(9)?;
-            Ok(Pdf {
+            let status: ThumbnailStatus = row.get(9)?;
+            let favorite: i64 = row.get(10)?;
+            Ok(CollectionItem {
                 id: row.get(0)?,
                 collection_id: row.get(1)?,
                 path: row.get(2)?,
@@ -409,50 +506,52 @@ pub fn get_pdf_by_path(conn: &Connection, collection_id: i64, path: &str) -> Res
                 size: row.get(4)?,
                 modified_at: row.get(5)?,
                 page_count: row.get(6)?,
-                thumbnail_key: row.get(7)?,
+                file_type: row.get(7)?,
+                thumbnail_key: row.get(8)?,
                 thumbnail_status: status.to_string(),
                 is_favorite: favorite != 0,
             })
         })
         .optional()
-        .map_err(|e| format!("Falha ao consultar PDF: {e}"))?;
+        .map_err(|e| format!("Falha ao consultar item: {e}"))?;
 
     Ok(result)
 }
 
-pub fn insert_pdf(
+pub fn insert_item(
     conn: &Connection,
     collection_id: i64,
     path: &str,
     filename: &str,
     size: i64,
     modified_at: &str,
+    file_type: &str,
 ) -> Result<i64, String> {
     conn.execute(
-        "INSERT INTO pdfs (collection_id, path, filename, size, modified_at, thumbnail_status)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![collection_id, path, filename, size, modified_at, ThumbnailStatus::Pending],
+        "INSERT INTO files (collection_id, path, filename, size, modified_at, file_type, thumbnail_status)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![collection_id, path, filename, size, modified_at, file_type, ThumbnailStatus::Pending],
     )
-    .map_err(|e| format!("Falha ao inserir PDF: {e}"))?;
+    .map_err(|e| format!("Falha ao inserir item: {e}"))?;
 
     Ok(conn.last_insert_rowid())
 }
 
-pub fn update_pdf_metadata(
+pub fn update_item_metadata(
     conn: &Connection,
     id: i64,
     size: i64,
     modified_at: &str,
 ) -> Result<(), String> {
     conn.execute(
-        "UPDATE pdfs SET size = ?1, modified_at = ?2, thumbnail_status = ?3 WHERE id = ?4",
+        "UPDATE files SET size = ?1, modified_at = ?2, thumbnail_status = ?3 WHERE id = ?4",
         params![size, modified_at, ThumbnailStatus::Pending, id],
     )
-    .map_err(|e| format!("Falha ao atualizar PDF: {e}"))?;
+    .map_err(|e| format!("Falha ao atualizar item: {e}"))?;
     Ok(())
 }
 
-pub fn set_pdf_thumbnail(
+pub fn set_item_thumbnail(
     conn: &Connection,
     id: i64,
     page_count: Option<i64>,
@@ -460,34 +559,34 @@ pub fn set_pdf_thumbnail(
     status: ThumbnailStatus,
 ) -> Result<(), String> {
     conn.execute(
-        "UPDATE pdfs SET page_count = ?1, thumbnail_key = ?2, thumbnail_status = ?3 WHERE id = ?4",
+        "UPDATE files SET page_count = ?1, thumbnail_key = ?2, thumbnail_status = ?3 WHERE id = ?4",
         params![page_count, thumbnail_key, status, id],
     )
-    .map_err(|e| format!("Falha ao atualizar thumbnail do PDF: {e}"))?;
+    .map_err(|e| format!("Falha ao atualizar thumbnail do item: {e}"))?;
     Ok(())
 }
 
-pub fn delete_pdf(conn: &Connection, id: i64) -> Result<(), String> {
-    conn.execute("DELETE FROM pdfs WHERE id = ?1", params![id])
-        .map_err(|e| format!("Falha ao excluir PDF: {e}"))?;
+pub fn delete_item(conn: &Connection, id: i64) -> Result<(), String> {
+    conn.execute("DELETE FROM files WHERE id = ?1", params![id])
+        .map_err(|e| format!("Falha ao excluir item: {e}"))?;
     Ok(())
 }
 
-pub fn delete_pdfs_not_in(
+pub fn delete_items_not_in(
     conn: &Connection,
     collection_id: i64,
     keep_paths: &[String],
     unavailable_paths: &[String],
 ) -> Result<usize, String> {
     let mut removed = 0;
-    let existing = list_pdfs(conn, collection_id)?;
+    let existing = list_items(conn, collection_id)?;
 
-    for pdf in existing {
+    for item in existing {
         let belongs_to_unavailable_path = unavailable_paths.iter().any(|root| {
-            std::path::Path::new(&pdf.path).starts_with(std::path::Path::new(root))
+            std::path::Path::new(&item.path).starts_with(std::path::Path::new(root))
         });
-        if !keep_paths.contains(&pdf.path) && !belongs_to_unavailable_path {
-            delete_pdf(conn, pdf.id)?;
+        if !keep_paths.contains(&item.path) && !belongs_to_unavailable_path {
+            delete_item(conn, item.id)?;
             removed += 1;
         }
     }
@@ -507,7 +606,7 @@ pub fn update_collection_timestamp(conn: &Connection, collection_id: i64) -> Res
 
 pub fn list_all_thumbnail_keys(conn: &Connection) -> Result<Vec<String>, String> {
     let mut stmt = conn
-        .prepare("SELECT thumbnail_key FROM pdfs WHERE thumbnail_key IS NOT NULL")
+        .prepare("SELECT thumbnail_key FROM files WHERE thumbnail_key IS NOT NULL")
         .map_err(|e| format!("Falha ao preparar consulta de thumbnail keys: {e}"))?;
 
     let keys = stmt
@@ -519,19 +618,19 @@ pub fn list_all_thumbnail_keys(conn: &Connection) -> Result<Vec<String>, String>
     Ok(keys)
 }
 
-pub fn get_pdf_by_id(conn: &Connection, id: i64) -> Result<Option<Pdf>, String> {
+pub fn get_item_by_id(conn: &Connection, id: i64) -> Result<Option<CollectionItem>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, collection_id, path, filename, size, modified_at, page_count, thumbnail_key, thumbnail_status, is_favorite
-             FROM pdfs WHERE id = ?1",
+            "SELECT id, collection_id, path, filename, size, modified_at, page_count, file_type, thumbnail_key, thumbnail_status, is_favorite
+             FROM files WHERE id = ?1",
         )
-        .map_err(|e| format!("Falha ao preparar consulta de PDF por id: {e}"))?;
+        .map_err(|e| format!("Falha ao preparar consulta de item por id: {e}"))?;
 
     let result = stmt
         .query_row(params![id], |row| {
-            let status: ThumbnailStatus = row.get(8)?;
-            let favorite: i64 = row.get(9)?;
-            Ok(Pdf {
+            let status: ThumbnailStatus = row.get(9)?;
+            let favorite: i64 = row.get(10)?;
+            Ok(CollectionItem {
                 id: row.get(0)?,
                 collection_id: row.get(1)?,
                 path: row.get(2)?,
@@ -539,42 +638,43 @@ pub fn get_pdf_by_id(conn: &Connection, id: i64) -> Result<Option<Pdf>, String> 
                 size: row.get(4)?,
                 modified_at: row.get(5)?,
                 page_count: row.get(6)?,
-                thumbnail_key: row.get(7)?,
+                file_type: row.get(7)?,
+                thumbnail_key: row.get(8)?,
                 thumbnail_status: status.to_string(),
                 is_favorite: favorite != 0,
             })
         })
         .optional()
-        .map_err(|e| format!("Falha ao consultar PDF por id: {e}"))?;
+        .map_err(|e| format!("Falha ao consultar item por id: {e}"))?;
 
     Ok(result)
 }
 
-/// Removes all pdf records pointing to the given path across every collection.
+/// Removes all item records pointing to the given path across every collection.
 /// Returns the number of records removed.
-pub fn delete_pdf_by_path_all_collections(conn: &Connection, path: &str) -> Result<usize, String> {
+pub fn delete_item_by_path_all_collections(conn: &Connection, path: &str) -> Result<usize, String> {
     let removed = conn
-        .execute("DELETE FROM pdfs WHERE path = ?1", params![path])
-        .map_err(|e| format!("Falha ao excluir PDFs por caminho: {e}"))?;
+        .execute("DELETE FROM files WHERE path = ?1", params![path])
+        .map_err(|e| format!("Falha ao excluir itens por caminho: {e}"))?;
     Ok(removed)
 }
 
-/// Toggles the favorite flag of a pdf. Returns the new favorite state.
-pub fn toggle_pdf_favorite(conn: &Connection, id: i64) -> Result<bool, String> {
+/// Toggles the favorite flag of an item. Returns the new favorite state.
+pub fn toggle_item_favorite(conn: &Connection, id: i64) -> Result<bool, String> {
     let current: i64 = conn
         .query_row(
-            "SELECT is_favorite FROM pdfs WHERE id = ?1",
+            "SELECT is_favorite FROM files WHERE id = ?1",
             params![id],
             |row| row.get(0),
         )
-        .map_err(|e| format!("Falha ao consultar favorito do PDF: {e}"))?;
+        .map_err(|e| format!("Falha ao consultar favorito do item: {e}"))?;
 
     let new_value = if current != 0 { 0 } else { 1 };
     conn.execute(
-        "UPDATE pdfs SET is_favorite = ?1 WHERE id = ?2",
+        "UPDATE files SET is_favorite = ?1 WHERE id = ?2",
         params![new_value, id],
     )
-    .map_err(|e| format!("Falha ao atualizar favorito do PDF: {e}"))?;
+    .map_err(|e| format!("Falha ao atualizar favorito do item: {e}"))?;
 
     Ok(new_value != 0)
 }

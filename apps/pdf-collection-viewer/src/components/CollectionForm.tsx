@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { z } from 'zod';
 import { COLLECTION_ICONS } from '@/types';
 import { pickFolder } from '@/services/collections';
 
@@ -16,6 +17,40 @@ interface Props {
     onCancel: () => void;
 }
 
+function normalizePathKey(path: string): string {
+    return path
+        .trim()
+        .replace(/\\/g, '/')
+        .replace(/\/+$/, '')
+        .toLowerCase();
+}
+
+const collectionFormSchema = z
+    .object({
+        name: z.string().trim().min(1, 'O nome é obrigatório'),
+        icon: z.string().min(1),
+        paths: z
+            .array(z.string())
+            .transform((entries) => entries.map((path) => path.trim()).filter(Boolean))
+            .pipe(z.array(z.string()).min(1, 'Adicione pelo menos uma pasta')),
+        includeSubfolders: z.boolean(),
+    })
+    .superRefine((data, ctx) => {
+        const seen = new Set<string>();
+        for (const path of data.paths) {
+            const key = normalizePathKey(path);
+            if (seen.has(key)) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: `Caminho duplicado detectado: ${path}`,
+                    path: ['paths'],
+                });
+                return;
+            }
+            seen.add(key);
+        }
+    });
+
 export function CollectionForm({
     initialName = '',
     initialIcon = '📚',
@@ -26,7 +61,7 @@ export function CollectionForm({
 }: Props) {
     const [name, setName] = useState(initialName);
     const [icon, setIcon] = useState(initialIcon);
-    const [paths, setPaths] = useState<string[]>(initialPaths);
+    const [paths, setPaths] = useState<string[]>(initialPaths.length > 0 ? initialPaths : ['']);
     const [includeSubfolders, setIncludeSubfolders] = useState(initialIncludeSubfolders);
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
@@ -39,57 +74,39 @@ export function CollectionForm({
         const picked = await pickFolder();
         if (!picked) return;
 
-        setPaths((current) => current.map((path, itemIndex) => itemIndex === index ? picked : path));
+        setPaths((current) => current.map((path, itemIndex) => (itemIndex === index ? picked : path)));
     };
 
     const updatePath = (index: number, value: string) => {
-        setPaths((current) => current.map((path, itemIndex) => itemIndex === index ? value : path));
+        setPaths((current) => current.map((path, itemIndex) => (itemIndex === index ? value : path)));
     };
 
     const removePath = (index: number) => {
-        setPaths(paths.filter((_, i) => i !== index));
-    };
-
-    const normalizePathKey = (p: string): string => {
-        return p
-            .trim()
-            .replace(/\\/g, '/')
-            .replace(/\/+$/, '')
-            .toLowerCase();
+        setPaths((current) => {
+            const next = current.filter((_, i) => i !== index);
+            return next.length > 0 ? next : [''];
+        });
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
 
-        const normalizedName = name.trim();
-        const trimmedPaths = paths.map((path) => path.trim()).filter(Boolean);
-        if (!normalizedName) {
-            setError('O nome é obrigatório');
+        const parsed = collectionFormSchema.safeParse({
+            name,
+            icon,
+            paths,
+            includeSubfolders,
+        });
+
+        if (!parsed.success) {
+            setError(parsed.error.errors[0]?.message ?? 'Dados inválidos');
             return;
         }
-        if (trimmedPaths.length === 0) {
-            setError('Adicione pelo menos uma pasta');
-            return;
-        }
-
-        const seen = new Set<string>();
-        for (const p of trimmedPaths) {
-            const key = normalizePathKey(p);
-            if (seen.has(key)) {
-                setError(`Caminho duplicado detectado: ${p}`);
-                return;
-            }
-            seen.add(key);
-        }
-
-        const normalizedPaths = Array.from(seen)
-            .map((_, idx) => trimmedPaths[idx])
-            .filter(Boolean);
 
         setSaving(true);
         try {
-            await onSubmit({ name: normalizedName, icon, paths: normalizedPaths, includeSubfolders });
+            await onSubmit(parsed.data);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Erro ao salvar coleção');
         } finally {

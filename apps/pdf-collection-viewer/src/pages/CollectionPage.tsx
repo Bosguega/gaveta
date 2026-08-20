@@ -1,33 +1,51 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PdfCard } from '@/components/PdfCard';
+import { ItemCard } from '@/components/ItemCard';
 import { DuplicateAnalysisModal } from '@/components/DuplicateAnalysisModal';
 import { useAppStore } from '@/store/useAppStore';
-import { listPdfs, updateCollectionScan, openPdf, listenToUpdateProgress, cancelScan, toggleFavorite } from '@/services/pdfs';
+import { getCollection } from '@/services/collections';
+import { listItems, updateCollectionScan, openFile, listenToUpdateProgress, cancelScan, toggleFavorite } from '@/services/items';
 import { clearThumbnailUrlCache } from '@/services/thumbnails';
 import { SORT_OPTIONS, type SortOption } from '@/types';
 
 export function CollectionPage() {
-    const { currentCollectionId, closeCollection, pdfs, setPdfs, isUpdating, setIsUpdating, updateProgress, setUpdateProgress } = useAppStore();
+    const { currentCollectionId, closeCollection, items, setItems, isUpdating, setIsUpdating, updateProgress, setUpdateProgress } = useAppStore();
+    const [collectionName, setCollectionName] = useState('');
     const [search, setSearch] = useState('');
     const [sort, setSort] = useState<SortOption>('name-asc');
     const [selectedId, setSelectedId] = useState<number | null>(null);
     const [unavailableCount, setUnavailableCount] = useState(0);
+    const [erroredCount, setErroredCount] = useState(0);
     const [error, setError] = useState<string | null>(null);
     const [showDuplicates, setShowDuplicates] = useState(false);
     const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
-    const loadPdfs = async () => {
+    const loadItems = async () => {
         if (currentCollectionId === null) return;
         try {
-            const data = await listPdfs(currentCollectionId);
-            setPdfs(data);
+            const data = await listItems(currentCollectionId);
+            setItems(data);
         } catch (reason) {
-            setError(reason instanceof Error ? reason.message : 'Não foi possível carregar os PDFs.');
+            setError(reason instanceof Error ? reason.message : 'Não foi possível carregar os arquivos.');
         }
     };
 
     useEffect(() => {
-        loadPdfs();
+        if (currentCollectionId === null) return;
+
+        setSearch('');
+        setSort('name-asc');
+        setSelectedId(null);
+        setUnavailableCount(0);
+        setErroredCount(0);
+        setError(null);
+        setShowFavoritesOnly(false);
+        setShowDuplicates(false);
+
+        getCollection(currentCollectionId)
+            .then((detail) => setCollectionName(detail?.name ?? ''))
+            .catch(() => setCollectionName(''));
+
+        loadItems();
     }, [currentCollectionId]);
 
     useEffect(() => {
@@ -45,8 +63,9 @@ export function CollectionPage() {
         try {
             const result = await updateCollectionScan(currentCollectionId);
             setUnavailableCount(result.unavailable_paths.length);
+            setErroredCount(result.errored_paths.length);
             clearThumbnailUrlCache();
-            await loadPdfs();
+            await loadItems();
         } catch (reason) {
             setError(reason instanceof Error ? reason.message : 'Não foi possível atualizar a coleção.');
         } finally {
@@ -59,18 +78,18 @@ export function CollectionPage() {
         await cancelScan(currentCollectionId ?? undefined);
     };
 
-    const handleOpenPdf = async (path: string) => {
+    const handleOpenFile = async (path: string) => {
         try {
-            await openPdf(path);
+            await openFile(path);
         } catch (reason) {
-            setError(reason instanceof Error ? reason.message : 'Não foi possível abrir o PDF.');
+            setError(reason instanceof Error ? reason.message : 'Não foi possível abrir o arquivo.');
         }
     };
 
-    const handleToggleFavorite = async (pdfId: number) => {
+    const handleToggleFavorite = async (itemId: number) => {
         try {
-            const newState = await toggleFavorite(pdfId);
-            setPdfs(pdfs.map((pdf) => (pdf.id === pdfId ? { ...pdf, is_favorite: newState } : pdf)));
+            const newState = await toggleFavorite(itemId);
+            setItems(items.map((item) => (item.id === itemId ? { ...item, is_favorite: newState } : item)));
         } catch (reason) {
             setError(reason instanceof Error ? reason.message : 'Não foi possível alterar o favorito.');
         }
@@ -78,14 +97,14 @@ export function CollectionPage() {
 
     const filteredAndSorted = useMemo(() => {
         const query = search.trim().toLowerCase();
-        let result = pdfs;
+        let result = items;
 
         if (showFavoritesOnly) {
-            result = result.filter((pdf) => pdf.is_favorite);
+            result = result.filter((item) => item.is_favorite);
         }
 
         if (query) {
-            result = result.filter((pdf) => pdf.filename.toLowerCase().includes(query));
+            result = result.filter((item) => item.filename.toLowerCase().includes(query));
         }
 
         const sorted = [...result];
@@ -124,22 +143,32 @@ export function CollectionPage() {
                 break;
         }
         return sorted;
-    }, [pdfs, search, sort, showFavoritesOnly]);
+    }, [items, search, sort, showFavoritesOnly]);
 
     return (
         <div className="p-8">
             <div className="flex items-center justify-between mb-6">
-                <button
-                    onClick={closeCollection}
-                    className="text-slate-600 hover:text-slate-900"
-                    title="Voltar"
-                >
-                    ← Voltar
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={closeCollection}
+                        className="text-slate-600 hover:text-slate-900"
+                        title="Voltar"
+                    >
+                        ← Voltar
+                    </button>
+                    {collectionName && (
+                        <h1 className="text-xl font-semibold text-slate-800">{collectionName}</h1>
+                    )}
+                </div>
                 <div className="flex items-center gap-3">
                     {unavailableCount > 0 && (
                         <span className="text-sm text-amber-600">
                             ⚠ {unavailableCount} local(is) indisponível(is)
+                        </span>
+                    )}
+                    {erroredCount > 0 && (
+                        <span className="text-sm text-amber-600" title="Pastas com erro de leitura foram preservadas para não apagar itens ou favoritos">
+                            ⚠ {erroredCount} local(is) com erro de leitura (itens preservados)
                         </span>
                     )}
                     {isUpdating ? (
@@ -153,9 +182,9 @@ export function CollectionPage() {
                         <>
                             <button
                                 onClick={() => setShowDuplicates(true)}
-                                disabled={pdfs.length === 0}
+                                disabled={items.length === 0}
                                 className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                                title={pdfs.length === 0 ? 'Atualize a coleção primeiro' : 'Analisar duplicados nesta coleção'}
+                                title={items.length === 0 ? 'Atualize a coleção primeiro' : 'Analisar duplicados nesta coleção'}
                             >
                                 🔍 Analisar duplicados
                             </button>
@@ -175,7 +204,7 @@ export function CollectionPage() {
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="🔎 Buscar PDFs..."
+                    placeholder="🔎 Buscar arquivos..."
                     className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <button
@@ -184,7 +213,7 @@ export function CollectionPage() {
                         ? 'bg-amber-400 border-amber-400 text-white'
                         : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
                         }`}
-                    title={showFavoritesOnly ? 'Mostrar todos os PDFs' : 'Mostrar apenas favoritos'}
+                    title={showFavoritesOnly ? 'Mostrar todos os arquivos' : 'Mostrar apenas favoritos'}
                 >
                     ★ {showFavoritesOnly ? 'Favoritos' : 'Todos'}
                 </button>
@@ -224,22 +253,22 @@ export function CollectionPage() {
                 <div className="text-center py-16 text-slate-500">
                     <div className="text-5xl mb-4">📄</div>
                     <p className="text-lg">
-                        {pdfs.length === 0 ? 'Nenhum PDF encontrado' : 'Nenhum resultado para a busca'}
+                        {items.length === 0 ? 'Nenhum arquivo encontrado' : 'Nenhum resultado para a busca'}
                     </p>
-                    {pdfs.length === 0 && (
+                    {items.length === 0 && (
                         <p className="text-sm mt-1">Clique em "Atualizar" para escanear as pastas</p>
                     )}
                 </div>
             ) : (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-4">
-                    {filteredAndSorted.map((pdf) => (
-                        <PdfCard
-                            key={pdf.id}
-                            pdf={pdf}
-                            selected={selectedId === pdf.id}
-                            onSelect={() => setSelectedId(pdf.id)}
-                            onOpen={() => handleOpenPdf(pdf.path)}
-                            onToggleFavorite={() => handleToggleFavorite(pdf.id)}
+                    {filteredAndSorted.map((item) => (
+                        <ItemCard
+                            key={item.id}
+                            item={item}
+                            selected={selectedId === item.id}
+                            onSelect={() => setSelectedId(item.id)}
+                            onOpen={() => handleOpenFile(item.path)}
+                            onToggleFavorite={() => handleToggleFavorite(item.id)}
                         />
                     ))}
                 </div>
@@ -251,7 +280,7 @@ export function CollectionPage() {
                     onClose={() => setShowDuplicates(false)}
                     onChanged={() => {
                         clearThumbnailUrlCache();
-                        loadPdfs();
+                        loadItems();
                     }}
                 />
             )}

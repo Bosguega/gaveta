@@ -20,12 +20,16 @@ export function clearThumbnailUrlCache(): void {
     CACHE_DIR_PROMISE = null;
 }
 
-export async function getThumbnailUrl(thumbnailKey: string | null): Promise<string> {
+export async function getThumbnailUrl(
+    thumbnailKey: string | null,
+    version?: string | number | null,
+): Promise<string> {
     if (!thumbnailKey) {
         return '';
     }
 
-    const cached = THUMBNAIL_URL_CACHE.get(thumbnailKey);
+    const cacheKey = version == null ? thumbnailKey : `${thumbnailKey}@${version}`;
+    const cached = THUMBNAIL_URL_CACHE.get(cacheKey);
     if (cached) {
         return cached;
     }
@@ -33,13 +37,17 @@ export async function getThumbnailUrl(thumbnailKey: string | null): Promise<stri
     const promise = (async () => {
         const cacheDir = await getCacheDirOnce();
         const fullPath = await join(cacheDir, thumbnailKey);
-        return convertFileSrc(fullPath);
+        const url = convertFileSrc(fullPath);
+        // A3/A4: bust the asset-protocol/browser cache when the underlying
+        // file changed (size/modified_at) so a regenerated .webp is refetched
+        // even though the thumbnail key (sha256 of path) stays the same.
+        return version == null ? url : `${url}?v=${encodeURIComponent(String(version))}`;
     })();
 
     promise.catch(() => {
-        THUMBNAIL_URL_CACHE.delete(thumbnailKey);
+        THUMBNAIL_URL_CACHE.delete(cacheKey);
     });
 
-    THUMBNAIL_URL_CACHE.set(thumbnailKey, promise);
+    THUMBNAIL_URL_CACHE.set(cacheKey, promise);
     return promise;
 }

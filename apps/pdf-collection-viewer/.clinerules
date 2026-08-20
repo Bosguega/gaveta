@@ -1,33 +1,109 @@
-# PDF Collection Viewer — Regras do App
+# Gaveta Monorepo — Regras do PDF Collection Viewer
+
+## Visão geral
+App Tauri + React + TypeScript + Tailwind para visualização de coleções de arquivos.
+Armazenamento local em SQLite (via Tauri).
 
 ## Stack
-
 - Tauri 2 + React 18 + TypeScript + Vite + Tailwind CSS v4
-- Backend Rust: SQLite (rusqlite bundled), walkdir, PDFium (pdfium-render), WebP (image)
+- Backend Rust: SQLite (rusqlite), walkdir, PDFium (pdfium-render), WebP (image)
 - Frontend: Zustand (estado), Zod (validação de formulários)
 
 ## Estrutura
+- src/components/ — componentes React reutilzáveis
+- src/pages/ — páginas (Home, Collection)
+- src/services/ — wrappers de invoke para comandos Tauri
+- src/store/ — Zustand store
+- src/types/ — tipos compartilhados
+- src/utils/ — utilitários (formatação)
+- src-tauri/src/db.rs — schema SQLite + CRUD
+- src-tauri/src/scanner.rs — descoberta de arquivos (walkdir)
+- src-tauri/src/thumbnails.rs — renderização de thumbnails + cache
+- src-tauri/src/file_types.rs — tipo de arquivo (FileType)
+- src-tauri/src/commands.rs — comandos Tauri
 
-- `src/components/` — componentes React reutilizáveis
-- `src/pages/` — páginas (Home, Collection)
-- `src/services/` — wrappers de `invoke` para comandos Tauri
-- `src/store/` — Zustand store
-- `src/types/` — tipos compartilhados
-- `src/utils/` — utilitários (formatação)
-- `src-tauri/src/db.rs` — schema SQLite + CRUD
-- `src-tauri/src/scanner.rs` — descoberta de PDFs (walkdir)
-- `src-tauri/src/thumbnails.rs` — render PDFium → WebP + cache
-- `src-tauri/src/commands.rs` — comandos Tauri
+## Modelo de dados
 
-## Regras
+### Collection (coleção)
+Grupo lógico de arquivos definido pelo usuário.
+- Agnóstica ao tipo de arquivo: não há coleção de PDF, coleção de bordado, etc.
+- Campos: name, icon, paths (pastas raiz), include_subfolders, item_count, timestamps.
 
-- PDF identificado por **caminho completo** (nunca só pelo nome)
-- Cache de miniaturas: chave = `sha256(caminho_completo).webp`
-- Regenerar miniatura apenas se `size` ou `modified_at` mudou
-- Exclusão de coleção **nunca** apaga arquivos do computador
-- PDFs inválidos/protegidos → placeholder, nunca quebrar a varredura
+### Item (arquivo)
+Representa um arquivo individual dentro de uma coleção.
+- file_type: string identifica a categoria (ex: pdf, embroidery, image).
+- page_count: number | null (para PDFs; null para outros tipos).
+- Metadados: size, modified_at, is_favorite.
+- thumbnail_key + thumbnail_status para cache de thumbnails.
+
+## Backend Rust — Commands (snake_case)
+- list_collections, create_collection, update_collection, delete_collection, get_collection
+- list_items, update_collection_scan, cancel_scan
+- open_file, pick_folder, reveal_in_folder, get_cache_dir
+- analyze_duplicates, remove_duplicate, toggle_favorite
+
+## File types (src-tauri/src/file_types.rs)
+- FileType — enum discriminado: Pdf, Embroidery, Image, Unknown.
+- from_extension(ext) — factory baseada na extensão.
+- supported_extensions() — extensões suportadas por variant.
+- Para adicionar um novo tipo: adicionar variant em FileType, registrar em from_extension, handler em thumbnails.rs, extensões em SUPPORTED_EXTENSIONS.
+
+## Thumbnails (src-tauri/src/thumbnails.rs)
+- render_thumbnail(path, file_type, cache_dir, resource_dir) — entry point.
+- Match em file_type para renderers específicos.
+- Retorna ThumbnailOutput (thumbnail_key + page_count opcional).
+- Para Unsupported: retorna erro.
+- Cache: thumbnails armazenadas no diretório de cache do app.
+- Orphan cleanup: após varredura, remove arquivos não referenciados.
+
+## SUPPORTED_EXTENSIONS (src-tauri/src/commands.rs)
+- Lista de extensões suportadas. V1: apenas ["pdf"].
+- Para adicionar suporte: apendar extensões + adicionar handler em thumbnails.rs.
+
+## Frontend — Tipos (src/types/index.ts)
+- CollectionItem — interface genérica para arquivos. Tem file_type e page_count.
+- Collection — item_count (genérico, não pdf_count).
+- DuplicateItem — item_id (genérico, não pdf_id).
+
+## Frontend — Serviços (src/services/)
+- items.ts — operações de items (list, scan, open, favorites, duplicates).
+- collections.ts — operações de coleções.
+- thumbnails.ts — utilitário para obter URLs de thumbnails do cache.
+
+## Frontend — Store (src/store/useAppStore.ts)
+- items: CollectionItem[] — lista de arquivos da coleção aberta.
+
+## Frontend — Componentes (src/components/)
+- CollectionCard, CollectionForm, ItemCard, DuplicateAnalysisModal.
+- ItemCard trata arquivos de forma genérica (thumbnail ou placeholder genérico).
+
+## Frontend — Páginas (src/pages/)
+- HomePage — lista de coleções.
+- CollectionPage — conteúdo de uma coleção (lista de items + scan).
+
+## Regras gerais
+- PDF identificado por caminho completo (nunca só pelo nome)
+- Cache de miniaturas: chave = sha256(caminho_completo).webp
+- Regenerar miniatura apenas se size ou modified_at mudou
+- Exclusão de coleção nunca apaga arquivos do computador
+- Arquivos inválidos/protegidos → placeholder, nunca quebrar a varredura
 - Pastas indisponíveis → registrar e continuar
-- UI e mensagens de erro em **pt-BR**
-- Código fonte e JSDoc em **inglês**
+- UI e mensagens de erro em pt-BR
+- Código fonte e JSDoc em inglês
 - Preferir funções a classes
-- Não implementar recursos fora da V1 (leitor interno, OCR, tags, etc.)
+- Arquivos em kebab-case, componentes PascalCase, funções camelCase
+
+## Evolução para múltiplos tipos de arquivo
+Para adicionar suporte a um novo tipo (ex: bordado):
+1. Adicionar variant em FileType (file_types.rs) e registrar em from_extension.
+2. Adicionar handler em thumbnails.rs → render_thumbnail.
+3. Adicionar extensões em SUPPORTED_EXTENSIONS em commands.rs.
+4. Frontend continua tratando tudo como CollectionItem (genérico); opcional: ícone por file_type no ItemCard.
+
+## Thumbnail pipeline (conceitual)
+Cada tipo de arquivo tem um renderer:
+- PDF → pdfium → thumbnail
+- Bordado → parser → renderer → thumbnail
+- Imagem → decoder → thumbnail
+O ItemCard recebe thumbnail_key e exibe uniformemente.
+Para indicadores visuais por tipo (cor/moldura), usar file_type no frontend futuramente.

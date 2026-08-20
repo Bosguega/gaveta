@@ -10,6 +10,11 @@ use std::path::Path;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
+// ── Supported file extensions for the current V1 ──
+// Only PDF is active. When a new renderer is added, append its
+// extensions here (e.g. &["pdf", "pes", "jef", "xxx"]).
+const SUPPORTED_EXTENSIONS: &[&str] = &["pdf"];
+
 // Collections
 
 #[tauri::command]
@@ -71,18 +76,18 @@ pub fn get_collection(state: State<DbState>, id: i64) -> Result<Option<db::Colle
     db::get_collection(&conn, id)
 }
 
-// PDFs
+// Items
 
 #[tauri::command]
-pub fn list_pdfs(state: State<DbState>, collection_id: i64) -> Result<Vec<db::Pdf>, String> {
+pub fn list_items(state: State<DbState>, collection_id: i64) -> Result<Vec<db::CollectionItem>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    db::list_pdfs(&conn, collection_id)
+    db::list_items(&conn, collection_id)
 }
 
 // Scan / Update
 
 #[tauri::command]
-pub fn update_collection_scan(
+pub async fn update_collection_scan(
     app: AppHandle,
     state: State<'_, DbState>,
     cancels: State<'_, ScanCancels>,
@@ -91,16 +96,20 @@ pub fn update_collection_scan(
     cancels.mark_active(collection_id);
     let _guard = ScanClearGuard::new(&cancels, collection_id);
 
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-
-    let collection = db::get_collection(&conn, collection_id)?
-        .ok_or_else(|| "Coleção não encontrada".to_string())?;
+    // 1. Read collection configuration under a short lock.
+    let collection = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::get_collection(&conn, collection_id)?
+            .ok_or_else(|| "Coleção não encontrada".to_string())?
+    };
 
     let cache = db::cache_dir(&app)?;
     let resource_dir = app
         .path()
         .resource_dir()
         .map_err(|e| format!("Não foi possível localizar os recursos do aplicativo: {e}"))?;
+
+    let supported: Vec<String> = SUPPORTED_EXTENSIONS.iter().map(|s| s.to_string()).collect();
 
     let mut result = UpdateResult {
         found: 0,
@@ -109,10 +118,11 @@ pub fn update_collection_scan(
         updated: 0,
         thumbnails_generated: 0,
         unavailable_paths: Vec::new(),
+        errored_paths: Vec::new(),
     };
 
-    // 1. Scan all configured paths
-    let mut all_pdfs: Vec<scanner::ScannedPdf> = Vec::new();
+    // 2. Scan all configured paths (no DB lock held during filesystem walk).
+    let mut all_items: Vec<scanner::ScannedItem> = Vec::new();
     let mut keep_paths: Vec<String> = Vec::new();
 
     for path in &collection.paths {
@@ -120,71 +130,103 @@ pub fn update_collection_scan(
             break;
         }
 
-        let (pdfs, unavailable) = scanner::scan_directory(path, collection.include_subfolders);
+        let (items, unavailable, errored) = scanner::scan_items(path, collection.include_subfolders, &supported);
         if unavailable {
             result.unavailable_paths.push(path.clone());
-            continue;
+        }
+        for errored_dir in errored {
+            if !result.errored_paths.contains(&errored_dir) {
+                result.errored_paths.push(errored_dir);
+            }
         }
 
-        for pdf in pdfs {
-            keep_paths.push(pdf.path.clone());
-            all_pdfs.push(pdf);
+        for item in items {
+            keep_paths.push(item.path.clone());
+            all_items.push(item);
         }
     }
 
-    result.found = all_pdfs.len();
+    result.found = all_items.len();
     let _ = app.emit(
         "update-progress",
         db::ScanProgress {
-            stage: "PDFs encontrados".to_string(),
+            stage: "Arquivos encontrados".to_string(),
             current: result.found,
             total: result.found,
         },
     );
 
-    // 2. Compare with DB and process changes
-    let mut thumbnails_to_generate: Vec<(i64, String)> = Vec::new(); // (pdf_id, path)
+    // 3. Compare with DB and process changes. The lock is acquired only for
+    //    the individual read/write operations, never across the whole loop, so
+    //    other commands (list, favorite, …) can interleave while scanning.
+    let mut thumbnails_to_generate: Vec<(i64, String, String)> = Vec::new(); // (item_id, path, file_type)
 
-    for pdf in &all_pdfs {
+    for item in &all_items {
         if cancels.is_cancelled(collection_id) {
             break;
         }
 
-        let existing = db::get_pdf_by_path(&conn, collection_id, &pdf.path)?;
+        let existing = {
+            let conn = state.0.lock().map_err(|e| e.to_string())?;
+            db::get_item_by_path(&conn, collection_id, &item.path)?
+        };
 
         match existing {
-            Some(existing_pdf) => {
+            Some(existing_item) => {
                 // Check if metadata changed
-                if existing_pdf.size != pdf.size || existing_pdf.modified_at != pdf.modified_at {
-                    db::update_pdf_metadata(&conn, existing_pdf.id, pdf.size, &pdf.modified_at)?;
+                if existing_item.size != item.size || existing_item.modified_at != item.modified_at {
+                    {
+                        let conn = state.0.lock().map_err(|e| e.to_string())?;
+                        db::update_item_metadata(&conn, existing_item.id, item.size, &item.modified_at)?;
+                    }
                     result.updated += 1;
-                    thumbnails_to_generate.push((existing_pdf.id, pdf.path.clone()));
-                } else if !ThumbnailStatus::from_str(&existing_pdf.thumbnail_status).is_ready() {
+                    thumbnails_to_generate.push((existing_item.id, item.path.clone(), item.file_type.clone()));
+                } else if !ThumbnailStatus::from_str(&existing_item.thumbnail_status).is_ready() {
                     // Metadata unchanged but thumbnail missing/errored -> try again
-                    thumbnails_to_generate.push((existing_pdf.id, pdf.path.clone()));
+                    thumbnails_to_generate.push((existing_item.id, item.path.clone(), item.file_type.clone()));
+                } else if let Some(key) = existing_item.thumbnail_key.clone() {
+                    // A3/A4: the status is "ready" but the cached .webp may have
+                    // been removed (cache cleared). Revalidate its existence and
+                    // regenerate when missing instead of trusting the stale status.
+                    if !thumbnails::thumbnail_exists(&cache, &key) {
+                        thumbnails_to_generate.push((existing_item.id, item.path.clone(), item.file_type.clone()));
+                    }
                 }
             }
             None => {
-                let id = db::insert_pdf(&conn, collection_id, &pdf.path, &pdf.filename, pdf.size, &pdf.modified_at)?;
+                let id = {
+                    let conn = state.0.lock().map_err(|e| e.to_string())?;
+                    db::insert_item(
+                        &conn,
+                        collection_id,
+                        &item.path,
+                        &item.filename,
+                        item.size,
+                        &item.modified_at,
+                        &item.file_type,
+                    )?
+                };
                 result.added += 1;
-                thumbnails_to_generate.push((id, pdf.path.clone()));
+                thumbnails_to_generate.push((id, item.path.clone(), item.file_type.clone()));
             }
         }
     }
 
-    // 3. Remove PDFs that no longer exist
+    // 4. Remove items that no longer exist. Items under directories that were
+    //    unavailable (missing root) or raised an access error are preserved so a
+    //    transient failure does not delete healthy records or their favorites.
     if !cancels.is_cancelled(collection_id) {
-        result.removed = db::delete_pdfs_not_in(
-            &conn,
-            collection_id,
-            &keep_paths,
-            &result.unavailable_paths,
-        )?;
+        let mut protected_paths = result.unavailable_paths.clone();
+        protected_paths.extend(result.errored_paths.iter().cloned());
+        result.removed = {
+            let conn = state.0.lock().map_err(|e| e.to_string())?;
+            db::delete_items_not_in(&conn, collection_id, &keep_paths, &protected_paths)?
+        };
     }
 
-    // 4. Generate thumbnails for new/changed PDFs
+    // 5. Generate thumbnails for new/changed items (no DB lock during rendering).
     let total = thumbnails_to_generate.len();
-    for (index, (pdf_id, pdf_path)) in thumbnails_to_generate.iter().enumerate() {
+    for (index, (item_id, item_path, file_type)) in thumbnails_to_generate.iter().enumerate() {
         if cancels.is_cancelled(collection_id) {
             break;
         }
@@ -198,26 +240,37 @@ pub fn update_collection_scan(
             },
         );
 
-        let key = thumbnails::thumbnail_key(pdf_path);
-
-        match thumbnails::generate_thumbnail(pdf_path, &cache, &resource_dir) {
-            Ok((page_count, _)) => {
-                db::set_pdf_thumbnail(&conn, *pdf_id, page_count, Some(&key), ThumbnailStatus::Ready)?;
+        match thumbnails::render_thumbnail(item_path, file_type, &cache, &resource_dir) {
+            Ok(output) => {
+                {
+                    let conn = state.0.lock().map_err(|e| e.to_string())?;
+                    db::set_item_thumbnail(&conn, *item_id, output.page_count, Some(&output.thumbnail_key), ThumbnailStatus::Ready)?;
+                }
                 result.thumbnails_generated += 1;
             }
             Err(e) => {
-                eprintln!("[thumbnail] Erro ao gerar miniatura para {}: {}", pdf_path, e);
-                db::set_pdf_thumbnail(&conn, *pdf_id, None, None, ThumbnailStatus::Error)?;
+                eprintln!("[thumbnail] Erro ao gerar miniatura para {}: {}", item_path, e);
+                {
+                    let conn = state.0.lock().map_err(|e| e.to_string())?;
+                    db::set_item_thumbnail(&conn, *item_id, None, None, ThumbnailStatus::Error)?;
+                }
             }
         }
     }
 
-    // 5. Update collection timestamp
-    db::update_collection_timestamp(&conn, collection_id)?;
+    // 6. Update collection timestamp (short lock).
+    {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::update_collection_timestamp(&conn, collection_id)?;
+    }
 
-    // 6. Cleanup orphan thumbnail cache files
+    // 7. Cleanup orphan thumbnail cache files.
     if !cancels.is_cancelled(collection_id) {
-        match db::list_all_thumbnail_keys(&conn) {
+        let known_keys = {
+            let conn = state.0.lock().map_err(|e| e.to_string())?;
+            db::list_all_thumbnail_keys(&conn)
+        };
+        match known_keys {
             Ok(known_keys) => {
                 scanner::cleanup_orphan_cache(&cache, &known_keys);
             }
@@ -245,7 +298,7 @@ pub fn cancel_scan(cancels: State<'_, ScanCancels>, collection_id: Option<i64>) 
         cancels.cancel(id)
     } else {
         // Fallback: cancel all active scans if no specific collection provided
-        if let Ok(mut map) = cancels.0.lock() {
+        if let Ok(map) = cancels.0.lock() {
             for (_, b) in map.iter() {
                 b.store(true, std::sync::atomic::Ordering::Relaxed);
             }
@@ -271,14 +324,14 @@ impl<'a> Drop for ScanClearGuard<'a> {
     }
 }
 
-// Open PDF
+// Open file
 
 #[tauri::command]
-pub fn open_pdf(app: AppHandle, path: String) -> Result<(), String> {
+pub fn open_file(app: AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_shell::ShellExt;
 
     app.shell().open(&path, None)
-        .map_err(|e| format!("Falha ao abrir PDF: {e}"))?;
+        .map_err(|e| format!("Falha ao abrir arquivo: {e}"))?;
     Ok(())
 }
 
@@ -323,12 +376,13 @@ pub fn get_cache_dir(app: AppHandle) -> Result<String, String> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DuplicateItem {
-    pub pdf_id: i64,
+    pub item_id: i64,
     pub path: String,
     pub filename: String,
     pub size: i64,
     pub modified_at: String,
     pub page_count: Option<i64>,
+    pub file_type: String,
     pub thumbnail_key: Option<String>,
     pub thumbnail_status: String,
     pub hash: String,
@@ -375,19 +429,22 @@ fn sha256_file(path: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn analyze_duplicates(
+pub async fn analyze_duplicates(
     app: AppHandle,
     state: State<'_, DbState>,
     collection_id: i64,
 ) -> Result<DuplicateAnalysis, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let pdfs = db::list_pdfs(&conn, collection_id)?;
+    // Acquire the lock only to read the items; hashing happens without it.
+    let items = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::list_items(&conn, collection_id)?
+    };
 
-    let total = pdfs.len();
+    let total = items.len();
     let mut groups: Vec<DuplicateGroup> = Vec::new();
     let mut unreadable_count = 0usize;
 
-    for (index, pdf) in pdfs.iter().enumerate() {
+    for (index, item) in items.iter().enumerate() {
         let _ = app.emit(
             "analyze-progress",
             db::ScanProgress {
@@ -397,34 +454,35 @@ pub fn analyze_duplicates(
             },
         );
 
-        let hash = match sha256_file(&pdf.path) {
+        let hash = match sha256_file(&item.path) {
             Ok(h) => h,
             Err(e) => {
-                eprintln!("[duplicates] Erro ao calcular hash de {}: {}", pdf.path, e);
+                eprintln!("[duplicates] Erro ao calcular hash de {}: {}", item.path, e);
                 unreadable_count += 1;
                 continue;
             }
         };
 
-        let item = DuplicateItem {
-            pdf_id: pdf.id,
-            path: pdf.path.clone(),
-            filename: pdf.filename.clone(),
-            size: pdf.size,
-            modified_at: pdf.modified_at.clone(),
-            page_count: pdf.page_count,
-            thumbnail_key: pdf.thumbnail_key.clone(),
-            thumbnail_status: pdf.thumbnail_status.clone(),
+        let dup_item = DuplicateItem {
+            item_id: item.id,
+            path: item.path.clone(),
+            filename: item.filename.clone(),
+            size: item.size,
+            modified_at: item.modified_at.clone(),
+            page_count: item.page_count,
+            file_type: item.file_type.clone(),
+            thumbnail_key: item.thumbnail_key.clone(),
+            thumbnail_status: item.thumbnail_status.clone(),
             hash: hash.clone(),
         };
 
         if let Some(group) = groups.iter_mut().find(|g| g.hash == hash) {
-            group.items.push(item);
+            group.items.push(dup_item);
         } else {
             groups.push(DuplicateGroup {
                 hash,
-                size: pdf.size,
-                items: vec![item],
+                size: item.size,
+                items: vec![dup_item],
             });
         }
     }
@@ -434,12 +492,9 @@ pub fn analyze_duplicates(
 
     // Sort items within each group: shortest path first, then alphabetical
     for group in &mut groups {
-        group.items.sort_by(|a, b| {
-            a.path
-                .len()
-                .cmp(&b.path.len())
-                .then_with(|| a.path.cmp(&b.path))
-        });
+        group
+            .items
+            .sort_by(|a, b| a.path.len().cmp(&b.path.len()).then_with(|| a.path.cmp(&b.path)));
     }
 
     // Sort groups by size descending (largest duplicates first)
@@ -464,22 +519,22 @@ pub fn analyze_duplicates(
 pub fn remove_duplicate(
     state: State<'_, DbState>,
     collection_id: i64,
-    pdf_id: i64,
+    item_id: i64,
     delete_from_disk: bool,
     expected_hash: Option<String>,
 ) -> Result<RemoveDuplicateResult, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
 
-    let pdf = db::get_pdf_by_id(&conn, pdf_id)?
-        .ok_or_else(|| "PDF não encontrado".to_string())?;
+    let item = db::get_item_by_id(&conn, item_id)?
+        .ok_or_else(|| "Item não encontrado".to_string())?;
 
-    // Safety: ensure the pdf belongs to the given collection
-    if pdf.collection_id != collection_id {
-        return Err("O PDF não pertence a esta coleção".to_string());
+    // Safety: ensure the item belongs to the given collection
+    if item.collection_id != collection_id {
+        return Err("O item não pertence a esta coleção".to_string());
     }
 
     if !delete_from_disk {
-        db::delete_pdf(&conn, pdf.id)?;
+        db::delete_item(&conn, item.id)?;
         return Ok(RemoveDuplicateResult {
             removed_from_disk: false,
             file_missing: false,
@@ -489,11 +544,11 @@ pub fn remove_duplicate(
     }
 
     // Delete from disk flow with revalidation
-    let path = Path::new(&pdf.path);
+    let path = Path::new(&item.path);
 
     if !path.exists() {
         // File already gone: clean up records across all collections
-        let affected = db::delete_pdf_by_path_all_collections(&conn, &pdf.path)?;
+        let affected = db::delete_item_by_path_all_collections(&conn, &item.path)?;
         return Ok(RemoveDuplicateResult {
             removed_from_disk: false,
             file_missing: true,
@@ -504,7 +559,7 @@ pub fn remove_duplicate(
 
     // Revalidate content hash before deleting
     if let Some(expected) = expected_hash {
-        let current_hash = sha256_file(&pdf.path)?;
+        let current_hash = sha256_file(&item.path)?;
         if current_hash != expected {
             return Err(
                 "O arquivo foi alterado após a análise. Reexecute a análise de duplicados.".to_string(),
@@ -515,7 +570,7 @@ pub fn remove_duplicate(
     trash::delete(path)
         .map_err(|e| format!("Não foi possível enviar o arquivo para a Lixeira: {e}"))?;
 
-    let affected = db::delete_pdf_by_path_all_collections(&conn, &pdf.path)?;
+    let affected = db::delete_item_by_path_all_collections(&conn, &item.path)?;
 
     Ok(RemoveDuplicateResult {
         removed_from_disk: true,
@@ -526,9 +581,9 @@ pub fn remove_duplicate(
 }
 
 #[tauri::command]
-pub fn toggle_favorite(state: State<'_, DbState>, pdf_id: i64) -> Result<bool, String> {
+pub fn toggle_favorite(state: State<'_, DbState>, item_id: i64) -> Result<bool, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    db::toggle_pdf_favorite(&conn, pdf_id)
+    db::toggle_item_favorite(&conn, item_id)
 }
 
 #[tauri::command]

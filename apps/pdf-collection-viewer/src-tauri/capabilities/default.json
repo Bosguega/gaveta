@@ -1,6 +1,6 @@
 {
     "identifier": "default",
-    "description": "Permissões principais da aplicação PDF Collection Viewer",
+    "description": "Permissões principais da aplicação Collection Viewer",
     "windows": [
         "main"
     ],

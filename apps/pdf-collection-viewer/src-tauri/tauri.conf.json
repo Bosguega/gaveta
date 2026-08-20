@@ -1,5 +1,5 @@
 {
-    "productName": "PDF Collection Viewer",
+    "productName": "Collection Viewer",
     "version": "0.1.0",
     "identifier": "com.pdfcollectionviewer.desktop",
     "build": {
@@ -9,13 +9,20 @@
         "beforeBuildCommand": "npm run build"
     },
     "bundle": {
+        "icon": [
+            "icons/32x32.png",
+            "icons/128x128.png",
+            "icons/128x128@2x.png",
+            "icons/icon.icns",
+            "icons/icon.ico"
+        ],
         "resources": ["resources/pdfium.dll"]
     },
     "app": {
         "windows": [
             {
                 "label": "main",
-                "title": "PDF Collection Viewer",
+                "title": "Collection Viewer",
                 "width": 1400,
                 "height": 900,
                 "minWidth": 800,

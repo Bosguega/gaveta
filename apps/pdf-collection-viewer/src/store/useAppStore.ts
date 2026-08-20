@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Collection, Pdf, ScanProgress } from '@/types';
+import type { Collection, CollectionItem, ScanProgress } from '@/types';
 
 interface AppState {
     // Navigation
@@ -11,9 +11,9 @@ interface AppState {
     collections: Collection[];
     setCollections: (collections: Collection[]) => void;
 
-    // PDFs
-    pdfs: Pdf[];
-    setPdfs: (pdfs: Pdf[]) => void;
+    // Items
+    items: CollectionItem[];
+    setItems: (items: CollectionItem[]) => void;
 
     // Update state
     isUpdating: boolean;
@@ -30,8 +30,8 @@ export const useAppStore = create<AppState>((set) => ({
     collections: [],
     setCollections: (collections) => set({ collections }),
 
-    pdfs: [],
-    setPdfs: (pdfs) => set({ pdfs }),
+    items: [],
+    setItems: (items) => set({ items }),
 
     isUpdating: false,
     updateProgress: null,

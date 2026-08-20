@@ -19,7 +19,7 @@ export function CollectionCard({ collection, onOpen, onEdit, onDelete }: Props) 
                     {collection.name}
                 </div>
                 <div className="text-sm text-slate-500 mt-1">
-                    {collection.pdf_count} PDF{collection.pdf_count === 1 ? '' : 's'}
+                    {collection.item_count} arquivo{collection.item_count === 1 ? '' : 's'}
                 </div>
             </div>
 

@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod db;
+pub mod file_types;
 pub mod scanner;
 pub mod thumbnails;
 
@@ -69,10 +70,10 @@ pub fn run() {
             commands::delete_collection,
             commands::get_collection,
             commands::get_cache_dir,
-            commands::list_pdfs,
+            commands::list_items,
             commands::update_collection_scan,
             commands::cancel_scan,
-            commands::open_pdf,
+            commands::open_file,
             commands::pick_folder,
             commands::analyze_duplicates,
             commands::remove_duplicate,

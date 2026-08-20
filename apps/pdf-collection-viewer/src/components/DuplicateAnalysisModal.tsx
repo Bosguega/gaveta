@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { DuplicateAnalysis, DuplicateGroup, DuplicateItem, RemoveDuplicateResult, ScanProgress } from '@/types';
-import { analyzeDuplicates, listenToAnalyzeProgress, openPdf, removeDuplicate, revealInFolder } from '@/services/pdfs';
+import { analyzeDuplicates, listenToAnalyzeProgress, openFile, removeDuplicate, revealInFolder } from '@/services/items';
 import { getThumbnailUrl } from '@/services/thumbnails';
 import { formatBytes, formatModifiedAt } from '@/utils/format';
 
@@ -25,7 +25,7 @@ function createInitialState(groups: DuplicateGroup[]): ItemStateMap {
         // Backend already sorts: shortest path first, then alphabetical.
         // First item is the default "keep".
         group.items.forEach((item, index) => {
-            state[item.pdf_id] = {
+            state[item.item_id] = {
                 keep: index === 0,
                 remove: index !== 0,
                 busy: false,
@@ -42,7 +42,7 @@ function Thumb({ item }: { item: DuplicateItem }) {
     useEffect(() => {
         let active = true;
         if (item.thumbnail_status === 'ready' && item.thumbnail_key) {
-            getThumbnailUrl(item.thumbnail_key)
+            getThumbnailUrl(item.thumbnail_key, item.modified_at)
                 .then((url) => {
                     if (active) {
                         setImgSrc(url);
@@ -121,10 +121,10 @@ export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Pro
             .map(([id]) => Number(id));
     }, [itemState]);
 
-    const findItem = (pdfId: number): DuplicateItem | undefined => {
+    const findItem = (itemId: number): DuplicateItem | undefined => {
         if (!analysis) return undefined;
         for (const group of analysis.groups) {
-            const found = group.items.find((item) => item.pdf_id === pdfId);
+            const found = group.items.find((item) => item.item_id === itemId);
             if (found) return found;
         }
         return undefined;
@@ -135,7 +135,7 @@ export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Pro
         return analysis.groups
             .map((group) => ({
                 ...group,
-                items: group.items.filter((item) => itemState[item.pdf_id] !== undefined),
+                items: group.items.filter((item) => itemState[item.item_id] !== undefined),
             }))
             .filter((group) => group.items.length >= 2);
     }, [analysis, itemState]);
@@ -148,31 +148,31 @@ export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Pro
         setItemState((prev) => {
             const next = { ...prev };
             for (const item of group.items) {
-                next[item.pdf_id] = {
-                    ...next[item.pdf_id],
-                    keep: item.pdf_id === keepId,
-                    remove: item.pdf_id !== keepId,
+                next[item.item_id] = {
+                    ...next[item.item_id],
+                    keep: item.item_id === keepId,
+                    remove: item.item_id !== keepId,
                 };
             }
             return next;
         });
     };
 
-    const handleToggleRemove = (pdfId: number) => {
+    const handleToggleRemove = (itemId: number) => {
         setItemState((prev) => ({
             ...prev,
-            [pdfId]: {
-                ...prev[pdfId],
-                remove: !prev[pdfId].remove,
+            [itemId]: {
+                ...prev[itemId],
+                remove: !prev[itemId].remove,
             },
         }));
     };
 
     const handleOpen = async (path: string) => {
         try {
-            await openPdf(path);
+            await openFile(path);
         } catch (reason) {
-            setError(reason instanceof Error ? reason.message : 'Não foi possível abrir o PDF.');
+            setError(reason instanceof Error ? reason.message : 'Não foi possível abrir o arquivo.');
         }
     };
 
@@ -184,10 +184,10 @@ export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Pro
         }
     };
 
-    const applyResult = (pdfId: number, result: RemoveDuplicateResult) => {
+    const applyResult = (itemId: number, result: RemoveDuplicateResult) => {
         setItemState((prev) => {
             const next = { ...prev };
-            delete next[pdfId];
+            delete next[itemId];
             return next;
         });
 
@@ -208,19 +208,19 @@ export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Pro
         setNotice(null);
 
         try {
-            for (const pdfId of selectedToRemove) {
+            for (const itemId of selectedToRemove) {
                 setItemState((prev) => ({
                     ...prev,
-                    [pdfId]: { ...prev[pdfId], busy: true, error: null },
+                    [itemId]: { ...prev[itemId], busy: true, error: null },
                 }));
                 try {
-                    const result = await removeDuplicate(collectionId, pdfId, false);
-                    applyResult(pdfId, result);
+                    const result = await removeDuplicate(collectionId, itemId, false);
+                    applyResult(itemId, result);
                 } catch (reason) {
                     setItemState((prev) => ({
                         ...prev,
-                        [pdfId]: {
-                            ...prev[pdfId],
+                        [itemId]: {
+                            ...prev[itemId],
                             busy: false,
                             error: reason instanceof Error ? reason.message : 'Falha ao remover.',
                         },
@@ -245,21 +245,21 @@ export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Pro
         setNotice(null);
 
         try {
-            for (const pdfId of selectedToRemove) {
-                const item = findItem(pdfId);
+            for (const itemId of selectedToRemove) {
+                const item = findItem(itemId);
                 setItemState((prev) => ({
                     ...prev,
-                    [pdfId]: { ...prev[pdfId], busy: true, error: null },
+                    [itemId]: { ...prev[itemId], busy: true, error: null },
                 }));
                 try {
-                    const result = await removeDuplicate(collectionId, pdfId, true, item?.hash);
-                    applyResult(pdfId, result);
+                    const result = await removeDuplicate(collectionId, itemId, true, item?.hash);
+                    applyResult(itemId, result);
                 } catch (reason) {
                     const message = reason instanceof Error ? reason.message : 'Falha ao remover.';
                     setItemState((prev) => ({
                         ...prev,
-                        [pdfId]: {
-                            ...prev[pdfId],
+                        [itemId]: {
+                            ...prev[itemId],
                             busy: false,
                             error: message,
                         },
@@ -348,11 +348,11 @@ export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Pro
 
                             <div className="space-y-2">
                                 {group.items.map((item) => {
-                                    const state = itemState[item.pdf_id];
+                                    const state = itemState[item.item_id];
                                     if (!state) return null;
                                     return (
                                         <div
-                                            key={item.pdf_id}
+                                            key={item.item_id}
                                             className={`flex items-center gap-3 p-3 rounded-lg border ${state.keep
                                                 ? 'border-green-300 bg-green-50'
                                                 : state.remove
@@ -364,7 +364,7 @@ export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Pro
                                                 type="radio"
                                                 name={`keep-${group.hash}`}
                                                 checked={state.keep}
-                                                onChange={() => handleKeepChange(group.hash, item.pdf_id)}
+                                                onChange={() => handleKeepChange(group.hash, item.item_id)}
                                                 title="Manter este arquivo"
                                                 className="accent-green-600"
                                             />
@@ -387,7 +387,7 @@ export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Pro
                                                 <button
                                                     onClick={() => handleOpen(item.path)}
                                                     className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded"
-                                                    title="Abrir PDF"
+                                                    title="Abrir arquivo"
                                                 >
                                                     Abrir
                                                 </button>
@@ -404,7 +404,7 @@ export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Pro
                                                             type="checkbox"
                                                             checked={state.remove}
                                                             disabled={state.busy}
-                                                            onChange={() => handleToggleRemove(item.pdf_id)}
+                                                            onChange={() => handleToggleRemove(item.item_id)}
                                                             className="accent-red-600"
                                                         />
                                                         Remover

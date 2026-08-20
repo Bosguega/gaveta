@@ -3,7 +3,7 @@ export interface Collection {
     name: string;
     icon: string;
     include_subfolders: boolean;
-    pdf_count: number;
+    item_count: number;
     created_at: string;
     updated_at: string;
 }
@@ -18,7 +18,7 @@ export interface CollectionDetail {
     updated_at: string;
 }
 
-export interface Pdf {
+export interface CollectionItem {
     id: number;
     collection_id: number;
     path: string;
@@ -26,6 +26,7 @@ export interface Pdf {
     size: number;
     modified_at: string;
     page_count: number | null;
+    file_type: string;
     thumbnail_key: string | null;
     thumbnail_status: string;
     is_favorite: boolean;
@@ -44,15 +45,17 @@ export interface UpdateResult {
     updated: number;
     thumbnails_generated: number;
     unavailable_paths: string[];
+    errored_paths: string[];
 }
 
 export interface DuplicateItem {
-    pdf_id: number;
+    item_id: number;
     path: string;
     filename: string;
     size: number;
     modified_at: string;
     page_count: number | null;
+    file_type: string;
     thumbnail_key: string | null;
     thumbnail_status: string;
     hash: string;
