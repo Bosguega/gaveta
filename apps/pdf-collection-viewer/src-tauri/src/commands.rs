@@ -526,6 +526,12 @@ pub fn remove_duplicate(
 }
 
 #[tauri::command]
+pub fn toggle_favorite(state: State<'_, DbState>, pdf_id: i64) -> Result<bool, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    db::toggle_pdf_favorite(&conn, pdf_id)
+}
+
+#[tauri::command]
 pub fn reveal_in_folder(app: AppHandle, path: String) -> Result<(), String> {
     use std::process::Command;
 

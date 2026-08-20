@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { PdfCard } from '@/components/PdfCard';
 import { DuplicateAnalysisModal } from '@/components/DuplicateAnalysisModal';
 import { useAppStore } from '@/store/useAppStore';
-import { listPdfs, updateCollectionScan, openPdf, listenToUpdateProgress, cancelScan } from '@/services/pdfs';
+import { listPdfs, updateCollectionScan, openPdf, listenToUpdateProgress, cancelScan, toggleFavorite } from '@/services/pdfs';
 import { clearThumbnailUrlCache } from '@/services/thumbnails';
 import { SORT_OPTIONS, type SortOption } from '@/types';
 
@@ -14,6 +14,7 @@ export function CollectionPage() {
     const [unavailableCount, setUnavailableCount] = useState(0);
     const [error, setError] = useState<string | null>(null);
     const [showDuplicates, setShowDuplicates] = useState(false);
+    const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
     const loadPdfs = async () => {
         if (currentCollectionId === null) return;
@@ -66,9 +67,22 @@ export function CollectionPage() {
         }
     };
 
+    const handleToggleFavorite = async (pdfId: number) => {
+        try {
+            const newState = await toggleFavorite(pdfId);
+            setPdfs(pdfs.map((pdf) => (pdf.id === pdfId ? { ...pdf, is_favorite: newState } : pdf)));
+        } catch (reason) {
+            setError(reason instanceof Error ? reason.message : 'Não foi possível alterar o favorito.');
+        }
+    };
+
     const filteredAndSorted = useMemo(() => {
         const query = search.trim().toLowerCase();
         let result = pdfs;
+
+        if (showFavoritesOnly) {
+            result = result.filter((pdf) => pdf.is_favorite);
+        }
 
         if (query) {
             result = result.filter((pdf) => pdf.filename.toLowerCase().includes(query));
@@ -110,7 +124,7 @@ export function CollectionPage() {
                 break;
         }
         return sorted;
-    }, [pdfs, search, sort]);
+    }, [pdfs, search, sort, showFavoritesOnly]);
 
     return (
         <div className="p-8">
@@ -164,6 +178,16 @@ export function CollectionPage() {
                     placeholder="🔎 Buscar PDFs..."
                     className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                <button
+                    onClick={() => setShowFavoritesOnly((prev) => !prev)}
+                    className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${showFavoritesOnly
+                        ? 'bg-amber-400 border-amber-400 text-white'
+                        : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+                        }`}
+                    title={showFavoritesOnly ? 'Mostrar todos os PDFs' : 'Mostrar apenas favoritos'}
+                >
+                    ★ {showFavoritesOnly ? 'Favoritos' : 'Todos'}
+                </button>
                 <select
                     value={sort}
                     onChange={(e) => setSort(e.target.value as SortOption)}
@@ -215,6 +239,7 @@ export function CollectionPage() {
                             selected={selectedId === pdf.id}
                             onSelect={() => setSelectedId(pdf.id)}
                             onOpen={() => handleOpenPdf(pdf.path)}
+                            onToggleFavorite={() => handleToggleFavorite(pdf.id)}
                         />
                     ))}
                 </div>

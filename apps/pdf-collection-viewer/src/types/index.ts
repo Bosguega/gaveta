@@ -28,6 +28,7 @@ export interface Pdf {
     page_count: number | null;
     thumbnail_key: string | null;
     thumbnail_status: string;
+    is_favorite: boolean;
 }
 
 export interface ScanProgress {

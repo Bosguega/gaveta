@@ -8,9 +8,10 @@ interface Props {
     selected: boolean;
     onSelect: () => void;
     onOpen: () => void;
+    onToggleFavorite: () => void;
 }
 
-export function PdfCard({ pdf, selected, onSelect, onOpen }: Props) {
+export function PdfCard({ pdf, selected, onSelect, onOpen, onToggleFavorite }: Props) {
     const [imgSrc, setImgSrc] = useState<string>('');
 
     useEffect(() => {
@@ -60,6 +61,21 @@ export function PdfCard({ pdf, selected, onSelect, onOpen }: Props) {
                     </div>
                 )}
 
+                <button
+                    type="button"
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        onToggleFavorite();
+                    }}
+                    onDoubleClick={(event) => event.stopPropagation()}
+                    className={`absolute top-2 left-2 w-8 h-8 rounded-full flex items-center justify-center text-lg shadow-sm backdrop-blur-sm transition-colors ${pdf.is_favorite
+                            ? 'bg-amber-400/90 hover:bg-amber-500 text-white'
+                            : 'bg-white/80 hover:bg-white text-slate-400 hover:text-amber-500 opacity-0 group-hover:opacity-100'
+                        }`}
+                    title={pdf.is_favorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+                >
+                    ★
+                </button>
                 <button
                     type="button"
                     onClick={(event) => {

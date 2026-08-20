@@ -35,6 +35,10 @@ export async function removeDuplicate(
     });
 }
 
+export async function toggleFavorite(pdfId: number): Promise<boolean> {
+    return invoke<boolean>('toggle_favorite', { pdfId });
+}
+
 export async function revealInFolder(path: string): Promise<void> {
     return invoke<void>('reveal_in_folder', { path });
 }

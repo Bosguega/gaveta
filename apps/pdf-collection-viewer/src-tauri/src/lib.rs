@@ -76,6 +76,7 @@ pub fn run() {
             commands::pick_folder,
             commands::analyze_duplicates,
             commands::remove_duplicate,
+            commands::toggle_favorite,
             commands::reveal_in_folder,
         ])
         .run(tauri::generate_context!())

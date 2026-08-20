@@ -90,6 +90,7 @@ pub struct Pdf {
     pub page_count: Option<i64>,
     pub thumbnail_key: Option<String>,
     pub thumbnail_status: String,
+    pub is_favorite: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,6 +170,7 @@ pub fn open_and_migrate(app: &tauri::AppHandle) -> Result<Connection, String> {
             page_count INTEGER,
             thumbnail_key TEXT,
             thumbnail_status TEXT NOT NULL DEFAULT 'pending',
+            is_favorite INTEGER NOT NULL DEFAULT 0,
             UNIQUE(collection_id, path)
         );
 
@@ -177,6 +179,24 @@ pub fn open_and_migrate(app: &tauri::AppHandle) -> Result<Connection, String> {
         ",
     )
     .map_err(|e| format!("Não foi possível inicializar o banco: {e}"))?;
+
+    // Migration: add is_favorite column if missing (older databases)
+    let has_favorite: bool = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('pdfs') WHERE name = 'is_favorite'")
+        .map_err(|e| format!("Falha ao verificar coluna is_favorite: {e}"))?
+        .query_row([], |row| {
+            let count: i64 = row.get(0)?;
+            Ok(count > 0)
+        })
+        .map_err(|e| format!("Falha ao verificar coluna is_favorite: {e}"))?;
+
+    if !has_favorite {
+        conn.execute(
+            "ALTER TABLE pdfs ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| format!("Falha ao adicionar coluna is_favorite: {e}"))?;
+    }
 
     Ok(conn)
 }
@@ -339,7 +359,7 @@ pub fn delete_collection(conn: &Connection, id: i64) -> Result<(), String> {
 pub fn list_pdfs(conn: &Connection, collection_id: i64) -> Result<Vec<Pdf>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, collection_id, path, filename, size, modified_at, page_count, thumbnail_key, thumbnail_status
+            "SELECT id, collection_id, path, filename, size, modified_at, page_count, thumbnail_key, thumbnail_status, is_favorite
              FROM pdfs WHERE collection_id = ?1
              ORDER BY filename COLLATE NOCASE",
         )
@@ -348,6 +368,7 @@ pub fn list_pdfs(conn: &Connection, collection_id: i64) -> Result<Vec<Pdf>, Stri
     let pdfs = stmt
         .query_map(params![collection_id], |row| {
             let status: ThumbnailStatus = row.get(8)?;
+            let favorite: i64 = row.get(9)?;
             Ok(Pdf {
                 id: row.get(0)?,
                 collection_id: row.get(1)?,
@@ -358,6 +379,7 @@ pub fn list_pdfs(conn: &Connection, collection_id: i64) -> Result<Vec<Pdf>, Stri
                 page_count: row.get(6)?,
                 thumbnail_key: row.get(7)?,
                 thumbnail_status: status.to_string(),
+                is_favorite: favorite != 0,
             })
         })
         .map_err(|e| format!("Falha ao listar PDFs: {e}"))?
@@ -370,7 +392,7 @@ pub fn list_pdfs(conn: &Connection, collection_id: i64) -> Result<Vec<Pdf>, Stri
 pub fn get_pdf_by_path(conn: &Connection, collection_id: i64, path: &str) -> Result<Option<Pdf>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, collection_id, path, filename, size, modified_at, page_count, thumbnail_key, thumbnail_status
+            "SELECT id, collection_id, path, filename, size, modified_at, page_count, thumbnail_key, thumbnail_status, is_favorite
              FROM pdfs WHERE collection_id = ?1 AND path = ?2",
         )
         .map_err(|e| format!("Falha ao preparar consulta de PDF: {e}"))?;
@@ -378,6 +400,7 @@ pub fn get_pdf_by_path(conn: &Connection, collection_id: i64, path: &str) -> Res
     let result = stmt
         .query_row(params![collection_id, path], |row| {
             let status: ThumbnailStatus = row.get(8)?;
+            let favorite: i64 = row.get(9)?;
             Ok(Pdf {
                 id: row.get(0)?,
                 collection_id: row.get(1)?,
@@ -388,6 +411,7 @@ pub fn get_pdf_by_path(conn: &Connection, collection_id: i64, path: &str) -> Res
                 page_count: row.get(6)?,
                 thumbnail_key: row.get(7)?,
                 thumbnail_status: status.to_string(),
+                is_favorite: favorite != 0,
             })
         })
         .optional()
@@ -498,7 +522,7 @@ pub fn list_all_thumbnail_keys(conn: &Connection) -> Result<Vec<String>, String>
 pub fn get_pdf_by_id(conn: &Connection, id: i64) -> Result<Option<Pdf>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, collection_id, path, filename, size, modified_at, page_count, thumbnail_key, thumbnail_status
+            "SELECT id, collection_id, path, filename, size, modified_at, page_count, thumbnail_key, thumbnail_status, is_favorite
              FROM pdfs WHERE id = ?1",
         )
         .map_err(|e| format!("Falha ao preparar consulta de PDF por id: {e}"))?;
@@ -506,6 +530,7 @@ pub fn get_pdf_by_id(conn: &Connection, id: i64) -> Result<Option<Pdf>, String> 
     let result = stmt
         .query_row(params![id], |row| {
             let status: ThumbnailStatus = row.get(8)?;
+            let favorite: i64 = row.get(9)?;
             Ok(Pdf {
                 id: row.get(0)?,
                 collection_id: row.get(1)?,
@@ -516,6 +541,7 @@ pub fn get_pdf_by_id(conn: &Connection, id: i64) -> Result<Option<Pdf>, String> 
                 page_count: row.get(6)?,
                 thumbnail_key: row.get(7)?,
                 thumbnail_status: status.to_string(),
+                is_favorite: favorite != 0,
             })
         })
         .optional()
@@ -531,4 +557,24 @@ pub fn delete_pdf_by_path_all_collections(conn: &Connection, path: &str) -> Resu
         .execute("DELETE FROM pdfs WHERE path = ?1", params![path])
         .map_err(|e| format!("Falha ao excluir PDFs por caminho: {e}"))?;
     Ok(removed)
+}
+
+/// Toggles the favorite flag of a pdf. Returns the new favorite state.
+pub fn toggle_pdf_favorite(conn: &Connection, id: i64) -> Result<bool, String> {
+    let current: i64 = conn
+        .query_row(
+            "SELECT is_favorite FROM pdfs WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Falha ao consultar favorito do PDF: {e}"))?;
+
+    let new_value = if current != 0 { 0 } else { 1 };
+    conn.execute(
+        "UPDATE pdfs SET is_favorite = ?1 WHERE id = ?2",
+        params![new_value, id],
+    )
+    .map_err(|e| format!("Falha ao atualizar favorito do PDF: {e}"))?;
+
+    Ok(new_value != 0)
 }

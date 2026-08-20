@@ -60,12 +60,13 @@ pub fn generate_thumbnail(
     let height = bitmap.height() as u32;
     let bytes = bitmap.as_raw_bytes();
 
-    // Convert BGRA → RGBA for the image crate (WebP encoder expects RGB/A)
+    // The bitmap from pdfium is already in RGBA format.
+    // Copy channels directly without swapping R and B.
     let mut rgba = Vec::with_capacity(bytes.len());
     for chunk in bytes.chunks_exact(4) {
-        rgba.push(chunk[2]); // R
+        rgba.push(chunk[0]); // R
         rgba.push(chunk[1]); // G
-        rgba.push(chunk[0]); // B
+        rgba.push(chunk[2]); // B
         rgba.push(chunk[3]); // A
     }
 
