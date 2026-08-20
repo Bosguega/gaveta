@@ -1,0 +1,12 @@
+{
+    "identifier": "default",
+    "description": "Permissões principais da aplicação PDF Collection Viewer",
+    "windows": [
+        "main"
+    ],
+    "permissions": [
+        "core:default",
+        "dialog:default",
+        "shell:allow-open"
+    ]
+}

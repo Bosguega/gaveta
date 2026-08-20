@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useDeviceUI } from './composables/useDeviceUI'
-import { notesStore, updateStreak } from './store/notesStore'
-import { listNotes, saveNote, updateNote, deleteNote, deleteAllNotes } from './services/databaseService'
+import { notesStore, updateStreak, resetStats, initStats, showToast, navigateTo } from './store/notesStore'
+import { listNotes, saveNote, updateNote, deleteNote, deleteAllNotes, togglePinNote, searchNotesText } from './services/databaseService'
 import { getEmbedding } from './services/embeddingService'
 import { generateAnswer, summarizeResults } from './services/llmService'
 import { searchBySimilarity } from './services/similarityService'
@@ -12,12 +12,15 @@ import ChatPanel from './components/ChatPanel.vue'
 import NoteForm from './components/NoteForm.vue'
 import ResultsList from './components/ResultsList.vue'
 import SearchBox from './components/SearchBox.vue'
+import InsightsView from './components/InsightsView.vue'
 import SettingsView from './views/SettingsView.vue'
 import DeviceToolbar from './components/DeviceToolbar.vue'
 import MobileLayout from './layouts/MobileLayout.vue'
 import DesktopLayout from './layouts/DesktopLayout.vue'
 
+const isDev = import.meta.env.DEV
 const noteFormRef = ref<InstanceType<typeof NoteForm> | null>(null)
+const searchBoxRef = ref<InstanceType<typeof SearchBox> | null>(null)
 const { resolvedMode } = useDeviceUI()
 
 const isDesktop = computed(() => resolvedMode.value === 'desktop' || resolvedMode.value === 'tablet')
@@ -26,38 +29,102 @@ async function loadNotes() {
     notesStore.notes = await listNotes()
 }
 
-async function createNote(content: string) {
+// Displayed results: either similarity results or all notes filtered by tag
+const displayedResults = computed(() => {
+    let list = notesStore.results.length > 0
+        ? notesStore.results
+        : notesStore.notes.map(note => ({ note, score: 0 }))
+
+    if (notesStore.selectedTag) {
+        const target = notesStore.selectedTag.toLowerCase()
+        list = list.filter(r => {
+            if (!r.note.tags) return false
+            return r.note.tags.toLowerCase().split(',').map(t => t.trim()).includes(target)
+        })
+    }
+
+    return list
+})
+
+async function createNote(content: string, tags = '', pinned = false) {
     await runAction(async () => {
-        const embedding = await getEmbedding(content)
+        let embedding: number[] = []
+        try {
+            embedding = await getEmbedding(content)
+        } catch (e) {
+            console.warn('Não foi possível gerar embedding (Ollama offline). Nota será salva sem embedding semântico:', e)
+        }
+
         if (notesStore.editingNote) {
-            await updateNote(notesStore.editingNote.id, content, embedding)
-            const updatedNote = { ...notesStore.editingNote, content, embedding: JSON.stringify(embedding) }
+            await updateNote(notesStore.editingNote.id, content, embedding, tags, pinned)
+            const updatedNote: Note = {
+                ...notesStore.editingNote,
+                content,
+                embedding: JSON.stringify(embedding),
+                parsedEmbedding: embedding.length > 0 ? embedding : undefined,
+                tags,
+                pinned,
+                updated_at: new Date().toISOString(),
+            }
             notesStore.notes = notesStore.notes.map(n => n.id === updatedNote.id ? updatedNote : n)
             notesStore.results = notesStore.results.map(r => r.note.id === updatedNote.id ? { ...r, note: updatedNote } : r)
             notesStore.editingNote = null
+            showToast('Nota atualizada com sucesso!', 'success')
+            navigateTo('search')
         } else {
-            const note = await saveNote(content, embedding)
+            const note = await saveNote(content, embedding, tags, pinned)
+            note.parsedEmbedding = embedding.length > 0 ? embedding : undefined
             notesStore.notes = [note, ...notesStore.notes]
             updateStreak()
+            showToast('Nota salva com sucesso!', 'success')
+            navigateTo('search')
         }
     }, notesStore.editingNote ? 'Atualizando nota...' : 'Salvando nota...')
 }
 
 function startEdit(note: Note) {
     notesStore.editingNote = note
-    notesStore.activeView = 'add'
+    navigateTo('add')
+}
+
+async function handleTogglePin(id: number) {
+    try {
+        const isPinned = await togglePinNote(id)
+        notesStore.notes = notesStore.notes.map(n => n.id === id ? { ...n, pinned: isPinned } : n)
+        // Sort notes: pinned first, then newest
+        notesStore.notes.sort((a, b) => {
+            if (a.pinned === b.pinned) return b.id - a.id
+            return a.pinned ? -1 : 1
+        })
+        notesStore.results = notesStore.results.map(r => r.note.id === id ? { ...r, note: { ...r.note, pinned: isPinned } } : r)
+        showToast(isPinned ? 'Nota fixada no topo' : 'Nota desafixada', 'info')
+    } catch (e) {
+        console.error('Erro ao alternar fixação:', e)
+    }
 }
 
 async function searchNotes(query: string) {
     if (!query.trim()) {
         notesStore.results = []
+        notesStore.searchFallbackMode = false
         return
     }
+
     await runAction(async () => {
-        const embedding = await getEmbedding(query)
-        notesStore.results = searchBySimilarity(notesStore.notes, embedding, 5, 0.5, query.length)
-        notesStore.summary = ''
-    }, 'Buscando notas similares...')
+        try {
+            const embedding = await getEmbedding(query)
+            notesStore.results = searchBySimilarity(notesStore.notes, embedding, 10, 0.45, query.length)
+            notesStore.searchFallbackMode = false
+            notesStore.summary = ''
+        } catch (embedError) {
+            console.warn('Busca semântica indisponível, usando fallback por texto:', embedError)
+            notesStore.searchFallbackMode = true
+            const textMatches = await searchNotesText(query, 20)
+            notesStore.results = textMatches.map(note => ({ note, score: 0 }))
+            notesStore.summary = ''
+            showToast('Buscando por texto direto (Ollama offline)', 'info')
+        }
+    }, 'Buscando notas...')
 }
 
 function showConfirmModal(message: string, action: () => void) {
@@ -81,6 +148,7 @@ async function removeNote(id: number) {
             await deleteNote(id)
             notesStore.notes = notesStore.notes.filter(n => n.id !== id)
             notesStore.results = notesStore.results.filter(r => r.note.id !== id)
+            showToast('Nota excluída.', 'info')
         }, 'Excluindo nota...')
     })
 }
@@ -92,16 +160,15 @@ async function clearAllNotes() {
             notesStore.notes = []
             notesStore.results = []
             notesStore.messages = []
-            notesStore.stats.streak = 0
-            notesStore.stats.lastUse = null
-            localStorage.setItem('memoria_auxiliar_stats', JSON.stringify(notesStore.stats))
+            resetStats()
+            showToast('Todas as notas foram excluídas.', 'info')
         }, 'Excluindo todas as notas...')
     })
 }
 
 async function generateSummary() {
     await runAction(async () => {
-        notesStore.summary = await summarizeResults(notesStore.results)
+        notesStore.summary = await summarizeResults(displayedResults.value.filter(r => r.score > 0 || notesStore.results.length > 0))
     }, 'Gerando resumo...')
 }
 
@@ -109,11 +176,16 @@ async function askAI(question: string) {
     await runAction(async () => {
         notesStore.messages.push({ role: 'user', content: question })
 
-        const embedding = await getEmbedding(question)
-        const retrievedResults = searchBySimilarity(notesStore.notes, embedding, 10, 0.5, question.length)
+        let retrievedResults = []
+        try {
+            const embedding = await getEmbedding(question)
+            retrievedResults = searchBySimilarity(notesStore.notes, embedding, 10, 0.45, question.length)
+        } catch {
+            const textMatches = await searchNotesText(question, 10)
+            retrievedResults = textMatches.map(note => ({ note, score: 0.5 }))
+        }
 
         const { answer, usedIds } = await generateAnswer(question, retrievedResults)
-
         const usedSources = retrievedResults.filter(r => usedIds.includes(r.note.id))
 
         notesStore.messages.push({
@@ -148,10 +220,36 @@ async function runAction(action: () => Promise<void>, message = 'Processando...'
 }
 
 function handleKeydown(event: KeyboardEvent) {
-    if (event.ctrlKey && event.key === 's') {
-        event.preventDefault()
-        if (notesStore.activeView === 'add' && noteFormRef.value) {
-            noteFormRef.value.submit()
+    // Global Shortcuts
+    if (event.ctrlKey) {
+        if (event.key === '1') {
+            event.preventDefault()
+            navigateTo('search')
+        } else if (event.key === '2') {
+            event.preventDefault()
+            navigateTo('add')
+        } else if (event.key === '3') {
+            event.preventDefault()
+            navigateTo('chat')
+        } else if (event.key === '4') {
+            event.preventDefault()
+            navigateTo('insights')
+        } else if (event.key === '5') {
+            event.preventDefault()
+            navigateTo('settings')
+        } else if (event.key === 'f' || event.key === 'F') {
+            event.preventDefault()
+            if (notesStore.activeView !== 'search') {
+                navigateTo('search')
+            }
+            setTimeout(() => {
+                searchBoxRef.value?.focus()
+            }, 50)
+        } else if (event.key === 's' || event.key === 'S') {
+            event.preventDefault()
+            if (notesStore.activeView === 'add' && noteFormRef.value) {
+                noteFormRef.value.submit()
+            }
         }
     } else if (event.key === 'Escape') {
         if (notesStore.editingNote) {
@@ -160,7 +258,8 @@ function handleKeydown(event: KeyboardEvent) {
     }
 }
 
-onMounted(() => {
+onMounted(async () => {
+    await initStats()
     runAction(loadNotes)
     document.addEventListener('keydown', handleKeydown)
 })
@@ -168,39 +267,21 @@ onMounted(() => {
 onUnmounted(() => {
     document.removeEventListener('keydown', handleKeydown)
 })
-
-const notesThisWeek = computed(() => {
-    const weekAgo = new Date()
-    weekAgo.setDate(weekAgo.getDate() - 7)
-    return notesStore.notes.filter(note => new Date(note.created_at) > weekAgo).length
-})
-
-const topKeywords = computed(() => {
-    const words: { [key: string]: number } = {}
-    notesStore.notes.forEach(note => {
-        note.content.toLowerCase().split(/\s+/).forEach(word => {
-            if (word.length > 3) words[word] = (words[word] || 0) + 1
-        })
-    })
-    return Object.entries(words)
-        .sort(([, a], [, b]) => b - a)
-        .slice(0, 5)
-        .map(([word]) => word)
-})
 </script>
 
 <template>
-    <!--
-      O layout escolhido (MobileLayout ou DesktopLayout) é responsável
-      apenas pelo shell (header + nav). O conteúdo das views é o mesmo
-      para ambos, renderizado aqui dentro do slot.
-    -->
     <component :is="isDesktop ? DesktopLayout : MobileLayout">
         <!-- TELA: PESQUISAR -->
         <div v-if="notesStore.activeView === 'search'" class="view-container">
-            <SearchBox @search="searchNotes" />
-            <ResultsList :results="notesStore.results" @delete="removeNote" @edit="startEdit" />
-            <section v-if="notesStore.results.length" class="summary-section">
+            <SearchBox ref="searchBoxRef" @search="searchNotes" />
+            <ResultsList
+                :results="displayedResults"
+                @delete="removeNote"
+                @edit="startEdit"
+                @toggle-pin="handleTogglePin"
+                @select-tag="tag => { notesStore.selectedTag = tag }"
+            />
+            <section v-if="displayedResults.length" class="summary-section">
                 <button type="button" class="secondary" @click="generateSummary">
                     Gerar resumo com IA
                 </button>
@@ -220,23 +301,26 @@ const topKeywords = computed(() => {
 
         <!-- TELA: INSIGHTS -->
         <div v-if="notesStore.activeView === 'insights'" class="view-container">
-            <section class="panel">
-                <h2>Insights das suas memórias</h2>
-                <p>Notas totais: {{ notesStore.notes.length }}</p>
-                <p>Notas esta semana: {{ notesThisWeek }}</p>
-                <p>Streak atual: {{ notesStore.stats.streak }} dias</p>
-                <p v-if="topKeywords.length">Palavras-chave mais usadas: {{ topKeywords.join(', ') }}</p>
-                <button type="button" class="secondary" @click="clearAllNotes" style="margin-top: 20px;">Excluir Todas as Notas</button>
-            </section>
+            <InsightsView @clear-all="clearAllNotes" />
         </div>
 
         <!-- TELA: CONFIGURAÇÕES -->
         <div v-if="notesStore.activeView === 'settings'" class="view-container">
-            <SettingsView />
+            <SettingsView @notes-reloaded="loadNotes" />
         </div>
     </component>
 
-    <!-- Modal de Confirmação (fora dos layouts, sempre visível) -->
+    <!-- Toast Notification -->
+    <Transition name="toast">
+        <div v-if="notesStore.toast.show" :class="['toast-notification', notesStore.toast.type]">
+            <span class="toast-icon">
+                {{ notesStore.toast.type === 'success' ? '✓' : notesStore.toast.type === 'error' ? '✗' : 'ℹ️' }}
+            </span>
+            <span>{{ notesStore.toast.message }}</span>
+        </div>
+    </Transition>
+
+    <!-- Modal de Confirmação -->
     <div v-if="notesStore.confirmModal.show" class="modal-overlay" @click="closeConfirmModal">
         <div class="modal-content" @click.stop>
             <h3>Confirmar Ação</h3>
@@ -248,6 +332,52 @@ const topKeywords = computed(() => {
         </div>
     </div>
 
-    <!-- Toolbar DEV -->
-    <DeviceToolbar />
+    <!-- Toolbar DEV (só em dev) -->
+    <DeviceToolbar v-if="isDev" />
 </template>
+
+<style scoped>
+/* Toast Notification */
+.toast-notification {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 9999;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(8px);
+}
+
+.toast-notification.success {
+    background: rgba(16, 185, 129, 0.9);
+    color: white;
+    border: 1px solid #10b981;
+}
+
+.toast-notification.error {
+    background: rgba(239, 68, 68, 0.9);
+    color: white;
+    border: 1px solid #ef4444;
+}
+
+.toast-notification.info {
+    background: rgba(56, 189, 248, 0.9);
+    color: #0f172a;
+    border: 1px solid #38bdf8;
+}
+
+.toast-enter-active, .toast-leave-active {
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toast-enter-from, .toast-leave-to {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+}
+</style>

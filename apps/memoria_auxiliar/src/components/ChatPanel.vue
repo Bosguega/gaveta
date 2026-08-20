@@ -1,11 +1,22 @@
 <script setup lang="ts">
-import { ref, onUpdated, watch } from 'vue';
-import { notesStore } from '../store/notesStore';
-import type { Note } from '../types';
+import { ref, onMounted, onUpdated, watch, computed } from 'vue';
+import { notesStore, showToast } from '../store/notesStore';
+import type { Note, ChatSession } from '../types';
+import { getChatHistory, saveChatSession, deleteChatSession } from '../services/databaseService';
 import InteractiveContent from './InteractiveContent.vue';
 
 function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('pt-BR');
+  try {
+    return new Date(dateString).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return dateString;
+  }
 }
 
 const emit = defineEmits<{
@@ -17,9 +28,51 @@ const emit = defineEmits<{
 const question = ref('');
 const chatHistory = ref<HTMLElement | null>(null);
 const debugExpanded = ref<Record<number, boolean>>({});
+const showHistoryModal = ref(false);
 
 function toggleDebug(index: number) {
   debugExpanded.value[index] = !debugExpanded.value[index];
+}
+
+async function loadSessions() {
+  try {
+    notesStore.chatSessions = await getChatHistory();
+  } catch (e) {
+    console.error('Falha ao carregar histórico de conversas:', e);
+  }
+}
+
+onMounted(loadSessions);
+
+function startNewChat() {
+  notesStore.messages = [];
+  notesStore.currentSessionId = null;
+  showToast('Nova conversa iniciada', 'info');
+}
+
+async function selectSession(session: ChatSession) {
+  try {
+    notesStore.messages = JSON.parse(session.messages);
+    notesStore.currentSessionId = session.id;
+    showHistoryModal.value = false;
+    showToast(`Conversa "${session.title}" carregada`, 'info');
+  } catch (e) {
+    console.error('Falha ao carregar sessão:', e);
+    showToast('Falha ao carregar sessão', 'error');
+  }
+}
+
+async function removeSession(id: number) {
+  try {
+    await deleteChatSession(id);
+    notesStore.chatSessions = notesStore.chatSessions.filter(s => s.id !== id);
+    if (notesStore.currentSessionId === id) {
+      startNewChat();
+    }
+    showToast('Conversa removida', 'info');
+  } catch (e) {
+    console.error('Falha ao excluir sessão:', e);
+  }
 }
 
 function submit() {
@@ -44,8 +97,23 @@ function scrollToBottom() {
   }
 }
 
-watch(() => notesStore.messages.length, () => {
+// Auto-save session after assistant replies
+watch(() => notesStore.messages.length, async (len) => {
   setTimeout(scrollToBottom, 100);
+
+  if (len >= 2 && notesStore.messages[len - 1].role === 'assistant') {
+    try {
+      const firstUserMsg = notesStore.messages.find(m => m.role === 'user');
+      const title = firstUserMsg ? firstUserMsg.content.slice(0, 35) + '...' : 'Conversa';
+      const serialized = JSON.stringify(notesStore.messages);
+
+      const savedId = await saveChatSession(notesStore.currentSessionId, title, serialized);
+      notesStore.currentSessionId = savedId;
+      await loadSessions();
+    } catch (e) {
+      console.error('Erro ao persistir sessão:', e);
+    }
+  }
 });
 
 onUpdated(scrollToBottom);
@@ -53,11 +121,28 @@ onUpdated(scrollToBottom);
 
 <template>
   <section class="chat-container">
+    <!-- Chat Header Toolbar -->
+    <div class="chat-toolbar">
+      <div class="chat-title-info">
+        <span class="chat-status-dot"></span>
+        <strong>RAG Chat Inteligente</strong>
+      </div>
+      <div class="chat-toolbar-actions">
+        <button class="chat-tb-btn" @click="showHistoryModal = true" title="Ver conversas anteriores">
+          📜 Histórico ({{ notesStore.chatSessions.length }})
+        </button>
+        <button class="chat-tb-btn" @click="startNewChat" title="Começar uma nova conversa limpa">
+          ➕ Nova Conversa
+        </button>
+      </div>
+    </div>
+
     <div ref="chatHistory" class="chat-history">
       <div v-if="notesStore.messages.length === 0" class="empty-chat">
         <div class="chat-icon">💬</div>
         <h3>Como posso ajudar você hoje?</h3>
-        <p>Faça uma pergunta baseada nas suas notas salvas.</p>
+        <p>Faça uma pergunta e a IA responderá consultando suas notas salvas.</p>
+        <p class="empty-chat-hint">Dica: Use termos específicos para encontrar memórias precisas.</p>
       </div>
 
       <div 
@@ -67,7 +152,9 @@ onUpdated(scrollToBottom);
       >
         <div class="message-bubble">
           <span class="role-tag">{{ msg.role === 'user' ? 'Você' : 'Assistente' }}</span>
-          <p class="content">{{ msg.content }}</p>
+          <div class="content">
+            <InteractiveContent :text="msg.content" />
+          </div>
         </div>
 
         <!-- Cards de Memórias USADAS pela LLM -->
@@ -135,7 +222,7 @@ onUpdated(scrollToBottom);
         <input 
           v-model="question" 
           type="text" 
-          placeholder="Digite sua pergunta aqui..."
+          placeholder="Digite sua pergunta baseada nas memórias..."
           :disabled="notesStore.loading"
         />
         <button type="submit" :disabled="notesStore.loading || !question.trim()">
@@ -144,6 +231,34 @@ onUpdated(scrollToBottom);
         </button>
       </form>
     </div>
+
+    <!-- Modal Histórico de Conversas -->
+    <div v-if="showHistoryModal" class="modal-overlay" @click.self="showHistoryModal = false">
+      <div class="modal-content history-modal">
+        <h3>Histórico de Conversas</h3>
+        <p v-if="!notesStore.chatSessions.length" class="empty-sessions">Nenhuma conversa salva ainda.</p>
+        <div v-else class="sessions-list">
+          <div
+            v-for="session in notesStore.chatSessions"
+            :key="session.id"
+            class="session-item"
+            :class="{ current: session.id === notesStore.currentSessionId }"
+            @click="selectSession(session)"
+          >
+            <div class="session-info">
+              <strong>{{ session.title }}</strong>
+              <small>{{ formatDate(session.updated_at) }}</small>
+            </div>
+            <button class="delete-session-btn" @click.stop="removeSession(session.id)" title="Excluir conversa">
+              🗑️
+            </button>
+          </div>
+        </div>
+        <div class="modal-actions" style="margin-top: 16px;">
+          <button class="secondary" @click="showHistoryModal = false">Fechar</button>
+        </div>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -151,12 +266,136 @@ onUpdated(scrollToBottom);
 .chat-container {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 200px);
+  height: calc(100vh - 180px);
   background: rgba(255, 255, 255, 0.02);
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.05);
   overflow: hidden;
 }
+
+.chat-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.chat-title-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+
+.chat-status-dot {
+  width: 8px;
+  height: 8px;
+  background: #10b981;
+  border-radius: 50%;
+}
+
+.chat-toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.chat-tb-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.chat-tb-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+}
+
+.history-modal {
+  max-width: 450px;
+  text-align: left;
+}
+
+.sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  margin-top: 12px;
+}
+
+.session-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.session-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--accent);
+}
+
+.session-item.current {
+  border-color: var(--accent);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.session-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-info strong {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.session-info small {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.delete-session-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+  padding: 4px;
+}
+
+.delete-session-btn:hover {
+  opacity: 1;
+}
+
+.empty-sessions {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 20px 0;
+  font-size: 0.85rem;
+}
+
+.empty-chat-hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  opacity: 0.8;
+  margin-top: 6px;
+}
+
 
 .chat-history {
   flex: 1;

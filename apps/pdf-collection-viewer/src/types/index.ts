@@ -1,0 +1,116 @@
+export interface Collection {
+    id: number;
+    name: string;
+    icon: string;
+    include_subfolders: boolean;
+    pdf_count: number;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface CollectionDetail {
+    id: number;
+    name: string;
+    icon: string;
+    include_subfolders: boolean;
+    paths: string[];
+    created_at: string;
+    updated_at: string;
+}
+
+export interface Pdf {
+    id: number;
+    collection_id: number;
+    path: string;
+    filename: string;
+    size: number;
+    modified_at: string;
+    page_count: number | null;
+    thumbnail_key: string | null;
+    thumbnail_status: string;
+}
+
+export interface ScanProgress {
+    stage: string;
+    current: number;
+    total: number;
+}
+
+export interface UpdateResult {
+    found: number;
+    added: number;
+    removed: number;
+    updated: number;
+    thumbnails_generated: number;
+    unavailable_paths: string[];
+}
+
+export interface DuplicateItem {
+    pdf_id: number;
+    path: string;
+    filename: string;
+    size: number;
+    modified_at: string;
+    page_count: number | null;
+    thumbnail_key: string | null;
+    thumbnail_status: string;
+    hash: string;
+}
+
+export interface DuplicateGroup {
+    hash: string;
+    size: number;
+    items: DuplicateItem[];
+}
+
+export interface DuplicateAnalysis {
+    groups: DuplicateGroup[];
+    unreadable_count: number;
+}
+
+export interface RemoveDuplicateResult {
+    removed_from_disk: boolean;
+    file_missing: boolean;
+    hash_changed: boolean;
+    affected_other_collections: number;
+}
+
+export type SortOption =
+    | 'name-asc'
+    | 'name-desc'
+    | 'size-asc'
+    | 'size-desc'
+    | 'modified-desc'
+    | 'modified-asc'
+    | 'pages-asc'
+    | 'pages-desc';
+
+export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+    { value: 'name-asc', label: 'Nome A → Z' },
+    { value: 'name-desc', label: 'Nome Z → A' },
+    { value: 'size-asc', label: 'Tamanho: menor → maior' },
+    { value: 'size-desc', label: 'Tamanho: maior → menor' },
+    { value: 'modified-desc', label: 'Modificação: mais recente' },
+    { value: 'modified-asc', label: 'Modificação: mais antiga' },
+    { value: 'pages-asc', label: 'Páginas: menor → maior' },
+    { value: 'pages-desc', label: 'Páginas: maior → menor' },
+];
+
+export const COLLECTION_ICONS = [
+    '📚',
+    '📖',
+    '🍳',
+    '📄',
+    '🗂️',
+    '💼',
+    '🎓',
+    '🛠️',
+    '🎨',
+    '🧾',
+    '🔬',
+    '📊',
+    '⚖️',
+    '🚗',
+    '🎵',
+    '🏠',
+];

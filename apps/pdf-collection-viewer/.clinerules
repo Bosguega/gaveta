@@ -1,0 +1,33 @@
+# PDF Collection Viewer — Regras do App
+
+## Stack
+
+- Tauri 2 + React 18 + TypeScript + Vite + Tailwind CSS v4
+- Backend Rust: SQLite (rusqlite bundled), walkdir, PDFium (pdfium-render), WebP (image)
+- Frontend: Zustand (estado), Zod (validação de formulários)
+
+## Estrutura
+
+- `src/components/` — componentes React reutilizáveis
+- `src/pages/` — páginas (Home, Collection)
+- `src/services/` — wrappers de `invoke` para comandos Tauri
+- `src/store/` — Zustand store
+- `src/types/` — tipos compartilhados
+- `src/utils/` — utilitários (formatação)
+- `src-tauri/src/db.rs` — schema SQLite + CRUD
+- `src-tauri/src/scanner.rs` — descoberta de PDFs (walkdir)
+- `src-tauri/src/thumbnails.rs` — render PDFium → WebP + cache
+- `src-tauri/src/commands.rs` — comandos Tauri
+
+## Regras
+
+- PDF identificado por **caminho completo** (nunca só pelo nome)
+- Cache de miniaturas: chave = `sha256(caminho_completo).webp`
+- Regenerar miniatura apenas se `size` ou `modified_at` mudou
+- Exclusão de coleção **nunca** apaga arquivos do computador
+- PDFs inválidos/protegidos → placeholder, nunca quebrar a varredura
+- Pastas indisponíveis → registrar e continuar
+- UI e mensagens de erro em **pt-BR**
+- Código fonte e JSDoc em **inglês**
+- Preferir funções a classes
+- Não implementar recursos fora da V1 (leitor interno, OCR, tags, etc.)

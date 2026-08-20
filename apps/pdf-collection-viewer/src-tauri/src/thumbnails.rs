@@ -1,0 +1,96 @@
+use image::codecs::webp::WebPEncoder;
+use image::ImageEncoder;
+use pdfium_render::prelude::*;
+use sha2::{Digest, Sha256};
+use std::fs;
+use std::path::{Path, PathBuf};
+
+const THUMBNAIL_WIDTH: i32 = 300;
+
+/// Generates a cache key (sha256 of the full path) + ".webp".
+pub fn thumbnail_key(full_path: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(full_path.as_bytes());
+    let digest = hasher.finalize();
+    format!("{digest:x}.webp")
+}
+
+/// Renders the first page of a PDF to a WebP thumbnail in the cache directory.
+/// Returns (page_count, Ok(())) on success or (None, Err(msg)) on failure.
+pub fn generate_thumbnail(
+    pdf_path: &str,
+    cache_dir: &Path,
+    resource_dir: &Path,
+) -> Result<(Option<i64>, ()), String> {
+    let key = thumbnail_key(pdf_path);
+    let output_path = cache_dir.join(&key);
+
+    // Bind explicitly so a missing runtime library becomes a recoverable PDF
+    // thumbnail error instead of crashing the application.
+    let executable_dir = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf));
+    let resource_candidates = [resource_dir.to_path_buf(), resource_dir.join("resources")];
+    let bindings = resource_candidates
+        .iter()
+        .find_map(|dir| Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(dir)).ok())
+        .or_else(|| executable_dir.as_ref().and_then(|dir| {
+            Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(dir)).ok()
+        }))
+        .map(Ok)
+        .unwrap_or_else(Pdfium::bind_to_system_library)
+        .map_err(|e| format!("Não foi possível carregar o Pdfium: {e}"))?;
+    let pdfium = Pdfium::new(bindings);
+    let document = pdfium
+        .load_pdf_from_file(pdf_path, None)
+        .map_err(|e| format!("Falha ao abrir PDF: {e}"))?;
+
+    let page_count = document.pages().len() as i64;
+
+    let page = document
+        .pages()
+        .get(0)
+        .map_err(|e| format!("Falha ao obter primeira página: {e}"))?;
+
+    let bitmap = page
+        .render_with_config(&PdfRenderConfig::new().set_target_width(THUMBNAIL_WIDTH))
+        .map_err(|e| format!("Falha ao renderizar página: {e}"))?;
+
+    let width = bitmap.width() as u32;
+    let height = bitmap.height() as u32;
+    let bytes = bitmap.as_raw_bytes();
+
+    // Convert BGRA → RGBA for the image crate (WebP encoder expects RGB/A)
+    let mut rgba = Vec::with_capacity(bytes.len());
+    for chunk in bytes.chunks_exact(4) {
+        rgba.push(chunk[2]); // R
+        rgba.push(chunk[1]); // G
+        rgba.push(chunk[0]); // B
+        rgba.push(chunk[3]); // A
+    }
+
+    let img = image::RgbaImage::from_raw(width, height, rgba)
+        .ok_or_else(|| "Falha ao criar imagem".to_string())?;
+
+    // Encode as WebP (lossless)
+    let mut encoded = Vec::new();
+    let encoder = WebPEncoder::new_lossless(&mut encoded);
+    encoder
+        .write_image(&img, width, height, image::ExtendedColorType::Rgba8)
+        .map_err(|e| format!("Falha ao codificar WebP: {e}"))?;
+
+    fs::write(&output_path, &encoded)
+        .map_err(|e| format!("Falha ao salvar thumbnail: {e}"))?;
+
+    Ok((Some(page_count), ()))
+}
+
+/// Checks if a thumbnail file exists in the cache.
+pub fn thumbnail_exists(cache_dir: &Path, key: &str) -> bool {
+    cache_dir.join(key).exists()
+}
+
+/// Returns the full path to a cached thumbnail.
+pub fn thumbnail_path(cache_dir: &Path, key: &str) -> PathBuf {
+    cache_dir.join(key)
+}

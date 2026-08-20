@@ -40,11 +40,11 @@ async function createConfiguredClient() {
 function sanitizePromptInput(text: string, maxLength: number): string {
   let sanitized = Array.from(text)
     .filter((char) => {
-      if (char === '\n' || char === '\r' || char === '\t' || char === ' ') {
+      if (char === '\n' || char === '\r' || char === '\t') {
         return true;
       }
       const code = char.charCodeAt(0);
-      return code >= 0x21 && code <= 0x7e;
+      return (code >= 0x20 && code <= 0x7e) || code >= 0xa0;
     })
     .join('');
 

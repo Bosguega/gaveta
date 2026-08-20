@@ -1,4 +1,4 @@
-import { computed, type ComputedRef } from 'vue'
+import { computed, toValue, type ComputedRef, type MaybeRefOrGetter } from 'vue'
 
 /**
  * Mapeia códigos de erro de IA para ícones emoji apropriados.
@@ -15,9 +15,11 @@ const ICON_BY_CODE: Record<string, string> = {
 
 const DEFAULT_ICON = '⚠️'
 
-export function useErrorIcon(code: string | null | undefined): ComputedRef<string> {
+export function useErrorIcon(codeSource: MaybeRefOrGetter<string | null | undefined>): ComputedRef<string> {
     return computed(() => {
+        const code = toValue(codeSource)
         if (!code) return DEFAULT_ICON
         return ICON_BY_CODE[code] ?? DEFAULT_ICON
     })
 }
+

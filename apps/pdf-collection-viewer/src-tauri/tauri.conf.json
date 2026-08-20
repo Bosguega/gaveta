@@ -1,0 +1,36 @@
+{
+    "productName": "PDF Collection Viewer",
+    "version": "0.1.0",
+    "identifier": "com.pdfcollectionviewer.desktop",
+    "build": {
+        "frontendDist": "../dist",
+        "devUrl": "http://localhost:1420",
+        "beforeDevCommand": "npm run dev",
+        "beforeBuildCommand": "npm run build"
+    },
+    "bundle": {
+        "resources": ["resources/pdfium.dll"]
+    },
+    "app": {
+        "windows": [
+            {
+                "label": "main",
+                "title": "PDF Collection Viewer",
+                "width": 1400,
+                "height": 900,
+                "minWidth": 800,
+                "minHeight": 600,
+                "resizable": true,
+                "fullscreen": false
+            }
+        ],
+        "security": {
+            "assetProtocol": {
+                "enable": true,
+                "scope": [
+                    "$APPDATA/**"
+                ]
+            }
+        }
+    }
+}

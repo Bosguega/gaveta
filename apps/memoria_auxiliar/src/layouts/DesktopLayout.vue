@@ -8,19 +8,19 @@
             </div>
 
             <nav class="desktop-nav">
-                <button :class="{ active: notesStore.activeView === 'search' }" @click="notesStore.activeView = 'search'">
+                <button :class="{ active: notesStore.activeView === 'search' }" @click="navigateTo('search')">
                     🔍 Pesquisar
                 </button>
-                <button :class="{ active: notesStore.activeView === 'add' }" @click="notesStore.activeView = 'add'">
+                <button :class="{ active: notesStore.activeView === 'add' }" @click="navigateTo('add')">
                     ✏️ {{ notesStore.editingNote ? 'Editar Dica' : 'Incluir Dicas' }}
                 </button>
-                <button :class="{ active: notesStore.activeView === 'chat' }" @click="notesStore.activeView = 'chat'">
+                <button :class="{ active: notesStore.activeView === 'chat' }" @click="navigateTo('chat')">
                     💬 Conversar (RAG)
                 </button>
-                <button :class="{ active: notesStore.activeView === 'insights' }" @click="notesStore.activeView = 'insights'">
+                <button :class="{ active: notesStore.activeView === 'insights' }" @click="navigateTo('insights')">
                     📊 Insights
                 </button>
-                <button :class="{ active: notesStore.activeView === 'settings' }" @click="notesStore.activeView = 'settings'">
+                <button :class="{ active: notesStore.activeView === 'settings' }" @click="navigateTo('settings')">
                     ⚙️ Config
                 </button>
             </nav>
@@ -39,7 +39,7 @@
                     <span class="error-icon">{{ errorIcon }}</span>
                     <p>{{ notesStore.error.message }}</p>
                 </div>
-                <button v-if="notesStore.error.code === 'INVALID_API_KEY'" class="error-action" @click="notesStore.activeView = 'settings'">
+                <button v-if="notesStore.error.code === 'INVALID_API_KEY'" class="error-action" @click="navigateTo('settings')">
                     Ir para Configurações
                 </button>
             </div>
@@ -50,10 +50,10 @@
 </template>
 
 <script setup lang="ts">
-import { notesStore } from '../store/notesStore'
+import { notesStore, navigateTo } from '../store/notesStore'
 import { useErrorIcon } from '../composables/useErrorIcon'
 
-const errorIcon = useErrorIcon(notesStore.error?.code)
+const errorIcon = useErrorIcon(() => notesStore.error?.code)
 </script>
 
 <style scoped>
