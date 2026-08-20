@@ -1,4 +1,5 @@
 use crate::db::{self, DbState, ThumbnailStatus, UpdateResult};
+use crate::file_types::FileType;
 use crate::scanner;
 use crate::thumbnails;
 use crate::ScanCancels;
@@ -9,11 +10,6 @@ use std::io::{BufReader, Read};
 use std::path::Path;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
-
-// ── Supported file extensions for the current V1 ──
-// Only PDF is active. When a new renderer is added, append its
-// extensions here (e.g. &["pdf", "pes", "jef", "xxx"]).
-const SUPPORTED_EXTENSIONS: &[&str] = &["pdf"];
 
 // Collections
 
@@ -109,7 +105,7 @@ pub async fn update_collection_scan(
         .resource_dir()
         .map_err(|e| format!("Não foi possível localizar os recursos do aplicativo: {e}"))?;
 
-    let supported: Vec<String> = SUPPORTED_EXTENSIONS.iter().map(|s| s.to_string()).collect();
+    let supported: Vec<String> = FileType::enabled_extensions().iter().map(|s| s.to_string()).collect();
 
     let mut result = UpdateResult {
         found: 0,
@@ -328,9 +324,10 @@ impl<'a> Drop for ScanClearGuard<'a> {
 
 #[tauri::command]
 pub fn open_file(app: AppHandle, path: String) -> Result<(), String> {
-    use tauri_plugin_shell::ShellExt;
+    use tauri_plugin_opener::OpenerExt;
 
-    app.shell().open(&path, None)
+    app.opener()
+        .open_path(path, None::<&str>)
         .map_err(|e| format!("Falha ao abrir arquivo: {e}"))?;
     Ok(())
 }

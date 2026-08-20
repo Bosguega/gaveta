@@ -1,6 +1,7 @@
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fmt;
 use std::fs;
 use std::path::PathBuf;
@@ -581,11 +582,15 @@ pub fn delete_items_not_in(
     let mut removed = 0;
     let existing = list_items(conn, collection_id)?;
 
+    // Hash set turns the per-item membership check from O(keep_paths) into
+    // O(1) on average, removing the former O(existing × keep_paths) bottleneck.
+    let keep_set: HashSet<&str> = keep_paths.iter().map(|p| p.as_str()).collect();
+
     for item in existing {
         let belongs_to_unavailable_path = unavailable_paths.iter().any(|root| {
             std::path::Path::new(&item.path).starts_with(std::path::Path::new(root))
         });
-        if !keep_paths.contains(&item.path) && !belongs_to_unavailable_path {
+        if !keep_set.contains(item.path.as_str()) && !belongs_to_unavailable_path {
             delete_item(conn, item.id)?;
             removed += 1;
         }

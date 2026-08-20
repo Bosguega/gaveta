@@ -54,6 +54,16 @@ impl FileType {
             FileType::Unknown => &[],
         }
     }
+
+    /// Flat list of extensions the scanner should discover. Only formats that
+    /// have a working renderer/processor are enabled; when a new handler lands
+    /// (image, embroidery), append its `FileType` variant here. This is the
+    /// single source of truth for the discoverable extensions, replacing the
+    /// former `SUPPORTED_EXTENSIONS` constant in commands.rs.
+    pub fn enabled_extensions() -> &'static [&'static str] {
+        // Only Pdf has a working thumbnail renderer in the current version.
+        FileType::Pdf.supported_extensions()
+    }
 }
 
 impl fmt::Display for FileType {
