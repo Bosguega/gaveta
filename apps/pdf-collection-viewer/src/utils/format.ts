@@ -8,14 +8,50 @@ export function formatBytes(bytes: number): string {
     return `${value.toFixed(value >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+export function getFileTypeIcon(fileType: string = 'pdf'): string {
+    switch (fileType.toLowerCase()) {
+        case 'image':
+            return '🖼️';
+        case 'embroidery':
+            return '🧵';
+        case 'pdf':
+            return '📄';
+        default:
+            return '📁';
+    }
+}
+
+export function getFileTypeLabel(fileType: string = 'pdf'): string {
+    switch (fileType.toLowerCase()) {
+        case 'image':
+            return 'Imagem';
+        case 'embroidery':
+            return 'Bordado';
+        case 'pdf':
+            return 'PDF';
+        default:
+            return fileType.toUpperCase();
+    }
+}
+
 export function formatPageCount(pages: number | null, fileType: string = 'pdf'): string {
-    if (fileType === 'image') {
+    const type = fileType.toLowerCase();
+    if (type === 'image') {
         return 'imagem';
     }
-    if (pages === null) {
-        return 'págs ?';
+    if (type === 'embroidery') {
+        return 'matriz';
     }
-    return `${pages} pág${pages === 1 ? '' : 's'}`;
+    if (type === 'pdf') {
+        if (pages === null) {
+            return 'págs ?';
+        }
+        return `${pages} pág${pages === 1 ? '' : 's'}`;
+    }
+    if (pages !== null) {
+        return `${pages} pág${pages === 1 ? '' : 's'}`;
+    }
+    return getFileTypeLabel(type);
 }
 
 export function formatModifiedAt(modifiedAt: string): string {
@@ -25,4 +61,4 @@ export function formatModifiedAt(modifiedAt: string): string {
     }
     const date = new Date(secs * 1000);
     return date.toLocaleDateString('pt-BR');
-}
+}

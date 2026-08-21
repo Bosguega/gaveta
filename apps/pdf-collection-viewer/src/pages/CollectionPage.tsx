@@ -6,12 +6,14 @@ import { getCollection } from '@/services/collections';
 import { listItems, updateCollectionScan, openFile, listenToUpdateProgress, cancelScan, toggleFavorite } from '@/services/items';
 import { clearThumbnailUrlCache } from '@/services/thumbnails';
 import { SORT_OPTIONS, type SortOption } from '@/types';
+import { getFileTypeIcon, getFileTypeLabel } from '@/utils/format';
 
 export function CollectionPage() {
     const { currentCollectionId, closeCollection, items, setItems, isUpdating, setIsUpdating, updateProgress, setUpdateProgress } = useAppStore();
     const [collectionName, setCollectionName] = useState('');
     const [search, setSearch] = useState('');
     const [sort, setSort] = useState<SortOption>('name-asc');
+    const [selectedFileType, setSelectedFileType] = useState<string>('all');
     const [selectedId, setSelectedId] = useState<number | null>(null);
     const [unavailableCount, setUnavailableCount] = useState(0);
     const [erroredCount, setErroredCount] = useState(0);
@@ -34,6 +36,7 @@ export function CollectionPage() {
 
         setSearch('');
         setSort('name-asc');
+        setSelectedFileType('all');
         setSelectedId(null);
         setUnavailableCount(0);
         setErroredCount(0);
@@ -95,12 +98,26 @@ export function CollectionPage() {
         }
     };
 
+    const distinctFileTypes = useMemo(() => {
+        const types = new Set<string>();
+        for (const item of items) {
+            if (item.file_type) {
+                types.add(item.file_type);
+            }
+        }
+        return Array.from(types);
+    }, [items]);
+
     const filteredAndSorted = useMemo(() => {
         const query = search.trim().toLowerCase();
         let result = items;
 
         if (showFavoritesOnly) {
             result = result.filter((item) => item.is_favorite);
+        }
+
+        if (selectedFileType !== 'all') {
+            result = result.filter((item) => item.file_type === selectedFileType);
         }
 
         if (query) {
@@ -136,14 +153,24 @@ export function CollectionPage() {
                 });
                 break;
             case 'pages-asc':
-                sorted.sort((a, b) => (a.page_count ?? 0) - (b.page_count ?? 0));
+                sorted.sort((a, b) => {
+                    if (a.page_count === null && b.page_count === null) return 0;
+                    if (a.page_count === null) return 1;
+                    if (b.page_count === null) return -1;
+                    return a.page_count - b.page_count;
+                });
                 break;
             case 'pages-desc':
-                sorted.sort((a, b) => (b.page_count ?? 0) - (a.page_count ?? 0));
+                sorted.sort((a, b) => {
+                    if (a.page_count === null && b.page_count === null) return 0;
+                    if (a.page_count === null) return 1;
+                    if (b.page_count === null) return -1;
+                    return b.page_count - a.page_count;
+                });
                 break;
         }
         return sorted;
-    }, [items, search, sort, showFavoritesOnly]);
+    }, [items, search, sort, showFavoritesOnly, selectedFileType]);
 
     return (
         <div className="p-8">
@@ -207,6 +234,21 @@ export function CollectionPage() {
                     placeholder="🔎 Buscar arquivos..."
                     className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                {distinctFileTypes.length > 1 && (
+                    <select
+                        value={selectedFileType}
+                        onChange={(e) => setSelectedFileType(e.target.value)}
+                        className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm text-slate-700"
+                        title="Filtrar por tipo de arquivo"
+                    >
+                        <option value="all">Todos os formatos</option>
+                        {distinctFileTypes.map((type) => (
+                            <option key={type} value={type}>
+                                {getFileTypeIcon(type)} {getFileTypeLabel(type)}
+                            </option>
+                        ))}
+                    </select>
+                )}
                 <button
                     onClick={() => setShowFavoritesOnly((prev) => !prev)}
                     className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${showFavoritesOnly
@@ -220,7 +262,7 @@ export function CollectionPage() {
                 <select
                     value={sort}
                     onChange={(e) => setSort(e.target.value as SortOption)}
-                    className="px-3 py-2 border border-slate-300 rounded-lg bg-white"
+                    className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm text-slate-700"
                 >
                     {SORT_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>

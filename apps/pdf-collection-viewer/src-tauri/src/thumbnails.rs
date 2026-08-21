@@ -49,7 +49,13 @@ pub fn render_thumbnail(
             }),
             Err(e) => Err(e),
         },
-        FileType::Embroidery => Err("Renderizador de miniatura para bordado não implementado".to_string()),
+        FileType::Embroidery => match crate::embroidery::render_embroidery_thumbnail(path, cache_dir) {
+            Ok(_) => Ok(ThumbnailOutput {
+                thumbnail_key: key,
+                page_count: None,
+            }),
+            Err(e) => Err(e),
+        },
         FileType::Image => match generate_image_thumbnail(path, cache_dir) {
             Ok(_) => Ok(ThumbnailOutput {
                 thumbnail_key: key,

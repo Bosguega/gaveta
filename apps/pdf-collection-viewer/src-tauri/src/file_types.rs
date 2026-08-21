@@ -39,7 +39,9 @@ impl FileType {
     pub fn from_extension(ext: &str) -> Self {
         match ext.to_ascii_lowercase().as_str() {
             "pdf" => FileType::Pdf,
-            "pes" | "jef" | "xxx" | "dst" | "exp" | "vip" | "hus" => FileType::Embroidery,
+            "pes" | "pec" | "jef" | "xxx" | "dst" | "exp" | "vip" | "vp3" | "hus" => {
+                FileType::Embroidery
+            }
             "png" | "jpg" | "jpeg" | "bmp" | "gif" | "webp" => FileType::Image,
             _ => FileType::Unknown,
         }
@@ -49,22 +51,20 @@ impl FileType {
     pub fn supported_extensions(&self) -> &'static [&'static str] {
         match self {
             FileType::Pdf => &["pdf"],
-            FileType::Embroidery => &["pes", "jef", "xxx", "dst", "exp", "vip", "hus"],
+            FileType::Embroidery => &[
+                "dst", "exp", "pes", "pec", "jef", "vp3", "xxx", "vip", "hus",
+            ],
             FileType::Image => &["png", "jpg", "jpeg", "bmp", "gif", "webp"],
             FileType::Unknown => &[],
         }
     }
 
     /// Flat list of extensions the scanner should discover. Only formats that
-    /// have a working renderer/processor are enabled; when a new handler lands
-    /// (embroidery), append its `FileType` variant here. This is the
-    /// single source of truth for the discoverable extensions, replacing the
-    /// former `SUPPORTED_EXTENSIONS` constant in commands.rs.
+    /// have a working renderer/processor are enabled.
     pub fn enabled_extensions() -> Vec<&'static str> {
-        // Pdf and Image have working thumbnail renderers; Embroidery is
-        // classified but has no renderer yet, so it stays disabled.
         let mut exts = FileType::Pdf.supported_extensions().to_vec();
         exts.extend_from_slice(FileType::Image.supported_extensions());
+        exts.extend_from_slice(FileType::Embroidery.supported_extensions());
         exts
     }
 }

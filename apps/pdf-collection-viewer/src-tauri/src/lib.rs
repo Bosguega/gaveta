@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod db;
+pub mod embroidery;
 pub mod file_types;
 pub mod scanner;
 pub mod thumbnails;

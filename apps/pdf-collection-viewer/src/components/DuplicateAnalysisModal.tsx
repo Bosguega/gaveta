@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { DuplicateAnalysis, DuplicateGroup, DuplicateItem, RemoveDuplicateResult, ScanProgress } from '@/types';
 import { analyzeDuplicates, listenToAnalyzeProgress, openFile, removeDuplicate, revealInFolder } from '@/services/items';
 import { getThumbnailUrl } from '@/services/thumbnails';
-import { formatBytes, formatModifiedAt } from '@/utils/format';
+import { formatBytes, formatModifiedAt, getFileTypeIcon } from '@/utils/format';
 
 interface Props {
     collectionId: number;
@@ -73,7 +73,7 @@ function Thumb({ item }: { item: DuplicateItem }) {
 
     return (
         <div className="w-12 h-16 flex items-center justify-center bg-slate-100 rounded-md border border-slate-200 text-slate-400">
-            <span className="text-xl">📄</span>
+            <span className="text-xl">{getFileTypeIcon(item.file_type)}</span>
         </div>
     );
 }

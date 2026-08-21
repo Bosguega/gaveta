@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { CollectionItem } from '@/types';
-import { formatBytes, formatPageCount } from '@/utils/format';
+import { formatBytes, formatPageCount, getFileTypeIcon } from '@/utils/format';
 import { getThumbnailUrl } from '@/services/thumbnails';
 
 interface Props {
@@ -54,7 +54,7 @@ export function ItemCard({ item, selected, onSelect, onOpen, onToggleFavorite }:
                     />
                 ) : (
                     <div className="flex flex-col items-center justify-center text-slate-400">
-                        <span className="text-4xl mb-2">📄</span>
+                        <span className="text-4xl mb-2">{getFileTypeIcon(item.file_type)}</span>
                         <span className="text-xs">
                             {item.thumbnail_status === 'error' ? 'Miniatura indisponível' : 'Sem miniatura'}
                         </span>
