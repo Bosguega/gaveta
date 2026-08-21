@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useDeviceUI } from './composables/useDeviceUI'
-import { notesStore, updateStreak, resetStats, initStats, showToast, navigateTo } from './store/notesStore'
+import { notesStore, updateStreak, resetStats, initStats, initTheme, showToast, navigateTo } from './store/notesStore'
 import { listNotes, saveNote, updateNote, deleteNote, deleteAllNotes, togglePinNote, searchNotesText } from './services/databaseService'
 import { getEmbedding } from './services/embeddingService'
 import { generateAnswer, summarizeResults } from './services/llmService'
@@ -13,6 +13,7 @@ import NoteForm from './components/NoteForm.vue'
 import ResultsList from './components/ResultsList.vue'
 import SearchBox from './components/SearchBox.vue'
 import InsightsView from './components/InsightsView.vue'
+import QuickCaptureModal from './components/QuickCaptureModal.vue'
 import SettingsView from './views/SettingsView.vue'
 import DeviceToolbar from './components/DeviceToolbar.vue'
 import MobileLayout from './layouts/MobileLayout.vue'
@@ -46,7 +47,7 @@ const displayedResults = computed(() => {
     return list
 })
 
-async function createNote(content: string, tags = '', pinned = false) {
+async function createNote(content: string, tags = '', pinned = false, reminder_at: string | null = null) {
     await runAction(async () => {
         let embedding: number[] = []
         try {
@@ -56,7 +57,7 @@ async function createNote(content: string, tags = '', pinned = false) {
         }
 
         if (notesStore.editingNote) {
-            await updateNote(notesStore.editingNote.id, content, embedding, tags, pinned)
+            await updateNote(notesStore.editingNote.id, content, embedding, tags, pinned, reminder_at)
             const updatedNote: Note = {
                 ...notesStore.editingNote,
                 content,
@@ -64,6 +65,7 @@ async function createNote(content: string, tags = '', pinned = false) {
                 parsedEmbedding: embedding.length > 0 ? embedding : undefined,
                 tags,
                 pinned,
+                reminder_at,
                 updated_at: new Date().toISOString(),
             }
             notesStore.notes = notesStore.notes.map(n => n.id === updatedNote.id ? updatedNote : n)
@@ -72,7 +74,7 @@ async function createNote(content: string, tags = '', pinned = false) {
             showToast('Nota atualizada com sucesso!', 'success')
             navigateTo('search')
         } else {
-            const note = await saveNote(content, embedding, tags, pinned)
+            const note = await saveNote(content, embedding, tags, pinned, reminder_at)
             note.parsedEmbedding = embedding.length > 0 ? embedding : undefined
             notesStore.notes = [note, ...notesStore.notes]
             updateStreak()
@@ -219,7 +221,37 @@ async function runAction(action: () => Promise<void>, message = 'Processando...'
     }
 }
 
+let reminderIntervalId: ReturnType<typeof setInterval> | null = null
+const notifiedReminderIds = new Set<number>()
+
+function checkReminders() {
+    const now = new Date().getTime()
+    for (const note of notesStore.notes) {
+        if (!note.reminder_at) continue
+        const remTime = new Date(note.reminder_at).getTime()
+        // If reminder is within the last 5 minutes and not yet notified
+        if (remTime <= now && now - remTime < 5 * 60 * 1000) {
+            if (!notifiedReminderIds.has(note.id)) {
+                notifiedReminderIds.add(note.id)
+                showToast(`⏰ Lembrete: ${note.content.slice(0, 40)}...`, 'info', 5000)
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification('⏰ Lembrete Memória Auxiliar', {
+                        body: note.content,
+                    })
+                }
+            }
+        }
+    }
+}
+
 function handleKeydown(event: KeyboardEvent) {
+    // Quick Capture Shortcut (Ctrl + Space or Alt + N)
+    if ((event.ctrlKey && event.code === 'Space') || (event.altKey && (event.key === 'n' || event.key === 'N'))) {
+        event.preventDefault()
+        notesStore.quickCaptureOpen = !notesStore.quickCaptureOpen
+        return
+    }
+
     // Global Shortcuts
     if (event.ctrlKey) {
         if (event.key === '1') {
@@ -252,20 +284,25 @@ function handleKeydown(event: KeyboardEvent) {
             }
         }
     } else if (event.key === 'Escape') {
-        if (notesStore.editingNote) {
+        if (notesStore.quickCaptureOpen) {
+            notesStore.quickCaptureOpen = false
+        } else if (notesStore.editingNote) {
             notesStore.editingNote = null
         }
     }
 }
 
 onMounted(async () => {
+    await initTheme()
     await initStats()
     runAction(loadNotes)
     document.addEventListener('keydown', handleKeydown)
+    reminderIntervalId = setInterval(checkReminders, 20000)
 })
 
 onUnmounted(() => {
     document.removeEventListener('keydown', handleKeydown)
+    if (reminderIntervalId) clearInterval(reminderIntervalId)
 })
 </script>
 
@@ -299,9 +336,9 @@ onUnmounted(() => {
             <ChatPanel @ask="askAI" @edit="startEdit" @delete="removeNote" />
         </div>
 
-        <!-- TELA: INSIGHTS -->
+        <!-- TELA: INSIGHTS & GRAFO -->
         <div v-if="notesStore.activeView === 'insights'" class="view-container">
-            <InsightsView @clear-all="clearAllNotes" />
+            <InsightsView @clear-all="clearAllNotes" @edit="startEdit" />
         </div>
 
         <!-- TELA: CONFIGURAÇÕES -->
@@ -309,6 +346,13 @@ onUnmounted(() => {
             <SettingsView @notes-reloaded="loadNotes" />
         </div>
     </component>
+
+    <!-- Quick Capture Floating Modal -->
+    <QuickCaptureModal
+        v-if="notesStore.quickCaptureOpen"
+        @save="createNote"
+        @close="notesStore.quickCaptureOpen = false"
+    />
 
     <!-- Toast Notification -->
     <Transition name="toast">

@@ -1,14 +1,19 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { notesStore } from '../store/notesStore';
+import type { Note } from '../types';
 import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, PointElement, LineElement, Filler } from 'chart.js';
 import { Line } from 'vue-chartjs';
+import KnowledgeGraph from './KnowledgeGraph.vue';
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, PointElement, LineElement, Filler);
 
 const emit = defineEmits<{
   clearAll: [];
+  edit: [note: Note];
 }>();
+
+const currentTab = ref<'activity' | 'graph'>('activity');
 
 const PT_STOPWORDS = new Set([
   'de', 'a', 'o', 'que', 'e', 'do', 'da', 'em', 'um', 'para', 'é', 'com', 'não', 'uma',
@@ -142,82 +147,106 @@ const chartOptions = {
 
 <template>
   <div class="insights-container">
-    <!-- Stat Cards -->
-    <div class="stats-grid">
-      <div class="stat-card">
-        <span class="stat-icon">📝</span>
-        <div class="stat-info">
-          <span class="stat-value">{{ notesStore.notes.length }}</span>
-          <span class="stat-label">Total de notas</span>
-        </div>
-      </div>
-
-      <div class="stat-card">
-        <span class="stat-icon">📅</span>
-        <div class="stat-info">
-          <span class="stat-value">{{ notesThisWeek }}</span>
-          <span class="stat-label">Esta semana</span>
-        </div>
-      </div>
-
-      <div class="stat-card">
-        <span class="stat-icon">🔥</span>
-        <div class="stat-info">
-          <span class="stat-value">{{ notesStore.stats.streak }}</span>
-          <span class="stat-label">Dias seguidos</span>
-        </div>
-      </div>
-
-      <div class="stat-card">
-        <span class="stat-icon">📌</span>
-        <div class="stat-info">
-          <span class="stat-value">{{ pinnedCount }}</span>
-          <span class="stat-label">Notas fixadas</span>
-        </div>
-      </div>
-
-      <div class="stat-card">
-        <span class="stat-icon">🏷️</span>
-        <div class="stat-info">
-          <span class="stat-value">{{ allTagsCount }}</span>
-          <span class="stat-label">Tags únicas</span>
-        </div>
-      </div>
+    <!-- Sub-tab Navigation -->
+    <div class="insights-tabs">
+      <button
+        :class="['tab-btn', { active: currentTab === 'activity' }]"
+        @click="currentTab = 'activity'"
+      >
+        📈 Métricas & Atividade
+      </button>
+      <button
+        :class="['tab-btn', { active: currentTab === 'graph' }]"
+        @click="currentTab = 'graph'"
+      >
+        🕸️ Grafo de Conexões
+      </button>
     </div>
 
-    <!-- Chart Activity -->
-    <section class="panel chart-panel">
-      <h3>Atividade Recente (Últimos 7 dias)</h3>
-      <div class="chart-wrapper">
-        <Line :data="activityChartData" :options="chartOptions" />
-      </div>
-    </section>
+    <!-- TAB 1: Activity & Metrics -->
+    <template v-if="currentTab === 'activity'">
+      <!-- Stat Cards -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-icon">📝</span>
+          <div class="stat-info">
+            <span class="stat-value">{{ notesStore.notes.length }}</span>
+            <span class="stat-label">Total de notas</span>
+          </div>
+        </div>
 
-    <!-- Top Keywords & Categories -->
-    <section class="panel keywords-panel">
-      <h3>Tópicos & Palavras-chave Mais Frequentes</h3>
-      <p v-if="!topKeywords.length" class="empty-text">Adicione mais notas para gerar a nuvem de palavras-chave.</p>
-      <div v-else class="keywords-cloud">
-        <div
-          v-for="([word, count]) in topKeywords"
-          :key="word"
-          class="keyword-pill"
-          :style="{ fontSize: `${Math.min(1.2, 0.85 + count * 0.08)}rem` }"
-        >
-          <span class="word-text">{{ word }}</span>
-          <span class="word-count">{{ count }}</span>
+        <div class="stat-card">
+          <span class="stat-icon">📅</span>
+          <div class="stat-info">
+            <span class="stat-value">{{ notesThisWeek }}</span>
+            <span class="stat-label">Esta semana</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <span class="stat-icon">🔥</span>
+          <div class="stat-info">
+            <span class="stat-value">{{ notesStore.stats.streak }}</span>
+            <span class="stat-label">Dias seguidos</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <span class="stat-icon">📌</span>
+          <div class="stat-info">
+            <span class="stat-value">{{ pinnedCount }}</span>
+            <span class="stat-label">Notas fixadas</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <span class="stat-icon">🏷️</span>
+          <div class="stat-info">
+            <span class="stat-value">{{ allTagsCount }}</span>
+            <span class="stat-label">Tags únicas</span>
+          </div>
         </div>
       </div>
-    </section>
 
-    <!-- Danger Zone -->
-    <section class="panel danger-panel">
-      <h3>Gerenciamento de Dados</h3>
-      <p class="danger-desc">Exclui permanentemente todas as memórias e o cache de busca vetorial local.</p>
-      <button type="button" class="btn-danger" @click="emit('clearAll')">
-        🗑️ Excluir Todas as Notas
-      </button>
-    </section>
+      <!-- Chart Activity -->
+      <section class="panel chart-panel">
+        <h3>Atividade Recente (Últimos 7 dias)</h3>
+        <div class="chart-wrapper">
+          <Line :data="activityChartData" :options="chartOptions" />
+        </div>
+      </section>
+
+      <!-- Top Keywords & Categories -->
+      <section class="panel keywords-panel">
+        <h3>Tópicos & Palavras-chave Mais Frequentes</h3>
+        <p v-if="!topKeywords.length" class="empty-text">Adicione mais notas para gerar a nuvem de palavras-chave.</p>
+        <div v-else class="keywords-cloud">
+          <div
+            v-for="([word, count]) in topKeywords"
+            :key="word"
+            class="keyword-pill"
+            :style="{ fontSize: `${Math.min(1.2, 0.85 + count * 0.08)}rem` }"
+          >
+            <span class="word-text">{{ word }}</span>
+            <span class="word-count">{{ count }}</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Danger Zone -->
+      <section class="panel danger-panel">
+        <h3>Gerenciamento de Dados</h3>
+        <p class="danger-desc">Exclui permanentemente todas as memórias e o cache de busca vetorial local.</p>
+        <button type="button" class="btn-danger" @click="emit('clearAll')">
+          🗑️ Excluir Todas as Notas
+        </button>
+      </section>
+    </template>
+
+    <!-- TAB 2: Knowledge Graph -->
+    <template v-else-if="currentTab === 'graph'">
+      <KnowledgeGraph @edit="(note) => emit('edit', note)" />
+    </template>
   </div>
 </template>
 
@@ -226,6 +255,37 @@ const chartOptions = {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.insights-tabs {
+  display: flex;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  width: fit-content;
+}
+
+.tab-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.tab-btn.active {
+  background: var(--accent);
+  color: #0f172a;
 }
 
 .stats-grid {

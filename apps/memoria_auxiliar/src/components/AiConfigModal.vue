@@ -303,184 +303,211 @@ function handleClose() {
 </script>
 
 <template>
-  <div class="modal-overlay" @click.self="handleClose">
-    <div class="ai-config-modal">
-      <!-- Header -->
-      <div class="modal-header">
-        <div class="modal-title">
-          <span class="title-icon">{{ mode === 'local' ? '🖥️' : '🔑' }}</span>
-          <h2>Configurar IA</h2>
-        </div>
-        <button class="close-btn" @click="handleClose">✕</button>
-      </div>
-
-      <!-- Mode Toggle -->
-      <div class="mode-toggle">
-        <button
-          :class="{ active: mode === 'online' }"
-          @click="handleModeChange('online')"
-        >
-          IA Online
-        </button>
-        <button
-          :class="{ active: mode === 'local' }"
-          @click="handleModeChange('local')"
-        >
-          IA Local
-        </button>
-      </div>
-
-      <!-- Provider & Model Card -->
-      <div class="config-card">
-        <div class="provider-row">
-          <span class="label">Provider:</span>
-          <span class="provider-value">{{ providerLabel }}</span>
-        </div>
-
-        <!-- Model selector -->
-        <div class="field">
-          <div class="model-header">
-            <label>Modelo:</label>
-            <button
-              class="fetch-btn"
-              :disabled="fetchingModels || !canFetchModels"
-              @click="fetchModels"
-            >
-              {{ fetchingModels ? '🔄' : '🔃' }} Buscar modelos
-            </button>
+  <Teleport to="body">
+    <div class="modal-overlay" @click.self="handleClose">
+      <div class="ai-config-modal">
+        <!-- Header -->
+        <div class="modal-header">
+          <div class="modal-title">
+            <span class="title-icon">{{ mode === 'local' ? '🖥️' : '🔑' }}</span>
+            <h2>Configurar IA</h2>
           </div>
-          <select v-model="selectedModel" @change="connectionStatus = 'idle'">
-            <option disabled value="">
-              {{ mode === 'local' ? 'Busque modelos locais' : 'Informe uma API key válida' }}
-            </option>
-            <option v-for="m in models" :key="m" :value="m">
-              {{ m }}
-            </option>
-          </select>
-        </div>
-      </div>
-
-      <!-- API Key (online only) -->
-      <div v-if="mode === 'online'" class="key-section">
-        <label class="field-label">API KEY</label>
-        <input
-          type="password"
-          v-model="key"
-          :placeholder="onlineProvider === 'gemini' ? 'AIza...' : 'sk-...'"
-          class="key-input"
-          @input="connectionStatus = 'idle'"
-        />
-        <label class="persist-check">
-          <input type="checkbox" v-model="persist" />
-          <span>Salvar permanentemente neste dispositivo</span>
-        </label>
-        <p class="persist-hint">
-          {{ persist
-            ? 'A chave será mantida mesmo após fechar o app.'
-            : 'A chave será apagada por segurança ao fechar o app.' }}
-        </p>
-      </div>
-
-      <!-- Persist checkbox for local mode -->
-      <div v-if="mode === 'local'" class="key-section">
-        <label class="persist-check">
-          <input type="checkbox" v-model="persist" />
-          <span>Manter configurações salvas</span>
-        </label>
-      </div>
-
-      <!-- Seção dedicada de Embeddings (Ollama bge-m3) -->
-      <div class="config-card embedding-section">
-        <div class="provider-row">
-          <span class="label">Serviço de Embeddings:</span>
-          <span class="provider-value">Ollama (bge-m3)</span>
+          <button class="close-btn" @click="handleClose">✕</button>
         </div>
 
-        <div class="field">
-          <label>URL do Ollama (Embeddings):</label>
-          <div class="input-with-btn">
+        <!-- Mode Toggle -->
+        <div class="mode-toggle">
+          <button
+            :class="{ active: mode === 'online' }"
+            @click="handleModeChange('online')"
+          >
+            IA Online
+          </button>
+          <button
+            :class="{ active: mode === 'local' }"
+            @click="handleModeChange('local')"
+          >
+            IA Local
+          </button>
+        </div>
+
+        <!-- Provider & Model Card -->
+        <div class="config-card">
+          <div class="provider-row">
+            <span class="label">Provider:</span>
+            <span class="provider-value">{{ providerLabel }}</span>
+          </div>
+
+          <!-- Model selector -->
+          <div class="field">
+            <div class="model-header">
+              <label>Modelo:</label>
+              <button
+                class="fetch-btn"
+                :disabled="fetchingModels || !canFetchModels"
+                @click="fetchModels"
+              >
+                {{ fetchingModels ? '🔄' : '🔃' }} Buscar modelos
+              </button>
+            </div>
+            <select v-model="selectedModel" @change="connectionStatus = 'idle'">
+              <option disabled value="">
+                {{ mode === 'local' ? 'Busque modelos locais' : 'Informe uma API key válida' }}
+              </option>
+              <option v-for="m in models" :key="m" :value="m">
+                {{ m }}
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <!-- API Key (online only) -->
+        <div v-if="mode === 'online'" class="key-section">
+          <label class="field-label">API KEY</label>
+          <input
+            type="password"
+            v-model="key"
+            :placeholder="onlineProvider === 'gemini' ? 'AIza...' : 'sk-...'"
+            class="key-input"
+            @input="connectionStatus = 'idle'"
+          />
+          <label class="persist-check">
+            <input type="checkbox" v-model="persist" />
+            <span>Salvar permanentemente neste dispositivo</span>
+          </label>
+          <p class="persist-hint">
+            {{ persist
+              ? 'A chave será mantida mesmo após fechar o app.'
+              : 'A chave será apagada por segurança ao fechar o app.' }}
+          </p>
+        </div>
+
+        <!-- Persist checkbox for local mode -->
+        <div v-if="mode === 'local'" class="key-section">
+          <label class="persist-check">
+            <input type="checkbox" v-model="persist" />
+            <span>Manter configurações salvas</span>
+          </label>
+        </div>
+
+        <!-- Seção dedicada de Embeddings (Ollama bge-m3) -->
+        <div class="config-card embedding-section">
+          <div class="provider-row">
+            <span class="label">Serviço de Embeddings:</span>
+            <span class="provider-value">Ollama (bge-m3)</span>
+          </div>
+
+          <div class="field">
+            <label>URL do Ollama (Embeddings):</label>
             <input
+              type="text"
               v-model="baseUrl"
-              :placeholder="DEFAULT_AI_BASE_URL"
+              placeholder="http://localhost:11434"
+              class="url-input"
               @input="embeddingConnectionStatus = 'idle'"
             />
+          </div>
+
+          <!-- Status / Teste Embeddings -->
+          <div class="test-row">
             <button
-              type="button"
-              class="btn-test-embed"
-              :class="{
-                'status-success': embeddingConnectionStatus === 'connected',
-                'status-error': embeddingConnectionStatus === 'error' || embeddingConnectionStatus === 'offline',
-              }"
+              class="test-btn"
+              :class="embeddingConnectionStatus"
               :disabled="testingEmbedding"
               @click="handleTestEmbedding"
             >
               <span v-if="testingEmbedding">🔄</span>
-              <span v-else-if="embeddingConnectionStatus === 'connected'">✓ OK</span>
-              <span v-else-if="embeddingConnectionStatus === 'offline' || embeddingConnectionStatus === 'error'">✗ Erro</span>
-              <span v-else>Testar</span>
+              <span v-else-if="embeddingConnectionStatus === 'connected'">✓</span>
+              <span v-else-if="embeddingConnectionStatus === 'error' || embeddingConnectionStatus === 'offline'">✗</span>
+              {{ testingEmbedding ? 'Testando embedding...' : (embeddingConnectionStatus === 'connected' ? 'Embedding OK (bge-m3)' : (embeddingConnectionStatus === 'error' || embeddingConnectionStatus === 'offline' ? 'Erro no embedding' : 'Testar conexão de embedding')) }}
             </button>
+          </div>
+
+          <!-- Helper se bge-m3 não estiver baixado -->
+          <div v-if="mode === 'local' && !isBgeM3Installed" class="model-guide-box">
+            <p><strong>💡 Dica:</strong> O modelo de embedding <code>bge-m3</code> não foi detectado no seu Ollama.</p>
+            <p>Execute no terminal: <code>ollama pull bge-m3</code></p>
           </div>
         </div>
 
-        <!-- Alerta de bge-m3 ausente para busca vetorial local -->
-        <div v-if="!isBgeM3Installed" class="embedding-warning">
-          ⚠️ O modelo de embeddings <strong>bge-m3</strong> não foi detectado no seu Ollama.
-          Execute no seu terminal para que a busca vetorial funcione:
-          <code>ollama pull bge-m3</code>
+        <!-- Base URL (local mode only for LLM chat) -->
+        <div v-if="mode === 'local'" class="field">
+          <label>URL do Ollama (Chat / LLM):</label>
+          <input
+            type="text"
+            v-model="baseUrl"
+            placeholder="http://localhost:11434"
+            class="url-input"
+            @input="connectionStatus = 'idle'"
+          />
         </div>
-      </div>
 
-      <!-- Actions -->
-      <div class="actions">
-        <button
-          class="btn-test"
-          :class="{
-            'status-success': connectionStatus === 'connected',
-            'status-error': connectionStatus === 'error' || connectionStatus === 'offline',
-          }"
-          :disabled="testing"
-          @click="handleTest"
-        >
-          <span v-if="connectionStatus === 'connected'">✓</span>
-          <span v-else-if="connectionStatus === 'error' || connectionStatus === 'offline'">✗</span>
-          {{ testing ? CONNECTION_LABELS[connectionStatus] : CONNECTION_LABELS[connectionStatus] }}
-        </button>
+        <!-- Local Model Warning -->
+        <div v-if="mode === 'local' && models.length === 0 && !fetchingModels" class="warning-box">
+          <p>Nenhum modelo encontrado no Ollama local.</p>
+          <p class="warning-hint">
+            Certifique-se de que o Ollama está rodando e que você executou
+            <code>ollama run qwen2.5:1.5b</code> (ou outro modelo).
+          </p>
+        </div>
 
-        <div class="action-row">
-          <button class="btn-secondary" @click="handleClose">Cancelar</button>
-          <button class="btn-primary" @click="handleSave">Salvar</button>
+        <!-- Actions -->
+        <div class="modal-actions">
+          <button
+            class="test-btn"
+            :class="connectionStatus"
+            :disabled="testing || (mode === 'online' && !key)"
+            @click="handleTest"
+          >
+            <span v-if="testing">🔄</span>
+            <span v-else-if="connectionStatus === 'connected'">✓</span>
+            <span v-else-if="connectionStatus === 'error' || connectionStatus === 'offline'">✗</span>
+            {{ testing ? CONNECTION_LABELS[connectionStatus] : CONNECTION_LABELS[connectionStatus] }}
+          </button>
+
+          <div class="action-row">
+            <button class="btn-secondary" @click="handleClose">Cancelar</button>
+            <button class="btn-primary" @click="handleSave">Salvar</button>
+          </div>
         </div>
       </div>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <style scoped>
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
+  inset: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.75);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(4px);
+  z-index: 100000;
+  backdrop-filter: blur(8px);
+  padding: 20px;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .ai-config-modal {
   background: var(--panel-bg);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px);
   border: 1px solid var(--accent);
   border-radius: 16px;
   padding: 24px;
-  max-width: 480px;
-  width: 90%;
+  max-width: 520px;
+  width: 100%;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  margin: auto;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(56, 189, 248, 0.25);
+  box-sizing: border-box;
 }
 
 .modal-header {

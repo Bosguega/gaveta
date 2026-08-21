@@ -2,7 +2,8 @@
 import { ref } from 'vue';
 import AiConfigModal from '../components/AiConfigModal.vue';
 import { exportNotesJson, importNotesJson, listNotes } from '../services/databaseService';
-import { notesStore, showToast } from '../store/notesStore';
+import { notesStore, showToast, setTheme } from '../store/notesStore';
+import type { AppTheme } from '../types';
 
 const emit = defineEmits<{
   saved: [];
@@ -13,6 +14,35 @@ const showAiConfig = ref(false);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const isExporting = ref(false);
 const isImporting = ref(false);
+
+const themesList: { id: AppTheme; name: string; desc: string; colors: string[] }[] = [
+  { id: 'dark', name: 'Midnight Dark', desc: 'Azul escuro clássico', colors: ['#0f172a', '#1e293b', '#38bdf8'] },
+  { id: 'oled', name: 'Pure OLED', desc: 'Preto puro de alto contraste', colors: ['#000000', '#18181b', '#60a5fa'] },
+  { id: 'cyberpunk', name: 'Cyberpunk Neon', desc: 'Roxo neon & ciano futurista', colors: ['#0f051d', '#280a50', '#00f0ff'] },
+  { id: 'emerald', name: 'Matrix Emerald', desc: 'Verde floresta & grafite', colors: ['#041711', '#093628', '#10b981'] },
+  { id: 'light', name: 'Clean Light', desc: 'Modo claro minimalista', colors: ['#f8fafc', '#ffffff', '#0284c7'] },
+];
+
+function selectTheme(themeId: AppTheme) {
+  setTheme(themeId);
+  showToast(`Tema alterado para ${themesList.find(t => t.id === themeId)?.name}`, 'info');
+}
+
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) {
+    showToast('Notificações não suportadas neste ambiente', 'error');
+    return;
+  }
+  const permission = await Notification.requestPermission();
+  if (permission === 'granted') {
+    new Notification('Memória Auxiliar', {
+      body: 'Notificações ativadas com sucesso! Você receberá alertas dos seus lembretes.',
+    });
+    showToast('Notificações ativadas!', 'success');
+  } else {
+    showToast('Permissão de notificações negada.', 'error');
+  }
+}
 
 function openAiConfig() {
   showAiConfig.value = true;
@@ -91,6 +121,38 @@ async function handleFileChange(event: Event) {
         <span class="card-arrow">→</span>
       </div>
 
+      <!-- Theme Selection Section -->
+      <div class="settings-section">
+        <h3>Aparência & Tema</h3>
+        <p class="section-desc">Personalize o visual e as cores do aplicativo.</p>
+
+        <div class="themes-grid">
+          <div
+            v-for="th in themesList"
+            :key="th.id"
+            :class="['theme-card', { active: notesStore.theme === th.id }]"
+            @click="selectTheme(th.id)"
+          >
+            <div class="theme-swatch">
+              <span v-for="c in th.colors" :key="c" class="swatch-dot" :style="{ backgroundColor: c }"></span>
+            </div>
+            <div class="theme-info">
+              <strong>{{ th.name }}</strong>
+              <small>{{ th.desc }}</small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notifications & Reminders Section -->
+      <div class="settings-section">
+        <h3>Lembretes & Notificações</h3>
+        <p class="section-desc">Ative as notificações desktop para ser alertado na hora de cada nota agendada.</p>
+        <button class="btn-backup" @click="requestNotificationPermission">
+          🔔 Testar / Ativar Notificações do Sistema
+        </button>
+      </div>
+
       <!-- Backup & Restore Section -->
       <div class="settings-section">
         <h3>Backup & Restauração</h3>
@@ -120,6 +182,10 @@ async function handleFileChange(event: Event) {
         <h3>Atalhos de Teclado</h3>
         <div class="shortcuts-grid">
           <div class="shortcut-item">
+            <span class="shortcut-desc">Captura Rápida (Spotlight)</span>
+            <kbd>Ctrl + Espaço</kbd>
+          </div>
+          <div class="shortcut-item">
             <span class="shortcut-desc">Focar busca</span>
             <kbd>Ctrl + F</kbd>
           </div>
@@ -144,7 +210,7 @@ async function handleFileChange(event: Event) {
             <kbd>Ctrl + 3</kbd>
           </div>
           <div class="shortcut-item">
-            <span class="shortcut-desc">Alternar para Insights</span>
+            <span class="shortcut-desc">Alternar para Insights & Grafo</span>
             <kbd>Ctrl + 4</kbd>
           </div>
           <div class="shortcut-item">
@@ -244,6 +310,58 @@ async function handleFileChange(event: Event) {
   font-size: 0.8rem;
   color: var(--text-secondary);
   margin: 0 0 14px 0;
+}
+
+.themes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.theme-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.theme-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--accent);
+}
+
+.theme-card.active {
+  border-color: var(--accent);
+  background: rgba(56, 189, 248, 0.1);
+}
+
+.theme-swatch {
+  display: flex;
+  gap: 6px;
+}
+
+.swatch-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.theme-info strong {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.theme-info small {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
 }
 
 .backup-actions {

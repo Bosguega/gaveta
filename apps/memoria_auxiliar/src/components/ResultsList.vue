@@ -27,6 +27,11 @@ function formatDate(dateString: string): string {
   }
 }
 
+function getTagsArray(tagsString?: string): string[] {
+  if (!tagsString) return [];
+  return tagsString.split(',').map(t => t.trim()).filter(Boolean);
+}
+
 function formatReminder(dateString: string): { label: string; isPast: boolean } {
   try {
     const target = new Date(dateString);
