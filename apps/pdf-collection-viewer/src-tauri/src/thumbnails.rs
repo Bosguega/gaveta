@@ -109,7 +109,7 @@ fn generate_pdf_thumbnail(
         .map_err(|e| format!("Falha ao renderizar página: {e}"))?;
 
     let width = bitmap.width() as u32;
-    let height = bitmap.height() as u32;
+    let _height = bitmap.height() as u32;
     let bytes = bitmap.as_raw_bytes();
 
     // The bitmap from pdfium is already in RGBA format.
@@ -122,14 +122,17 @@ fn generate_pdf_thumbnail(
         rgba.push(chunk[3]); // A
     }
 
-    let img = image::RgbaImage::from_raw(width, height, rgba)
+    let actual_width = width;
+    let actual_height = rgba.len() as u32 / (actual_width * 4);
+
+    let img = image::RgbaImage::from_raw(actual_width, actual_height, rgba)
         .ok_or_else(|| "Falha ao criar imagem".to_string())?;
 
     // Encode as WebP (lossless)
     let mut encoded = Vec::new();
     let encoder = WebPEncoder::new_lossless(&mut encoded);
     encoder
-        .write_image(&img, width, height, image::ExtendedColorType::Rgba8)
+        .write_image(&img, actual_width, actual_height, image::ExtendedColorType::Rgba8)
         .map_err(|e| format!("Falha ao codificar WebP: {e}"))?;
 
     fs::write(&output_path, &encoded)
@@ -163,10 +166,13 @@ fn generate_image_thumbnail(
     let resized = img.resize(tw, th, FilterType::Lanczos3);
     let rgba = resized.to_rgba8();
 
+    let actual_width = rgba.width();
+    let actual_height = rgba.height();
+
     let mut encoded = Vec::new();
     let encoder = WebPEncoder::new_lossless(&mut encoded);
     encoder
-        .write_image(&rgba, tw, th, image::ExtendedColorType::Rgba8)
+        .write_image(&rgba, actual_width, actual_height, image::ExtendedColorType::Rgba8)
         .map_err(|e| format!("Falha ao codificar WebP: {e}"))?;
 
     fs::write(&output_path, &encoded)

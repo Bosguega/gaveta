@@ -39,7 +39,7 @@ impl FileType {
     pub fn from_extension(ext: &str) -> Self {
         match ext.to_ascii_lowercase().as_str() {
             "pdf" => FileType::Pdf,
-            "pes" | "pec" | "jef" | "xxx" | "dst" | "exp" | "vip" | "vp3" | "hus" => {
+            "pes" | "pec" | "jef" | "xxx" | "dst" | "exp" | "vip" | "vp3" | "hus" | "sew" => {
                 FileType::Embroidery
             }
             "png" | "jpg" | "jpeg" | "bmp" | "gif" | "webp" => FileType::Image,
@@ -52,7 +52,7 @@ impl FileType {
         match self {
             FileType::Pdf => &["pdf"],
             FileType::Embroidery => &[
-                "dst", "exp", "pes", "pec", "jef", "vp3", "xxx", "vip", "hus",
+                "dst", "exp", "pes", "pec", "jef", "vp3", "xxx", "vip", "hus", "sew",
             ],
             FileType::Image => &["png", "jpg", "jpeg", "bmp", "gif", "webp"],
             FileType::Unknown => &[],
