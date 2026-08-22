@@ -86,7 +86,11 @@ pub fn render_pattern(pattern: &EmbroideryPattern) -> RgbaImage {
             }
             StitchType::Stitch => {
                 let px = (offset_x + (s.x - min_x) * scale).round() as i32;
-                let py = (offset_y + (max_y - s.y) * scale).round() as i32;
+                let py = if pattern.invert_y {
+                    (offset_y + (s.y - min_y) * scale).round() as i32
+                } else {
+                    (offset_y + (max_y - s.y) * scale).round() as i32
+                };
 
                 if let Some((x0, y0)) = prev_pt {
                     draw_thick_line(&mut img, x0, y0, px, py, current_color);

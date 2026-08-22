@@ -28,6 +28,7 @@ pub struct Stitch {
 pub struct EmbroideryPattern {
     pub stitches: Vec<Stitch>,
     pub palette: Option<Vec<Rgba<u8>>>,
+    pub invert_y: bool,
 }
 
 impl EmbroideryPattern {
@@ -35,6 +36,7 @@ impl EmbroideryPattern {
         Self {
             stitches: Vec::new(),
             palette: None,
+            invert_y: false,
         }
     }
 
@@ -79,10 +81,10 @@ mod pes_test {
         let pec_offset: u32 = 512;
         bytes[8..12].copy_from_slice(&pec_offset.to_le_bytes());
         bytes[512..520].copy_from_slice(b"#PEC0001");
-        bytes[520] = 2; // 3 colors
-        bytes[521] = 1;
-        bytes[522] = 2;
-        bytes[523] = 3;
+        bytes[560] = 2; // 3 colors
+        bytes[561] = 1;
+        bytes[562] = 2;
+        bytes[563] = 3;
         
         let mut stitch_data = Vec::new();
         stitch_data.extend_from_slice(&[10, 15]); // stitch 1
