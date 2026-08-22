@@ -69,6 +69,46 @@ pub fn render_embroidery_thumbnail(path: &str, cache_dir: &Path) -> Result<(), S
 }
 
 #[cfg(test)]
+mod pes_test {
+    use super::*;
+
+    #[test]
+    fn test_pes_wrapper_with_real_offset() {
+        let mut bytes = vec![0u8; 1500];
+        bytes[..8].copy_from_slice(b"#PES0001");
+        let pec_offset: u32 = 512;
+        bytes[8..12].copy_from_slice(&pec_offset.to_le_bytes());
+        bytes[512..520].copy_from_slice(b"#PEC0001");
+        bytes[520] = 2; // 3 colors
+        bytes[521] = 1;
+        bytes[522] = 2;
+        bytes[523] = 3;
+        
+        let mut stitch_data = Vec::new();
+        stitch_data.extend_from_slice(&[10, 15]); // stitch 1
+        stitch_data.extend_from_slice(&[0xFE, 0xB0, 0x01]); // color change to index 1
+        stitch_data.extend_from_slice(&[5, 10]); // stitch 2
+        stitch_data.extend_from_slice(&[0xFF]); // end
+        
+        let start = 1024; // pec_offset + 512
+        bytes[start..start + stitch_data.len()].copy_from_slice(&stitch_data);
+        
+        let parsed = pes::parse_pes(&bytes);
+        if let Err(ref e) = parsed {
+            eprintln!("Parse error: {}", e);
+        }
+        assert!(parsed.is_ok());
+        let pattern = parsed.unwrap();
+        assert_eq!(pattern.stitches.len(), 4); // 2 stitches + color change + end
+        
+        // Verify palette
+        assert!(pattern.palette.is_some());
+        let palette = pattern.palette.unwrap();
+        assert_eq!(palette.len(), 3);
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
