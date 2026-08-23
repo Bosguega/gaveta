@@ -1,3 +1,4 @@
+import { convertFileSrc } from '@tauri-apps/api/core';
 import type { Collection } from '@/types';
 
 interface Props {
@@ -14,7 +15,15 @@ export function CollectionCard({ collection, onOpen, onEdit, onDelete }: Props) 
             onClick={onOpen}
         >
             <div className="flex flex-col items-center justify-center p-6 h-48">
-                <div className="text-5xl mb-3">{collection.icon}</div>
+                {collection.icon_path ? (
+                    <img
+                        src={convertFileSrc(collection.icon_path)}
+                        alt={`Ícone de ${collection.name}`}
+                        className="w-16 h-16 rounded-lg object-cover mb-3 border border-slate-200"
+                    />
+                ) : (
+                    <div className="text-5xl mb-3">{collection.icon}</div>
+                )}
                 <div className="font-semibold text-slate-800 text-center truncate w-full px-2">
                     {collection.name}
                 </div>

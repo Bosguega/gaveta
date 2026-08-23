@@ -1,16 +1,19 @@
 import { useState } from 'react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { z } from 'zod';
 import { COLLECTION_ICONS } from '@/types';
-import { pickFolder } from '@/services/collections';
+import { pickFolder, pickImageFile } from '@/services/collections';
 
 interface Props {
     initialName?: string;
     initialIcon?: string;
+    initialIconPath?: string | null;
     initialPaths?: string[];
     initialIncludeSubfolders?: boolean;
     onSubmit: (data: {
         name: string;
         icon: string;
+        iconPath: string | null;
         paths: string[];
         includeSubfolders: boolean;
     }) => Promise<void>;
@@ -29,6 +32,7 @@ const collectionFormSchema = z
     .object({
         name: z.string().trim().min(1, 'O nome é obrigatório'),
         icon: z.string().min(1),
+        icon_path: z.string().nullable(),
         paths: z
             .array(z.string())
             .transform((entries) => entries.map((path) => path.trim()).filter(Boolean))
@@ -53,7 +57,8 @@ const collectionFormSchema = z
 
 export function CollectionForm({
     initialName = '',
-    initialIcon = '📚',
+    initialIcon = '',
+    initialIconPath = null,
     initialPaths = [],
     initialIncludeSubfolders = true,
     onSubmit,
@@ -61,6 +66,7 @@ export function CollectionForm({
 }: Props) {
     const [name, setName] = useState(initialName);
     const [icon, setIcon] = useState(initialIcon);
+    const [iconPath, setIconPath] = useState<string | null>(initialIconPath);
     const [paths, setPaths] = useState<string[]>(initialPaths.length > 0 ? initialPaths : ['']);
     const [includeSubfolders, setIncludeSubfolders] = useState(initialIncludeSubfolders);
     const [error, setError] = useState<string | null>(null);
@@ -88,6 +94,16 @@ export function CollectionForm({
         });
     };
 
+    const browseImage = async () => {
+        const picked = await pickImageFile();
+        if (!picked) return;
+        setIconPath(picked);
+    };
+
+    const clearImage = () => {
+        setIconPath(null);
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
@@ -95,6 +111,7 @@ export function CollectionForm({
         const parsed = collectionFormSchema.safeParse({
             name,
             icon,
+            icon_path: iconPath,
             paths,
             includeSubfolders,
         });
@@ -106,7 +123,13 @@ export function CollectionForm({
 
         setSaving(true);
         try {
-            await onSubmit(parsed.data);
+            await onSubmit({
+                name: parsed.data.name,
+                icon: parsed.data.icon,
+                iconPath: parsed.data.icon_path,
+                paths: parsed.data.paths,
+                includeSubfolders: parsed.data.includeSubfolders,
+            });
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Erro ao salvar coleção');
         } finally {
@@ -134,16 +157,58 @@ export function CollectionForm({
                         <button
                             key={candidate}
                             type="button"
-                            onClick={() => setIcon(candidate)}
-                            className={`w-10 h-10 flex items-center justify-center text-xl rounded-lg border transition-colors ${icon === candidate
-                                    ? 'border-blue-500 bg-blue-50'
-                                    : 'border-slate-200 hover:border-slate-300'
+                            onClick={() => {
+                                setIcon(candidate);
+                                setIconPath(null);
+                            }}
+                            className={`w-10 h-10 flex items-center justify-center text-xl rounded-lg border transition-colors ${icon === candidate && !iconPath
+                                ? 'border-blue-500 bg-blue-50'
+                                : 'border-slate-200 hover:border-slate-300'
                                 }`}
                         >
                             {candidate}
                         </button>
                     ))}
                 </div>
+            </div>
+
+            <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Imagem do ícone</label>
+                <div className="space-y-3">
+                    {iconPath ? (
+                        <div className="flex items-center gap-3">
+                            <img
+                                src={convertFileSrc(iconPath)}
+                                alt="Pré-visualização do ícone"
+                                className="w-16 h-16 rounded-lg object-cover border border-slate-200"
+                            />
+                            <div className="flex-1 text-sm text-slate-600 truncate">
+                                {iconPath}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={clearImage}
+                                className="p-1 text-slate-500 hover:text-red-600"
+                                title="Remover imagem"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={browseImage}
+                            className="px-4 py-2 text-sm border border-dashed border-slate-300 rounded-lg text-slate-600 hover:border-blue-400 hover:text-blue-600"
+                        >
+                            Escolher imagem
+                        </button>
+                    )}
+                </div>
+                {iconPath && (
+                    <p className="text-xs text-slate-500 mt-1">
+                        Uma imagem selecionada substitui o emoji do ícone.
+                    </p>
+                )}
             </div>
 
             <div>

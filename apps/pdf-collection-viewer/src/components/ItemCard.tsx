@@ -52,8 +52,14 @@ export function ItemCard({ item, selected, onSelect, onOpen, onRevealInFolder, o
     const handleContextMenu = (event: React.MouseEvent) => {
         event.preventDefault();
         event.stopPropagation();
-        setContextMenu({ x: event.clientX, y: event.clientY });
+        // Clamp position so the menu stays inside the viewport.
+        const menuWidth = 200;
+        const menuHeight = 120;
+        const x = Math.min(event.clientX, window.innerWidth - menuWidth - 8);
+        const y = Math.min(event.clientY, window.innerHeight - menuHeight - 8);
+        setContextMenu({ x: Math.max(0, x), y: Math.max(0, y) });
     };
+
 
     const handleMenuItemClick = (action: () => void) => {
         setContextMenu(null);

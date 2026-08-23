@@ -27,15 +27,15 @@ export function HomePage() {
         }
     }, [currentCollectionId]);
 
-    const handleCreate = async (data: { name: string; icon: string; paths: string[]; includeSubfolders: boolean }) => {
-        await createCollection(data.name, data.icon, data.paths, data.includeSubfolders);
+    const handleCreate = async (data: { name: string; icon: string; iconPath: string | null; paths: string[]; includeSubfolders: boolean }) => {
+        await createCollection(data.name, data.icon, data.iconPath, data.paths, data.includeSubfolders);
         setShowForm(false);
         await loadCollections();
     };
 
-    const handleUpdate = async (data: { name: string; icon: string; paths: string[]; includeSubfolders: boolean }) => {
+    const handleUpdate = async (data: { name: string; icon: string; iconPath: string | null; paths: string[]; includeSubfolders: boolean }) => {
         if (!editing) return;
-        await updateCollection(editing.id, data.name, data.icon, data.paths, data.includeSubfolders);
+        await updateCollection(editing.id, data.name, data.icon, data.iconPath, data.paths, data.includeSubfolders);
         setEditing(null);
         await loadCollections();
     };
@@ -106,6 +106,7 @@ export function HomePage() {
                         <CollectionForm
                             initialName={editing?.name}
                             initialIcon={editing?.icon}
+                            initialIconPath={editing?.icon_path}
                             initialPaths={editing?.paths}
                             initialIncludeSubfolders={editing?.include_subfolders}
                             onSubmit={editing ? handleUpdate : handleCreate}

@@ -21,9 +21,11 @@ pub fn list_collections(state: State<DbState>) -> Result<Vec<db::Collection>, St
 
 #[tauri::command]
 pub fn create_collection(
+    app: AppHandle,
     state: State<DbState>,
     name: String,
     icon: String,
+    icon_path: Option<String>,
     paths: Vec<String>,
     include_subfolders: bool,
 ) -> Result<db::Collection, String> {
@@ -35,16 +37,25 @@ pub fn create_collection(
     }
 
     validate_collection_paths(&paths)?;
+
+    let resolved_icon_path = if let Some(p) = icon_path {
+        db::copy_icon_to_cache(&app, &p)?
+    } else {
+        None
+    };
+
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    db::create_collection(&conn, &name, &icon, &paths, include_subfolders)
+    db::create_collection(&conn, &name, &icon, resolved_icon_path.as_deref(), &paths, include_subfolders)
 }
 
 #[tauri::command]
 pub fn update_collection(
+    app: AppHandle,
     state: State<DbState>,
     id: i64,
     name: String,
     icon: String,
+    icon_path: Option<String>,
     paths: Vec<String>,
     include_subfolders: bool,
 ) -> Result<(), String> {
@@ -56,8 +67,15 @@ pub fn update_collection(
     }
 
     validate_collection_paths(&paths)?;
+
+    let resolved_icon_path = if let Some(p) = icon_path {
+        db::copy_icon_to_cache(&app, &p)?
+    } else {
+        None
+    };
+
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    db::update_collection(&conn, id, &name, &icon, &paths, include_subfolders)
+    db::update_collection(&conn, id, &name, &icon, resolved_icon_path.as_deref(), &paths, include_subfolders)
 }
 
 #[tauri::command]
@@ -619,4 +637,37 @@ pub fn reveal_in_folder(app: AppHandle, path: String) -> Result<(), String> {
 
     let _ = app;
     Ok(())
+}
+
+// Image file picker for collection icon
+
+#[tauri::command]
+pub fn pick_image_file(app: AppHandle) -> Result<Option<String>, String> {
+    use std::sync::mpsc::channel;
+
+    let (tx, rx) = channel();
+
+    let _ = app
+        .dialog()
+        .file()
+        .set_title("Selecionar imagem para o ícone")
+        .add_filter("Imagens", &["png", "jpg", "jpeg", "gif", "webp", "bmp"])
+
+        .pick_file(move |path: Option<tauri_plugin_dialog::FilePath>| {
+            let _ = tx.send(path);
+        });
+
+    match rx.recv() {
+        Ok(Some(path)) => {
+            let Some(picked) = path.into_path().ok().map(|p| p.display().to_string()) else {
+                return Ok(None);
+            };
+            // Copy into the app cache right away so the asset protocol
+            // ($APPDATA scope) can serve the file for the live preview,
+            // and the stored icon_path survives moves of the source file.
+            db::copy_icon_to_cache(&app, &picked)
+        }
+        Ok(None) => Ok(None),
+        Err(e) => Err(format!("Falha ao obter imagem: {e}")),
+    }
 }

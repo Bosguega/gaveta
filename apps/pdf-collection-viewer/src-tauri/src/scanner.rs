@@ -126,6 +126,10 @@ pub fn cleanup_orphan_cache(cache_dir: &Path, known_keys: &[String]) {
 
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
+        // Skip collection icon files (they use the "collection_icon_" prefix).
+        if name.starts_with("collection_icon_") {
+            continue;
+        }
         if name.ends_with(".webp") && !known_keys.contains(&name) {
             let _ = fs::remove_file(entry.path());
         }

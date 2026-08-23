@@ -12,12 +12,14 @@ export async function getCollection(id: number): Promise<CollectionDetail | null
 export async function createCollection(
     name: string,
     icon: string,
+    iconPath: string | null,
     paths: string[],
     includeSubfolders: boolean,
 ): Promise<Collection> {
     return invoke<Collection>('create_collection', {
         name,
         icon,
+        icon_path: iconPath,
         paths,
         includeSubfolders,
     });
@@ -27,6 +29,7 @@ export async function updateCollection(
     id: number,
     name: string,
     icon: string,
+    iconPath: string | null,
     paths: string[],
     includeSubfolders: boolean,
 ): Promise<void> {
@@ -34,6 +37,7 @@ export async function updateCollection(
         id,
         name,
         icon,
+        icon_path: iconPath,
         paths,
         includeSubfolders,
     });
@@ -45,4 +49,8 @@ export async function deleteCollection(id: number): Promise<void> {
 
 export async function pickFolder(): Promise<string | null> {
     return invoke<string | null>('pick_folder');
+}
+
+export async function pickImageFile(): Promise<string | null> {
+    return invoke<string | null>('pick_image_file');
 }

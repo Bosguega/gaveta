@@ -2,6 +2,7 @@ export interface Collection {
     id: number;
     name: string;
     icon: string;
+    icon_path: string | null;
     include_subfolders: boolean;
     item_count: number;
     created_at: string;
@@ -12,6 +13,7 @@ export interface CollectionDetail {
     id: number;
     name: string;
     icon: string;
+    icon_path: string | null;
     include_subfolders: boolean;
     paths: string[];
     created_at: string;

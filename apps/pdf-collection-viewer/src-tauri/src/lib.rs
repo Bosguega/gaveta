@@ -80,6 +80,7 @@ pub fn run() {
             commands::remove_duplicate,
             commands::toggle_favorite,
             commands::reveal_in_folder,
+            commands::pick_image_file,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao executar o aplicativo Tauri");

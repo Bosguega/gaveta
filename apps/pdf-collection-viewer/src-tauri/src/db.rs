@@ -64,6 +64,7 @@ pub struct Collection {
     pub id: i64,
     pub name: String,
     pub icon: String,
+    pub icon_path: Option<String>,
     pub include_subfolders: bool,
     pub item_count: i64,
     pub created_at: String,
@@ -76,6 +77,7 @@ pub struct CollectionDetail {
     pub id: i64,
     pub name: String,
     pub icon: String,
+    pub icon_path: Option<String>,
     pub include_subfolders: bool,
     pub paths: Vec<String>,
     pub created_at: String,
@@ -158,6 +160,7 @@ pub fn open_and_migrate(app: &tauri::AppHandle) -> Result<Connection, String> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             icon TEXT NOT NULL DEFAULT '📚',
+            icon_path TEXT,
             include_subfolders INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -291,15 +294,69 @@ pub fn open_and_migrate(app: &tauri::AppHandle) -> Result<Connection, String> {
         .map_err(|e| format!("Falha ao adicionar coluna is_favorite: {e}"))?;
     }
 
+    // Migration 4: add icon_path column to collections if missing
+    let has_icon_path: bool = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('collections') WHERE name = 'icon_path'")
+        .map_err(|e| format!("Falha ao verificar coluna icon_path: {e}"))?
+        .query_row([], |row| {
+            let count: i64 = row.get(0)?;
+            Ok(count > 0)
+        })
+        .map_err(|e| format!("Falha ao verificar coluna icon_path: {e}"))?;
+
+    if !has_icon_path {
+        conn.execute(
+            "ALTER TABLE collections ADD COLUMN icon_path TEXT",
+            [],
+        )
+        .map_err(|e| format!("Falha ao adicionar coluna icon_path: {e}"))?;
+    }
+
     Ok(conn)
 }
 
 // ── Collections ──
 
+/// Copies an image file into the app cache directory under a sha256-based key
+/// and returns the cache path. Returns None if the extension is not a supported image type.
+pub fn copy_icon_to_cache(app: &tauri::AppHandle, src_path: &str) -> Result<Option<String>, String> {
+    let cache = cache_dir(app)?;
+
+    let ext = std::path::Path::new(src_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .unwrap_or_default();
+
+    let is_supported_image = matches!(
+        ext.as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp"
+    );
+
+    if !is_supported_image {
+        return Ok(None);
+    }
+
+    let key = format!("collection_icon_{}.{}", sha256_hex(src_path), ext);
+    let dest = cache.join(&key);
+
+    fs::copy(src_path, &dest)
+        .map_err(|e| format!("Não foi possível copiar a imagem do ícone: {e}"))?;
+
+    Ok(Some(dest.display().to_string()))
+}
+
+fn sha256_hex(input: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(input.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
 pub fn list_collections(conn: &Connection) -> Result<Vec<Collection>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT c.id, c.name, c.icon, c.include_subfolders, c.created_at, c.updated_at,
+            "SELECT c.id, c.name, c.icon, c.icon_path, c.include_subfolders, c.created_at, c.updated_at,
                     (SELECT COUNT(*) FROM files f WHERE f.collection_id = c.id) as item_count
              FROM collections c
              ORDER BY c.name COLLATE NOCASE",
@@ -308,15 +365,16 @@ pub fn list_collections(conn: &Connection) -> Result<Vec<Collection>, String> {
 
     let collections = stmt
         .query_map([], |row| {
-            let include: i64 = row.get(3)?;
+            let include: i64 = row.get(4)?;
             Ok(Collection {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 icon: row.get(2)?,
+                icon_path: row.get(3)?,
                 include_subfolders: include != 0,
-                item_count: row.get(6)?,
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
+                item_count: row.get(7)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
             })
         })
         .map_err(|e| format!("Falha ao listar coleções: {e}"))?
@@ -329,22 +387,23 @@ pub fn list_collections(conn: &Connection) -> Result<Vec<Collection>, String> {
 pub fn get_collection(conn: &Connection, id: i64) -> Result<Option<CollectionDetail>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, icon, include_subfolders, created_at, updated_at
+            "SELECT id, name, icon, icon_path, include_subfolders, created_at, updated_at
              FROM collections WHERE id = ?1",
         )
         .map_err(|e| format!("Falha ao preparar consulta: {e}"))?;
 
     let result = stmt
         .query_row(params![id], |row| {
-            let include: i64 = row.get(3)?;
+            let include: i64 = row.get(4)?;
             Ok(CollectionDetail {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 icon: row.get(2)?,
+                icon_path: row.get(3)?,
                 include_subfolders: include != 0,
                 paths: Vec::new(),
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
             })
         })
         .optional()
@@ -372,6 +431,7 @@ pub fn create_collection(
     conn: &Connection,
     name: &str,
     icon: &str,
+    icon_path: Option<&str>,
     paths: &[String],
     include_subfolders: bool,
 ) -> Result<Collection, String> {
@@ -379,9 +439,9 @@ pub fn create_collection(
     let include = if include_subfolders { 1 } else { 0 };
 
     conn.execute(
-        "INSERT INTO collections (name, icon, include_subfolders, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![name, icon, include, now, now],
+        "INSERT INTO collections (name, icon, icon_path, include_subfolders, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![name, icon, icon_path, include, now, now],
     )
     .map_err(|e| format!("Falha ao criar coleção: {e}"))?;
 
@@ -399,6 +459,7 @@ pub fn create_collection(
         id,
         name: name.to_string(),
         icon: icon.to_string(),
+        icon_path: icon_path.map(|s| s.to_string()),
         include_subfolders,
         item_count: 0,
         created_at: now.clone(),
@@ -411,6 +472,7 @@ pub fn update_collection(
     id: i64,
     name: &str,
     icon: &str,
+    icon_path: Option<&str>,
     paths: &[String],
     include_subfolders: bool,
 ) -> Result<(), String> {
@@ -418,8 +480,8 @@ pub fn update_collection(
     let include = if include_subfolders { 1 } else { 0 };
 
     conn.execute(
-        "UPDATE collections SET name = ?1, icon = ?2, include_subfolders = ?3, updated_at = ?4 WHERE id = ?5",
-        params![name, icon, include, now, id],
+        "UPDATE collections SET name = ?1, icon = ?2, icon_path = ?3, include_subfolders = ?4, updated_at = ?5 WHERE id = ?6",
+        params![name, icon, icon_path, include, now, id],
     )
     .map_err(|e| format!("Falha ao atualizar coleção: {e}"))?;
 
