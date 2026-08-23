@@ -3,7 +3,7 @@ import { ItemCard } from '@/components/ItemCard';
 import { DuplicateAnalysisModal } from '@/components/DuplicateAnalysisModal';
 import { useAppStore } from '@/store/useAppStore';
 import { getCollection } from '@/services/collections';
-import { listItems, updateCollectionScan, openFile, listenToUpdateProgress, cancelScan, toggleFavorite } from '@/services/items';
+import { listItems, updateCollectionScan, openFile, listenToUpdateProgress, cancelScan, toggleFavorite, revealInFolder } from '@/services/items';
 import { clearThumbnailUrlCache } from '@/services/thumbnails';
 import { SORT_OPTIONS, type SortOption } from '@/types';
 import { getFileTypeIcon, getFileTypeLabel } from '@/utils/format';
@@ -117,6 +117,14 @@ export function CollectionPage() {
             setItems(items.map((item) => (item.id === itemId ? { ...item, is_favorite: newState } : item)));
         } catch (reason) {
             setError(reason instanceof Error ? reason.message : 'Não foi possível alterar o favorito.');
+        }
+    };
+
+    const handleRevealInFolder = async (path: string) => {
+        try {
+            await revealInFolder(path);
+        } catch (reason) {
+            setError(reason instanceof Error ? reason.message : 'Não foi possível localizar o arquivo.');
         }
     };
 
@@ -435,6 +443,7 @@ export function CollectionPage() {
                             selected={selectedId === item.id}
                             onSelect={() => setSelectedId(item.id)}
                             onOpen={() => handleOpenFile(item.path)}
+                            onRevealInFolder={() => handleRevealInFolder(item.path)}
                             onToggleFavorite={() => handleToggleFavorite(item.id)}
                         />
                     ))}
