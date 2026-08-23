@@ -17,6 +17,7 @@ use std::path::Path;
 pub enum StitchType {
     Stitch,
     Jump,
+    Trim,
     ColorChange,
     End,
 }
@@ -189,35 +190,153 @@ mod tests {
 
     #[test]
     fn test_synthetic_vp3_pattern() {
-        let mut bytes = vec![0u8; 128];
+        let mut bytes = vec![0u8; 200];
         bytes[0..5].copy_from_slice(b"%vsm%");
         bytes[5] = 0x00;
-        bytes[6..8].copy_from_slice(&2u16.to_be_bytes());
-        bytes[8..12].copy_from_slice(&[0x00, 0x50, 0x00, 0x00]);
+        bytes[6..8].copy_from_slice(&0u16.to_be_bytes());
+        bytes[8..15].copy_from_slice(&[0u8; 7]);
+        bytes[15..17].copy_from_slice(&0u16.to_be_bytes());
+        bytes[17..49].copy_from_slice(&[0u8; 32]);
+        bytes[49..53].copy_from_slice(&0i32.to_be_bytes());
+        bytes[53..57].copy_from_slice(&0i32.to_be_bytes());
+        bytes[57..84].copy_from_slice(&[0u8; 27]);
+        bytes[84..86].copy_from_slice(&0u16.to_be_bytes());
+        bytes[86..110].copy_from_slice(&[0u8; 24]);
+        bytes[110..112].copy_from_slice(&0u16.to_be_bytes());
+        bytes[112..114].copy_from_slice(&1u16.to_be_bytes());
 
-        let embroidery_summary: Vec<u8> = vec![0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x01];
-        bytes[12..19].copy_from_slice(&embroidery_summary);
+        let start = 114;
+        bytes[start..start+3].copy_from_slice(&[0x00, 0x05, 0x00]);
+        bytes[start+3..start+7].copy_from_slice(&49u32.to_be_bytes());
+        bytes[start+7..start+11].copy_from_slice(&0i32.to_be_bytes());
+        bytes[start+11..start+15].copy_from_slice(&0i32.to_be_bytes());
+        bytes[start+15] = 0x01;
+        bytes[start+16] = 0x01;
+        bytes[start+17] = 0x00;
+        bytes[start+18] = 0xFF;
+        bytes[start+19] = 0x00;
+        bytes[start+20] = 0x00;
+        bytes[start+21] = 0x00;
+        bytes[start+22] = 0x00;
+        bytes[start+23] = 0x00;
+        bytes[start+24] = 0x00;
+        bytes[start+25] = 0x00;
+        bytes[start+26] = 0x00;
+        bytes[start+27] = 0x00;
+        bytes[start+28] = 0x00;
+        bytes[start+29] = 0x00;
+        bytes[start+30] = 0x00;
+        bytes[start+31..start+46].copy_from_slice(&[0u8; 15]);
+        bytes[start+46..start+49].copy_from_slice(&[0x0A, 0xF6, 0x00]);
+        bytes[start+49] = 10;
+        bytes[start+50] = 0;
+        bytes[start+51] = 20;
+        bytes[start+52] = 0;
+        bytes[start+53] = 0x80;
+        bytes[start+54] = 0x03;
 
-        let hoop_centered: Vec<u8> = vec![0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01];
-        bytes[20..27].copy_from_slice(&hoop_centered);
+        let parsed = vp3::parse_vp3(&bytes);
+        assert!(parsed.is_ok());
+        let pattern = parsed.unwrap();
+        assert!(pattern.stitches.len() >= 2);
 
-        let mut color_block = Vec::new();
-        color_block.extend_from_slice(&[0x00, 0x05, 0x00]);
-        color_block.extend_from_slice(&40u32.to_be_bytes());
-        color_block.extend_from_slice(&0i32.to_be_bytes());
-        color_block.extend_from_slice(&0i32.to_be_bytes());
-        color_block.extend_from_slice(&[0x01, 0x01, 0x28]);
-        color_block.extend_from_slice(&[0xFF, 0x00, 0x00]);
-        color_block.extend_from_slice(&[0x00; 15]);
-        color_block.extend_from_slice(&[0x00, 0x01, 0x00]);
-        color_block.extend_from_slice(&12u32.to_be_bytes());
-        color_block.extend_from_slice(&[0x0A, 0xF6, 0x00]);
-        color_block.extend_from_slice(&[10, 0, 20, 0, 0x80, 0x03]);
-
-        let start = 28;
-        if start + color_block.len() <= bytes.len() {
-            bytes[start..(start + color_block.len())].copy_from_slice(&color_block);
+        // Verify stitches are accumulated as absolute coordinates.
+        // Deltas are (10,0) then (20,0), starting from abs (0,0).
+        let stitches: Vec<_> = pattern
+            .stitches
+            .iter()
+            .filter(|s| s.stitch_type == StitchType::Stitch)
+            .collect();
+        assert!(!stitches.is_empty());
+        assert_eq!(stitches[0].x, 10.0);
+        assert_eq!(stitches[0].y, 0.0);
+        if stitches.len() > 1 {
+            assert_eq!(stitches[1].x, 30.0);
+            assert_eq!(stitches[1].y, 0.0);
         }
+
+        // Verify the 0x80 0x03 command produces a Trim stitch.
+        let trims: Vec<_> = pattern
+            .stitches
+            .iter()
+            .filter(|s| s.stitch_type == StitchType::Trim)
+            .collect();
+        assert_eq!(trims.len(), 1);
+        assert_eq!(trims[0].x, 30.0);
+        assert_eq!(trims[0].y, 0.0);
+    }
+
+    #[test]
+    fn test_synthetic_vp3_pattern_with_nonempty_header_strings() {
+        // Header strings in real VP3 files are non-empty (e.g. "Produced by     Software Ltd").
+        // The length field is big-endian and already encodes the byte count (2 per UTF-16 char).
+        // This test validates the parser does not over-advance on non-empty strings.
+        let producer = "Produced by     Software Ltd"; // 25 chars = 50 bytes UTF-16
+        let producer_bytes = producer.len() * 2;
+
+        let mut bytes = vec![0u8; 300];
+        bytes[0..5].copy_from_slice(b"%vsm%");
+        bytes[5] = 0x00;
+
+        let mut pos = 6;
+        // string 1: "Produced by     Software Ltd" (50 bytes)
+        bytes[pos..pos + 2].copy_from_slice(&(producer_bytes as u16).to_be_bytes());
+        pos += 2 + producer_bytes;
+        // +7
+        pos += 7;
+        // string 2: "" (0 bytes)
+        bytes[pos..pos + 2].copy_from_slice(&0u16.to_be_bytes());
+        pos += 2;
+        // +32
+        pos += 32;
+        // center_x, center_y
+        bytes[pos..pos + 4].copy_from_slice(&0i32.to_be_bytes());
+        pos += 4;
+        bytes[pos..pos + 4].copy_from_slice(&0i32.to_be_bytes());
+        pos += 4;
+        // +27
+        pos += 27;
+        // string 3: "" (0 bytes)
+        bytes[pos..pos + 2].copy_from_slice(&0u16.to_be_bytes());
+        pos += 2;
+        // +24
+        pos += 24;
+        // string 4: "Produced by     Software Ltd" (50 bytes)
+        bytes[pos..pos + 2].copy_from_slice(&(producer_bytes as u16).to_be_bytes());
+        pos += 2 + producer_bytes;
+        // count_colors = 1
+        bytes[pos..pos + 2].copy_from_slice(&1u16.to_be_bytes());
+        pos += 2;
+
+        let start = pos;
+        bytes[start..start + 3].copy_from_slice(&[0x00, 0x05, 0x00]);
+        bytes[start + 3..start + 7].copy_from_slice(&49u32.to_be_bytes());
+        bytes[start + 7..start + 11].copy_from_slice(&0i32.to_be_bytes());
+        bytes[start + 11..start + 15].copy_from_slice(&0i32.to_be_bytes());
+        bytes[start + 15] = 0x01;
+        bytes[start + 16] = 0x01;
+        bytes[start + 17] = 0x00;
+        bytes[start + 18] = 0xFF;
+        bytes[start + 19] = 0x00;
+        bytes[start + 20] = 0x00;
+        bytes[start + 21] = 0x00;
+        bytes[start + 22] = 0x00;
+        bytes[start + 23] = 0x00;
+        bytes[start + 24] = 0x00;
+        bytes[start + 25] = 0x00;
+        bytes[start + 26] = 0x00;
+        bytes[start + 27] = 0x00;
+        bytes[start + 28] = 0x00;
+        bytes[start + 29] = 0x00;
+        bytes[start + 30] = 0x00;
+        bytes[start + 31..start + 46].copy_from_slice(&[0u8; 15]);
+        bytes[start + 46..start + 49].copy_from_slice(&[0x0A, 0xF6, 0x00]);
+        bytes[start + 49] = 10;
+        bytes[start + 50] = 0;
+        bytes[start + 51] = 20;
+        bytes[start + 52] = 0;
+        bytes[start + 53] = 0x80;
+        bytes[start + 54] = 0x03;
 
         let parsed = vp3::parse_vp3(&bytes);
         assert!(parsed.is_ok());

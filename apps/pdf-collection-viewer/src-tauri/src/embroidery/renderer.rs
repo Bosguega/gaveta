@@ -81,7 +81,7 @@ pub fn render_pattern(pattern: &EmbroideryPattern) -> RgbaImage {
                 current_color = palette[color_idx];
                 prev_pt = None;
             }
-            StitchType::Jump => {
+            StitchType::Jump | StitchType::Trim => {
                 prev_pt = None;
             }
             StitchType::Stitch => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ItemCard } from '@/components/ItemCard';
 import { DuplicateAnalysisModal } from '@/components/DuplicateAnalysisModal';
 import { useAppStore } from '@/store/useAppStore';
@@ -8,12 +8,23 @@ import { clearThumbnailUrlCache } from '@/services/thumbnails';
 import { SORT_OPTIONS, type SortOption } from '@/types';
 import { getFileTypeIcon, getFileTypeLabel } from '@/utils/format';
 
+const EMBROIDERY_EXTENSIONS = ['dst', 'exp', 'pes', 'pec', 'jef', 'vp3', 'xxx', 'vip', 'hus', 'sew'];
+
+function getFileExtension(filename: string): string {
+    const idx = filename.lastIndexOf('.');
+    if (idx < 0) return '';
+    return filename.slice(idx + 1).toLowerCase();
+}
+
 export function CollectionPage() {
     const { currentCollectionId, closeCollection, items, setItems, isUpdating, setIsUpdating, updateProgress, setUpdateProgress } = useAppStore();
     const [collectionName, setCollectionName] = useState('');
     const [search, setSearch] = useState('');
     const [sort, setSort] = useState<SortOption>('name-asc');
     const [selectedFileType, setSelectedFileType] = useState<string>('all');
+    const [typeMenuOpen, setTypeMenuOpen] = useState(false);
+    const [embroideryMenuOpen, setEmbroideryMenuOpen] = useState(false);
+    const typeMenuRef = useRef<HTMLDivElement | null>(null);
     const [selectedId, setSelectedId] = useState<number | null>(null);
     const [unavailableCount, setUnavailableCount] = useState(0);
     const [erroredCount, setErroredCount] = useState(0);
@@ -56,6 +67,17 @@ export function CollectionPage() {
             setUpdateProgress(progress);
         });
         return unlisten;
+    }, []);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (typeMenuRef.current && !typeMenuRef.current.contains(event.target as Node)) {
+                setTypeMenuOpen(false);
+                setEmbroideryMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
     const handleUpdate = async () => {
@@ -108,6 +130,30 @@ export function CollectionPage() {
         return Array.from(types);
     }, [items]);
 
+    const distinctEmbroideryExtensions = useMemo(() => {
+        const set = new Set<string>();
+        for (const item of items) {
+            if (item.file_type === 'embroidery') {
+                const ext = getFileExtension(item.filename);
+                if (ext && EMBROIDERY_EXTENSIONS.includes(ext)) {
+                    set.add(ext);
+                }
+            }
+        }
+        return Array.from(set).sort();
+    }, [items]);
+
+    const selectedTypeLabel = useMemo(() => {
+        if (selectedFileType === 'all') return 'Todos os formatos';
+        if (selectedFileType === 'pdf' || selectedFileType === 'image') {
+            return `${getFileTypeIcon(selectedFileType)} ${getFileTypeLabel(selectedFileType)}`;
+        }
+        if (selectedFileType === 'embroidery') {
+            return `${getFileTypeIcon('embroidery')} ${getFileTypeLabel('embroidery')}`;
+        }
+        return `${getFileTypeIcon('embroidery')} .${selectedFileType.toUpperCase()}`;
+    }, [selectedFileType]);
+
     const filteredAndSorted = useMemo(() => {
         const query = search.trim().toLowerCase();
         let result = items;
@@ -116,8 +162,12 @@ export function CollectionPage() {
             result = result.filter((item) => item.is_favorite);
         }
 
-        if (selectedFileType !== 'all') {
+        if (selectedFileType === 'embroidery') {
+            result = result.filter((item) => item.file_type === 'embroidery');
+        } else if (selectedFileType === 'pdf' || selectedFileType === 'image') {
             result = result.filter((item) => item.file_type === selectedFileType);
+        } else if (selectedFileType !== 'all') {
+            result = result.filter((item) => getFileExtension(item.filename) === selectedFileType);
         }
 
         if (query) {
@@ -235,19 +285,94 @@ export function CollectionPage() {
                     className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 {distinctFileTypes.length > 1 && (
-                    <select
-                        value={selectedFileType}
-                        onChange={(e) => setSelectedFileType(e.target.value)}
-                        className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm text-slate-700"
-                        title="Filtrar por tipo de arquivo"
-                    >
-                        <option value="all">Todos os formatos</option>
-                        {distinctFileTypes.map((type) => (
-                            <option key={type} value={type}>
-                                {getFileTypeIcon(type)} {getFileTypeLabel(type)}
-                            </option>
-                        ))}
-                    </select>
+                    <div className="relative" ref={typeMenuRef}>
+                        <button
+                            onClick={() => setTypeMenuOpen((prev) => !prev)}
+                            className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 flex items-center gap-2"
+                            title="Filtrar por tipo de arquivo"
+                        >
+                            <span>{selectedTypeLabel}</span>
+                            <span className="text-slate-400 text-xs">▼</span>
+                        </button>
+                        {typeMenuOpen && (
+                            <div className="absolute left-0 top-full mt-1 z-20 w-64 bg-white border border-slate-200 rounded-lg shadow-lg py-1">
+                                <button
+                                    onClick={() => {
+                                        setSelectedFileType('all');
+                                        setTypeMenuOpen(false);
+                                    }}
+                                    className={`w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 ${selectedFileType === 'all' ? 'bg-blue-50 font-medium text-blue-700' : 'text-slate-700'}`}
+                                >
+                                    📁 Todos os formatos
+                                </button>
+                                {distinctFileTypes.includes('pdf') && (
+                                    <button
+                                        onClick={() => {
+                                            setSelectedFileType('pdf');
+                                            setTypeMenuOpen(false);
+                                        }}
+                                        className={`w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 ${selectedFileType === 'pdf' ? 'bg-blue-50 font-medium text-blue-700' : 'text-slate-700'}`}
+                                    >
+                                        📄 PDF
+                                    </button>
+                                )}
+                                {distinctFileTypes.includes('image') && (
+                                    <button
+                                        onClick={() => {
+                                            setSelectedFileType('image');
+                                            setTypeMenuOpen(false);
+                                        }}
+                                        className={`w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 ${selectedFileType === 'image' ? 'bg-blue-50 font-medium text-blue-700' : 'text-slate-700'}`}
+                                    >
+                                        🖼️ Imagem
+                                    </button>
+                                )}
+                                {distinctFileTypes.includes('embroidery') && (
+                                    <div
+                                        className="relative"
+                                        onMouseEnter={() => setEmbroideryMenuOpen(true)}
+                                        onMouseLeave={() => setEmbroideryMenuOpen(false)}
+                                    >
+                                        <button
+                                            onClick={() => {
+                                                setSelectedFileType('embroidery');
+                                                setTypeMenuOpen(false);
+                                            }}
+                                            className={`w-full flex items-center justify-between px-3 py-1.5 text-sm hover:bg-slate-50 ${selectedFileType === 'embroidery' || EMBROIDERY_EXTENSIONS.includes(selectedFileType)
+                                                ? 'bg-blue-50 font-medium text-blue-700'
+                                                : 'text-slate-700'
+                                                }`}
+                                        >
+                                            <span>🧵 Bordados</span>
+                                            <span className="text-slate-400 text-xs">▶</span>
+                                        </button>
+                                        {embroideryMenuOpen && (
+                                            <div className="absolute left-full top-0 ml-1 w-48 bg-white border border-slate-200 rounded-lg shadow-lg py-1">
+                                                {distinctEmbroideryExtensions.length > 0 ? (
+                                                    distinctEmbroideryExtensions.map((ext) => (
+                                                        <button
+                                                            key={ext}
+                                                            onClick={() => {
+                                                                setSelectedFileType(ext);
+                                                                setTypeMenuOpen(false);
+                                                                setEmbroideryMenuOpen(false);
+                                                            }}
+                                                            className={`w-full text-left px-3 py-1.5 text-sm uppercase hover:bg-slate-50 ${selectedFileType === ext ? 'bg-blue-50 font-medium text-blue-700' : 'text-slate-700'
+                                                                }`}
+                                                        >
+                                                            .{ext}
+                                                        </button>
+                                                    ))
+                                                ) : (
+                                                    <div className="px-3 py-1.5 text-sm text-slate-500">Sem extensões</div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 )}
                 <button
                     onClick={() => setShowFavoritesOnly((prev) => !prev)}
