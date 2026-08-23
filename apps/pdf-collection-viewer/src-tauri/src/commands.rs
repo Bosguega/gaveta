@@ -38,8 +38,12 @@ pub fn create_collection(
 
     validate_collection_paths(&paths)?;
 
-    let resolved_icon_path = if let Some(p) = icon_path {
-        db::copy_icon_to_cache(&app, &p)?
+    eprintln!("[create_collection] icon_path recebido: {:?}", icon_path);
+
+    let resolved_icon_path = if let Some(ref p) = icon_path {
+        let result = db::copy_icon_to_cache(&app, p)?;
+        eprintln!("[create_collection] resolved_icon_path: {:?}", result);
+        result
     } else {
         None
     };
@@ -68,8 +72,12 @@ pub fn update_collection(
 
     validate_collection_paths(&paths)?;
 
-    let resolved_icon_path = if let Some(p) = icon_path {
-        db::copy_icon_to_cache(&app, &p)?
+    eprintln!("[update_collection] icon_path recebido: {:?}", icon_path);
+
+    let resolved_icon_path = if let Some(ref p) = icon_path {
+        let result = db::copy_icon_to_cache(&app, p)?;
+        eprintln!("[update_collection] resolved_icon_path: {:?}", result);
+        result
     } else {
         None
     };
@@ -652,20 +660,15 @@ pub fn pick_image_file(app: AppHandle) -> Result<Option<String>, String> {
         .file()
         .set_title("Selecionar imagem para o ícone")
         .add_filter("Imagens", &["png", "jpg", "jpeg", "gif", "webp", "bmp"])
-
         .pick_file(move |path: Option<tauri_plugin_dialog::FilePath>| {
             let _ = tx.send(path);
         });
 
     match rx.recv() {
         Ok(Some(path)) => {
-            let Some(picked) = path.into_path().ok().map(|p| p.display().to_string()) else {
-                return Ok(None);
-            };
-            // Copy into the app cache right away so the asset protocol
-            // ($APPDATA scope) can serve the file for the live preview,
-            // and the stored icon_path survives moves of the source file.
-            db::copy_icon_to_cache(&app, &picked)
+            let picked = path.into_path().ok().map(|p| p.display().to_string());
+            eprintln!("[pick_image_file] caminho selecionado: {:?}", picked);
+            Ok(picked)
         }
         Ok(None) => Ok(None),
         Err(e) => Err(format!("Falha ao obter imagem: {e}")),

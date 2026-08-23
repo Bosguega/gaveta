@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { z } from 'zod';
-import { COLLECTION_ICONS } from '@/types';
 import { pickFolder, pickImageFile } from '@/services/collections';
 
 interface Props {
@@ -20,6 +19,7 @@ interface Props {
     onCancel: () => void;
 }
 
+
 function normalizePathKey(path: string): string {
     return path
         .trim()
@@ -31,7 +31,6 @@ function normalizePathKey(path: string): string {
 const collectionFormSchema = z
     .object({
         name: z.string().trim().min(1, 'O nome é obrigatório'),
-        icon: z.string().min(1),
         icon_path: z.string().nullable(),
         paths: z
             .array(z.string())
@@ -57,7 +56,6 @@ const collectionFormSchema = z
 
 export function CollectionForm({
     initialName = '',
-    initialIcon = '',
     initialIconPath = null,
     initialPaths = [],
     initialIncludeSubfolders = true,
@@ -65,7 +63,6 @@ export function CollectionForm({
     onCancel,
 }: Props) {
     const [name, setName] = useState(initialName);
-    const [icon, setIcon] = useState(initialIcon);
     const [iconPath, setIconPath] = useState<string | null>(initialIconPath);
     const [paths, setPaths] = useState<string[]>(initialPaths.length > 0 ? initialPaths : ['']);
     const [includeSubfolders, setIncludeSubfolders] = useState(initialIncludeSubfolders);
@@ -110,7 +107,6 @@ export function CollectionForm({
 
         const parsed = collectionFormSchema.safeParse({
             name,
-            icon,
             icon_path: iconPath,
             paths,
             includeSubfolders,
@@ -125,7 +121,7 @@ export function CollectionForm({
         try {
             await onSubmit({
                 name: parsed.data.name,
-                icon: parsed.data.icon,
+                icon: '📁',
                 iconPath: parsed.data.icon_path,
                 paths: parsed.data.paths,
                 includeSubfolders: parsed.data.includeSubfolders,
@@ -151,29 +147,7 @@ export function CollectionForm({
             </div>
 
             <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Ícone</label>
-                <div className="flex flex-wrap gap-2">
-                    {COLLECTION_ICONS.map((candidate) => (
-                        <button
-                            key={candidate}
-                            type="button"
-                            onClick={() => {
-                                setIcon(candidate);
-                                setIconPath(null);
-                            }}
-                            className={`w-10 h-10 flex items-center justify-center text-xl rounded-lg border transition-colors ${icon === candidate && !iconPath
-                                ? 'border-blue-500 bg-blue-50'
-                                : 'border-slate-200 hover:border-slate-300'
-                                }`}
-                        >
-                            {candidate}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Imagem do ícone</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Imagem da capa</label>
                 <div className="space-y-3">
                     {iconPath ? (
                         <div className="flex items-center gap-3">
@@ -198,17 +172,15 @@ export function CollectionForm({
                         <button
                             type="button"
                             onClick={browseImage}
-                            className="px-4 py-2 text-sm border border-dashed border-slate-300 rounded-lg text-slate-600 hover:border-blue-400 hover:text-blue-600"
+                            className="w-full flex flex-col items-center justify-center gap-2 py-6 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
                         >
-                            Escolher imagem
+                            <span className="text-2xl">🖼️</span>
+                            <span className="text-sm font-medium">Escolher imagem de capa</span>
+                            <span className="text-xs text-slate-400">Se não escolher, um ícone aleatório será exibido</span>
                         </button>
                     )}
                 </div>
-                {iconPath && (
-                    <p className="text-xs text-slate-500 mt-1">
-                        Uma imagem selecionada substitui o emoji do ícone.
-                    </p>
-                )}
+
             </div>
 
             <div>
