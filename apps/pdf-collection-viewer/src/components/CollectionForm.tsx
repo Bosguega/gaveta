@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { z } from 'zod';
 import { pickFolder, pickImageFile } from '@/services/collections';
+import { CoverCropModal } from '@/components/CoverCropModal';
 
 interface Props {
     initialName?: string;
-    initialIcon?: string;
     initialIconPath?: string | null;
     initialPaths?: string[];
     initialIncludeSubfolders?: boolean;
@@ -31,7 +31,6 @@ function normalizePathKey(path: string): string {
 const collectionFormSchema = z
     .object({
         name: z.string().trim().min(1, 'O nome é obrigatório'),
-        icon_path: z.string().nullable(),
         paths: z
             .array(z.string())
             .transform((entries) => entries.map((path) => path.trim()).filter(Boolean))
@@ -64,6 +63,7 @@ export function CollectionForm({
 }: Props) {
     const [name, setName] = useState(initialName);
     const [iconPath, setIconPath] = useState<string | null>(initialIconPath);
+    const [cropSrc, setCropSrc] = useState<string | null>(null);
     const [paths, setPaths] = useState<string[]>(initialPaths.length > 0 ? initialPaths : ['']);
     const [includeSubfolders, setIncludeSubfolders] = useState(initialIncludeSubfolders);
     const [error, setError] = useState<string | null>(null);
@@ -94,7 +94,12 @@ export function CollectionForm({
     const browseImage = async () => {
         const picked = await pickImageFile();
         if (!picked) return;
-        setIconPath(picked);
+        setCropSrc(picked);
+    };
+
+    const handleCoverSave = (coverPath: string) => {
+        setIconPath(coverPath);
+        setCropSrc(null);
     };
 
     const clearImage = () => {
@@ -107,7 +112,6 @@ export function CollectionForm({
 
         const parsed = collectionFormSchema.safeParse({
             name,
-            icon_path: iconPath,
             paths,
             includeSubfolders,
         });
@@ -122,7 +126,7 @@ export function CollectionForm({
             await onSubmit({
                 name: parsed.data.name,
                 icon: '📁',
-                iconPath: parsed.data.icon_path,
+                iconPath,
                 paths: parsed.data.paths,
                 includeSubfolders: parsed.data.includeSubfolders,
             });
@@ -148,39 +152,40 @@ export function CollectionForm({
 
             <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Imagem da capa</label>
-                <div className="space-y-3">
-                    {iconPath ? (
-                        <div className="flex items-center gap-3">
-                            <img
-                                src={convertFileSrc(iconPath)}
-                                alt="Pré-visualização do ícone"
-                                className="w-16 h-16 rounded-lg object-cover border border-slate-200"
-                            />
-                            <div className="flex-1 text-sm text-slate-600 truncate">
-                                {iconPath}
-                            </div>
-                            <button
-                                type="button"
-                                onClick={clearImage}
-                                className="p-1 text-slate-500 hover:text-red-600"
-                                title="Remover imagem"
-                            >
-                                ✕
-                            </button>
-                        </div>
-                    ) : (
+                {iconPath ? (
+                    <div className="flex items-center gap-3">
+                        <img
+                            src={convertFileSrc(iconPath)}
+                            alt="Pré-visualização da capa"
+                            className="w-32 h-18 rounded-lg object-cover border border-slate-200"
+                        />
                         <button
                             type="button"
-                            onClick={browseImage}
-                            className="w-full flex flex-col items-center justify-center gap-2 py-6 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
+                            onClick={() => setCropSrc(iconPath)}
+                            className="px-3 py-2 text-sm text-blue-700 hover:bg-blue-50 rounded-lg"
                         >
-                            <span className="text-2xl">🖼️</span>
-                            <span className="text-sm font-medium">Escolher imagem de capa</span>
-                            <span className="text-xs text-slate-400">Se não escolher, um ícone aleatório será exibido</span>
+                            Ajustar
                         </button>
-                    )}
-                </div>
-
+                        <button
+                            type="button"
+                            onClick={clearImage}
+                            className="p-2 text-slate-500 hover:text-red-600"
+                            title="Remover imagem"
+                        >
+                            🗑️
+                        </button>
+                    </div>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={browseImage}
+                        className="w-full flex flex-col items-center justify-center gap-1 py-5 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
+                    >
+                        <span className="text-xl">🖼️</span>
+                        <span className="text-sm font-medium">Escolher imagem de capa</span>
+                        <span className="text-xs text-slate-400">Você poderá ajustar o enquadramento</span>
+                    </button>
+                )}
             </div>
 
             <div>
@@ -231,6 +236,14 @@ export function CollectionForm({
                 />
                 Incluir subpastas
             </label>
+
+            {cropSrc && (
+                <CoverCropModal
+                    srcPath={cropSrc}
+                    onCancel={() => setCropSrc(null)}
+                    onSave={handleCoverSave}
+                />
+            )}
 
             {error && <div className="text-sm text-red-600">{error}</div>}
 

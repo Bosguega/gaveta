@@ -105,7 +105,6 @@ export function HomePage() {
                         </h2>
                         <CollectionForm
                             initialName={editing?.name}
-                            initialIcon={editing?.icon}
                             initialIconPath={editing?.icon_path}
                             initialPaths={editing?.paths}
                             initialIncludeSubfolders={editing?.include_subfolders}

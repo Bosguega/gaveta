@@ -19,7 +19,7 @@ export async function createCollection(
     return invoke<Collection>('create_collection', {
         name,
         icon,
-        icon_path: iconPath,
+        iconPath,
         paths,
         includeSubfolders,
     });
@@ -37,7 +37,7 @@ export async function updateCollection(
         id,
         name,
         icon,
-        icon_path: iconPath,
+        iconPath,
         paths,
         includeSubfolders,
     });
@@ -53,4 +53,21 @@ export async function pickFolder(): Promise<string | null> {
 
 export async function pickImageFile(): Promise<string | null> {
     return invoke<string | null>('pick_image_file');
+}
+
+export interface CoverCropRect {
+    cropX: number;
+    cropY: number;
+    cropW: number;
+    cropH: number;
+}
+
+export async function saveCollectionCover(srcPath: string, rect: CoverCropRect): Promise<string> {
+    return invoke<string>('save_collection_cover', {
+        srcPath,
+        cropX: rect.cropX,
+        cropY: rect.cropY,
+        cropW: rect.cropW,
+        cropH: rect.cropH,
+    });
 }

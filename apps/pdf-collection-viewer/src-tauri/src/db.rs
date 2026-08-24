@@ -317,6 +317,75 @@ pub fn open_and_migrate(app: &tauri::AppHandle) -> Result<Connection, String> {
 
 // ── Collections ──
 
+/// Copies an image into the app cache under a content-hash based name and
+/// returns the cached path, so the webview can load it regardless of where
+/// the original file lives (asset protocol scope always covers the cache).
+pub fn stage_image_in_cache(app: &tauri::AppHandle, src_path: &str) -> Result<String, String> {
+    let cache = cache_dir(app)?;
+
+    let ext = std::path::Path::new(src_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .unwrap_or_default();
+    if !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp") {
+        return Err("Formato de imagem não suportado".to_string());
+    }
+
+    // Hash of the file contents so re-picking the same image reuses the copy.
+    let bytes = fs::read(src_path)
+        .map_err(|e| format!("Não foi possível ler a imagem: {e}"))?;
+    let key = format!("cover_src_{}.{ext}", sha256_hex(&format!("{}:{}", bytes.len(), src_path)));
+    let dest = cache.join(key);
+
+    fs::write(&dest, &bytes)
+        .map_err(|e| format!("Não foi possível copiar a imagem: {e}"))?;
+
+    Ok(dest.display().to_string().replace('\\', "/"))
+}
+
+/// Generates a collection cover from a source image: crops the given rect
+/// (in original-image pixels), resizes to 800x450 and saves as WebP in the
+/// app cache directory. Returns the cached file path.
+pub fn save_cover_to_cache(
+    app: &tauri::AppHandle,
+    src_path: &str,
+    crop_x: f64,
+    crop_y: f64,
+    crop_w: f64,
+    crop_h: f64,
+) -> Result<String, String> {
+    const COVER_W: u32 = 800;
+    const COVER_H: u32 = 450;
+
+    let cache = cache_dir(app)?;
+    let img = image::open(src_path)
+        .map_err(|e| format!("Não foi possível abrir a imagem: {e}"))?;
+
+    let (nat_w, nat_h) = (img.width() as i64, img.height() as i64);
+    // Clamp the crop rect to the image bounds, minimum 1px.
+    let x = crop_x.round().clamp(0.0, (nat_w - 1) as f64) as u32;
+    let y = crop_y.round().clamp(0.0, (nat_h - 1) as f64) as u32;
+    let w = (crop_w.round().max(1.0) as u32).min(nat_w as u32 - x);
+    let h = (crop_h.round().max(1.0) as u32).min(nat_h as u32 - y);
+
+    let cropped = image::imageops::crop_imm(&img, x, y, w, h).to_image();
+    let resized = image::imageops::resize(
+        &cropped,
+        COVER_W,
+        COVER_H,
+        image::imageops::FilterType::Lanczos3,
+    );
+
+    let key = format!("collection_cover_{}.webp", sha256_hex(src_path));
+    let dest = cache.join(&key);
+    resized
+        .save_with_format(&dest, image::ImageFormat::WebP)
+        .map_err(|e| format!("Não foi possível salvar a capa: {e}"))?;
+
+    Ok(dest.display().to_string().replace('\\', "/"))
+}
+
 /// Copies an image file into the app cache directory under a sha256-based key
 /// and returns the cache path. Returns None if the extension is not a supported image type.
 pub fn copy_icon_to_cache(app: &tauri::AppHandle, src_path: &str) -> Result<Option<String>, String> {
@@ -343,7 +412,8 @@ pub fn copy_icon_to_cache(app: &tauri::AppHandle, src_path: &str) -> Result<Opti
     fs::copy(src_path, &dest)
         .map_err(|e| format!("Não foi possível copiar a imagem do ícone: {e}"))?;
 
-    Ok(Some(dest.display().to_string()))
+    let normalized = dest.display().to_string().replace('\\', "/");
+    Ok(Some(normalized))
 }
 
 fn sha256_hex(input: &str) -> String {

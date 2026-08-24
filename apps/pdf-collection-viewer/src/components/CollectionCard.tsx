@@ -1,6 +1,6 @@
-import { convertFileSrc } from '@tauri-apps/api/core';
 import type { Collection } from '@/types';
 import { COLLECTION_ICONS } from '@/types';
+import { CollectionCover } from '@/components/CollectionCover';
 
 interface Props {
     collection: Collection;
@@ -23,19 +23,7 @@ export function CollectionCard({ collection, onOpen, onEdit, onDelete }: Props) 
         >
             {/* Cover area */}
             <div className="relative h-36 flex-shrink-0 bg-slate-100">
-                {collection.icon_path ? (
-                    <>
-                        <img
-                            src={convertFileSrc(collection.icon_path)}
-                            alt={`Capa de ${collection.name}`}
-                            className="absolute inset-0 w-full h-full object-cover"
-                        />
-                    </>
-                ) : (
-                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-200">
-                        <span className="text-5xl select-none">{randomIcon}</span>
-                    </div>
-                )}
+                <CollectionCover iconPath={collection.icon_path} fallbackIcon={randomIcon} />
 
                 {/* Action buttons */}
                 <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

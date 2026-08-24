@@ -38,15 +38,7 @@ pub fn create_collection(
 
     validate_collection_paths(&paths)?;
 
-    eprintln!("[create_collection] icon_path recebido: {:?}", icon_path);
-
-    let resolved_icon_path = if let Some(ref p) = icon_path {
-        let result = db::copy_icon_to_cache(&app, p)?;
-        eprintln!("[create_collection] resolved_icon_path: {:?}", result);
-        result
-    } else {
-        None
-    };
+    let resolved_icon_path = resolve_icon_path(&app, icon_path.as_deref())?;
 
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     db::create_collection(&conn, &name, &icon, resolved_icon_path.as_deref(), &paths, include_subfolders)
@@ -72,18 +64,42 @@ pub fn update_collection(
 
     validate_collection_paths(&paths)?;
 
-    eprintln!("[update_collection] icon_path recebido: {:?}", icon_path);
-
-    let resolved_icon_path = if let Some(ref p) = icon_path {
-        let result = db::copy_icon_to_cache(&app, p)?;
-        eprintln!("[update_collection] resolved_icon_path: {:?}", result);
-        result
-    } else {
-        None
-    };
+    let resolved_icon_path = resolve_icon_path(&app, icon_path.as_deref())?;
 
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     db::update_collection(&conn, id, &name, &icon, resolved_icon_path.as_deref(), &paths, include_subfolders)
+}
+
+/// Paths that are already generated covers living in the app cache are stored
+/// as-is; anything else is treated as a raw user image and copied to the cache.
+fn resolve_icon_path(app: &AppHandle, icon_path: Option<&str>) -> Result<Option<String>, String> {
+    let Some(path) = icon_path else {
+        return Ok(None);
+    };
+
+    let file_name = Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
+    if file_name.starts_with("collection_cover_") && Path::new(path).exists() {
+        return Ok(Some(path.to_string()));
+    }
+
+    db::copy_icon_to_cache(app, path)
+}
+
+/// Generates the collection cover from a picked image: crops and resizes it
+/// into a fixed 800x450 WebP stored in the app cache directory.
+#[tauri::command]
+pub fn save_collection_cover(
+    app: AppHandle,
+    src_path: String,
+    crop_x: f64,
+    crop_y: f64,
+    crop_w: f64,
+    crop_h: f64,
+) -> Result<String, String> {
+    db::save_cover_to_cache(&app, &src_path, crop_x, crop_y, crop_w, crop_h)
 }
 
 #[tauri::command]
@@ -668,7 +684,15 @@ pub fn pick_image_file(app: AppHandle) -> Result<Option<String>, String> {
         Ok(Some(path)) => {
             let picked = path.into_path().ok().map(|p| p.display().to_string());
             eprintln!("[pick_image_file] caminho selecionado: {:?}", picked);
-            Ok(picked)
+
+            // Copy the picked image into the app cache and return that path:
+            // the asset protocol scope may not cover the original location,
+            // but always covers the cache directory.
+            let cached = match picked {
+                Some(ref p) => Some(db::stage_image_in_cache(&app, p)?),
+                None => None,
+            };
+            Ok(cached)
         }
         Ok(None) => Ok(None),
         Err(e) => Err(format!("Falha ao obter imagem: {e}")),
