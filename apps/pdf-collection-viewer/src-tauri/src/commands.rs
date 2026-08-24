@@ -81,8 +81,15 @@ fn resolve_icon_path(app: &AppHandle, icon_path: Option<&str>) -> Result<Option<
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or_default();
-    if file_name.starts_with("collection_cover_") && Path::new(path).exists() {
-        return Ok(Some(path.to_string()));
+    if file_name.starts_with("collection_cover_") {
+        // Cover already lives in the app cache. If it went missing (e.g. wiped
+        // by an older orphan-cleanup), degrade gracefully instead of failing
+        // the whole collection save.
+        if Path::new(path).exists() {
+            return Ok(Some(path.to_string()));
+        }
+        eprintln!("[resolve_icon_path] capa não encontrada no cache, ignorando: {path}");
+        return Ok(None);
     }
 
     db::copy_icon_to_cache(app, path)

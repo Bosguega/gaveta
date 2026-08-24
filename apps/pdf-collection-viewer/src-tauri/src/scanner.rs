@@ -126,12 +126,43 @@ pub fn cleanup_orphan_cache(cache_dir: &Path, known_keys: &[String]) {
 
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        // Skip collection icon files (they use the "collection_icon_" prefix).
-        if name.starts_with("collection_icon_") {
+        // Skip collection assets (icons and generated covers): they are not
+        // item thumbnails and must survive the orphan cleanup.
+        if name.starts_with("collection_icon_") || name.starts_with("collection_cover_") {
             continue;
         }
         if name.ends_with(".webp") && !known_keys.contains(&name) {
             let _ = fs::remove_file(entry.path());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cleanup_orphan_cache;
+
+    #[test]
+    fn nao_remove_capas_de_colecao() {
+        let dir = std::env::temp_dir().join(format!("cvc_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+
+        let cover = dir.join("collection_cover_abc123.webp");
+        let icon = dir.join("collection_icon_def456.png");
+        let orphan = dir.join("deadbeef_thumbnail.webp");
+        let known = dir.join("known_thumb.webp");
+
+        std::fs::write(&cover, b"x").unwrap();
+        std::fs::write(&icon, b"x").unwrap();
+        std::fs::write(&orphan, b"x").unwrap();
+        std::fs::write(&known, b"x").unwrap();
+
+        cleanup_orphan_cache(&dir, &["known_thumb.webp".to_string()]);
+
+        assert!(cover.exists(), "capa não deve ser removida pelo cleanup");
+        assert!(icon.exists(), "ícone não deve ser removido pelo cleanup");
+        assert!(!orphan.exists(), "thumbnail órfã deve ser removida");
+        assert!(known.exists(), "thumbnail conhecida deve permanecer");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

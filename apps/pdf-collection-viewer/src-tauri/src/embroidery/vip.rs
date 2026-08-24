@@ -1,4 +1,5 @@
-use crate::embroidery::{EmbroideryPattern, StitchType};
+use crate::embroidery::EmbroideryPattern;
+use crate::embroidery::husky::parse_husky_sections;
 use image::Rgba;
 
 /// Tabela XOR para decodificação de cores VIP
@@ -66,47 +67,7 @@ pub fn parse_vip(bytes: &[u8]) -> Result<EmbroideryPattern, String> {
         return Ok(pattern);
     }
 
-    let sec1 = decompress_section(bytes, offset_sec1)
-        .map_err(|e| format!("Falha ao descomprimir seção 1 VIP: {e}"))?;
-    let sec2 = decompress_section(bytes, offset_sec2)
-        .map_err(|e| format!("Falha ao descomprimir seção 2 VIP: {e}"))?;
-    let sec3 = decompress_section(bytes, offset_sec3)
-        .map_err(|e| format!("Falha ao descomprimir seção 3 VIP: {e}"))?;
-
-    let mut curr_x = 0.0f32;
-    let mut curr_y = 0.0f32;
-    let mut color_idx = 0usize;
-
-    let stitch_count = stitch_count.min(sec1.len()).min(sec2.len()).min(sec3.len());
-
-    for i in 0..stitch_count {
-        let attr = sec1[i];
-        let dx = sec2[i] as i8 as f32;
-        let dy = sec3[i] as i8 as f32;
-
-        curr_x += dx;
-        curr_y += dy;
-
-        match attr {
-            0x80 => {
-                pattern.add_stitch(curr_x, curr_y, StitchType::Stitch);
-            }
-            0x81 => {
-                pattern.add_stitch(curr_x, curr_y, StitchType::Jump);
-            }
-            0x84 => {
-                color_idx = (color_idx + 1).min(pattern.palette.as_ref().map(|p| p.len()).unwrap_or(1) - 1);
-                pattern.add_stitch(curr_x, curr_y, StitchType::ColorChange);
-            }
-            0x90 => {
-                pattern.add_stitch(curr_x, curr_y, StitchType::End);
-                break;
-            }
-            _ => {
-                pattern.add_stitch(curr_x, curr_y, StitchType::Stitch);
-            }
-        }
-    }
+    parse_husky_sections(&mut pattern, bytes, stitch_count, offset_sec1, offset_sec2, offset_sec3, "VIP")?;
 
     Ok(pattern)
 }
@@ -114,15 +75,4 @@ pub fn parse_vip(bytes: &[u8]) -> Result<EmbroideryPattern, String> {
 fn vip_xor_decode(value: u8, index: usize) -> u8 {
     let table_val = VIP_XOR_TABLE.get(index).copied().unwrap_or(0);
     value ^ table_val
-}
-
-fn decompress_section(data: &[u8], offset: usize) -> Result<Vec<u8>, String> {
-    if offset >= data.len() {
-        return Err("Offset de seção fora dos limites".to_string());
-    }
-
-    let section_data = &data[offset..];
-    archivelib::do_decompress(section_data)
-        .map(|boxed| boxed.into_vec())
-        .map_err(|e| format!("{e}"))
 }

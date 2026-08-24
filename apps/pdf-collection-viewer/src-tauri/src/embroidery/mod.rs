@@ -1,6 +1,7 @@
 pub mod dst;
 pub mod exp;
 pub mod hus;
+pub mod husky;
 pub mod jef;
 pub mod pes;
 pub mod renderer;
