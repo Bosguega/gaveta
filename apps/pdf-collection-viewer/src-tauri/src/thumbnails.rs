@@ -1,3 +1,4 @@
+use crate::embroidery::EmbroideryStats;
 use crate::file_types::FileType;
 use image::codecs::webp::WebPEncoder;
 use image::imageops::FilterType;
@@ -25,6 +26,8 @@ pub fn thumbnail_key(full_path: &str) -> String {
 pub struct ThumbnailOutput {
     pub thumbnail_key: String,
     pub page_count: Option<i64>,
+    /// Embroidery metadata extracted while rendering (stitches, colors, size).
+    pub embroidery_stats: Option<EmbroideryStats>,
 }
 
 /// Dispatches thumbnail generation to the appropriate renderer based on
@@ -46,13 +49,15 @@ pub fn render_thumbnail(
             Ok(page_count) => Ok(ThumbnailOutput {
                 thumbnail_key: key,
                 page_count,
+                embroidery_stats: None,
             }),
             Err(e) => Err(e),
         },
         FileType::Embroidery => match crate::embroidery::render_embroidery_thumbnail(path, cache_dir) {
-            Ok(_) => Ok(ThumbnailOutput {
+            Ok(stats) => Ok(ThumbnailOutput {
                 thumbnail_key: key,
                 page_count: None,
+                embroidery_stats: Some(stats),
             }),
             Err(e) => Err(e),
         },
@@ -60,6 +65,7 @@ pub fn render_thumbnail(
             Ok(_) => Ok(ThumbnailOutput {
                 thumbnail_key: key,
                 page_count: None,
+                embroidery_stats: None,
             }),
             Err(e) => Err(e),
         },

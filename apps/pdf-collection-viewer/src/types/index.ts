@@ -32,6 +32,11 @@ export interface CollectionItem {
     thumbnail_key: string | null;
     thumbnail_status: string;
     is_favorite: boolean;
+    stitch_count: number | null;
+    color_count: number | null;
+    color_changes: number | null;
+    design_width_mm: number | null;
+    design_height_mm: number | null;
 }
 
 export interface ScanProgress {

@@ -74,10 +74,79 @@ pub fn load_pattern_from_file(path: &str) -> Result<EmbroideryPattern, String> {
     }
 }
 
-/// Renderiza o arquivo de bordado e salva a miniatura WebP no cache
-pub fn render_embroidery_thumbnail(path: &str, cache_dir: &Path) -> Result<(), String> {
+/// Resumo de metadados extraído do padrão de bordado já decodificado.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct EmbroideryStats {
+    /// Número de pontos efetivos (sem saltos/trims).
+    pub stitch_count: i64,
+    /// Número de cores distintas utilizadas.
+    pub color_count: i64,
+    /// Número de trocas de cor.
+    pub color_changes: i64,
+    /// Largura do desenho em milímetros.
+    pub width_mm: f64,
+    /// Altura do desenho em milímetros.
+    pub height_mm: f64,
+}
+
+/// Todos os formatos suportados armazenam coordenadas em 1/10 de mm.
+const EMBROIDERY_UNIT_MM: f64 = 0.1;
+
+/// Calcula estatísticas (pontos, cores, trocas e tamanho) a partir do padrão.
+pub fn analyze_pattern(pattern: &EmbroideryPattern) -> EmbroideryStats {
+    let mut stats = EmbroideryStats::default();
+    let mut min_x = f32::MAX;
+    let mut max_x = f32::MIN;
+    let mut min_y = f32::MAX;
+    let mut max_y = f32::MIN;
+    let mut has_points = false;
+
+    for s in &pattern.stitches {
+        match s.stitch_type {
+            StitchType::Stitch => {
+                stats.stitch_count += 1;
+            }
+            StitchType::ColorChange => {
+                stats.color_changes += 1;
+            }
+            _ => {}
+        }
+        // O tamanho do bordado considera também os saltos (área da agulha).
+        if matches!(s.stitch_type, StitchType::Stitch | StitchType::Jump) {
+            has_points = true;
+            if s.x < min_x { min_x = s.x; }
+            if s.x > max_x { max_x = s.x; }
+            if s.y < min_y { min_y = s.y; }
+            if s.y > max_y { max_y = s.y; }
+        }
+    }
+
+    if has_points {
+        stats.width_mm = ((max_x - min_x) as f64 * EMBROIDERY_UNIT_MM).max(0.0);
+        stats.height_mm = ((max_y - min_y) as f64 * EMBROIDERY_UNIT_MM).max(0.0);
+    }
+
+    stats.color_count = match &pattern.palette {
+        Some(palette) if !palette.is_empty() => palette.len() as i64,
+        _ => {
+            if stats.stitch_count > 0 || stats.color_changes > 0 {
+                stats.color_changes + 1
+            } else {
+                0
+            }
+        }
+    };
+
+    stats
+}
+
+/// Renderiza o arquivo de bordado, salva a miniatura WebP no cache e retorna
+/// os metadados extraídos do padrão.
+pub fn render_embroidery_thumbnail(path: &str, cache_dir: &Path) -> Result<EmbroideryStats, String> {
     let pattern = load_pattern_from_file(path)?;
-    renderer::save_pattern_thumbnail(&pattern, path, cache_dir)
+    let stats = analyze_pattern(&pattern);
+    renderer::save_pattern_thumbnail(&pattern, path, cache_dir)?;
+    Ok(stats)
 }
 
 #[cfg(test)]
@@ -413,6 +482,38 @@ mod tests {
 
         let parsed = vip::parse_vip(&bytes);
         assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn analyze_pattern_extrai_estatisticas() {
+        let mut pattern = EmbroideryPattern::new();
+        pattern.add_stitch(0.0, 0.0, StitchType::Jump);
+        pattern.add_stitch(100.0, 0.0, StitchType::Stitch);
+        pattern.add_stitch(200.0, 150.0, StitchType::Stitch);
+        pattern.add_stitch(200.0, 150.0, StitchType::ColorChange);
+        pattern.add_stitch(0.0, 0.0, StitchType::Stitch);
+
+        let stats = analyze_pattern(&pattern);
+        assert_eq!(stats.stitch_count, 3);
+        assert_eq!(stats.color_changes, 1);
+        // Sem paleta embutida: cores = trocas + 1.
+        assert_eq!(stats.color_count, 2);
+        // Coordenadas em 1/10 mm: 200 => 20 mm, 150 => 15 mm.
+        assert!((stats.width_mm - 20.0).abs() < 1e-4);
+        assert!((stats.height_mm - 15.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn analyze_pattern_com_paleta_usa_tamanho_da_paleta() {
+        let mut pattern = EmbroideryPattern::new();
+        pattern.palette = Some(vec![image::Rgba([255, 0, 0, 255]), image::Rgba([0, 255, 0, 255]), image::Rgba([0, 0, 255, 255])]);
+        pattern.add_stitch(10.0, 10.0, StitchType::Stitch);
+        pattern.add_stitch(20.0, 10.0, StitchType::ColorChange);
+        pattern.add_stitch(30.0, 10.0, StitchType::Stitch);
+
+        let stats = analyze_pattern(&pattern);
+        assert_eq!(stats.color_count, 3);
+        assert_eq!(stats.color_changes, 1);
     }
 
     #[test]

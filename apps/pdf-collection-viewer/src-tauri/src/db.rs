@@ -102,6 +102,12 @@ pub struct CollectionItem {
     pub thumbnail_key: Option<String>,
     pub thumbnail_status: String,
     pub is_favorite: bool,
+    /// Embroidery metadata (only for file_type = "embroidery").
+    pub stitch_count: Option<i64>,
+    pub color_count: Option<i64>,
+    pub color_changes: Option<i64>,
+    pub design_width_mm: Option<f64>,
+    pub design_height_mm: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -310,6 +316,37 @@ pub fn open_and_migrate(app: &tauri::AppHandle) -> Result<Connection, String> {
             [],
         )
         .map_err(|e| format!("Falha ao adicionar coluna icon_path: {e}"))?;
+    }
+
+    // Migration 5: embroidery metadata columns (only populated for
+    // file_type = "embroidery" items once their thumbnail is generated).
+    const EMBROIDERY_COLUMNS: [(&str, &str); 5] = [
+        ("stitch_count", "INTEGER"),
+        ("color_count", "INTEGER"),
+        ("color_changes", "INTEGER"),
+        ("design_width_mm", "REAL"),
+        ("design_height_mm", "REAL"),
+    ];
+
+    for (column, decl) in EMBROIDERY_COLUMNS {
+        let has_column: bool = conn
+            .prepare(&format!(
+                "SELECT COUNT(*) FROM pragma_table_info('files') WHERE name = '{column}'"
+            ))
+            .map_err(|e| format!("Falha ao verificar coluna {column}: {e}"))?
+            .query_row([], |row| {
+                let count: i64 = row.get(0)?;
+                Ok(count > 0)
+            })
+            .map_err(|e| format!("Falha ao verificar coluna {column}: {e}"))?;
+
+        if !has_column {
+            conn.execute(
+                &format!("ALTER TABLE files ADD COLUMN {column} {decl}"),
+                [],
+            )
+            .map_err(|e| format!("Falha ao adicionar coluna {column}: {e}"))?;
+        }
     }
 
     Ok(conn)
@@ -584,7 +621,7 @@ pub fn delete_collection(conn: &Connection, id: i64) -> Result<(), String> {
 pub fn list_items(conn: &Connection, collection_id: i64) -> Result<Vec<CollectionItem>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, collection_id, path, filename, size, modified_at, page_count, file_type, thumbnail_key, thumbnail_status, is_favorite
+            "SELECT id, collection_id, path, filename, size, modified_at, page_count, file_type, thumbnail_key, thumbnail_status, is_favorite, stitch_count, color_count, color_changes, design_width_mm, design_height_mm
              FROM files WHERE collection_id = ?1
              ORDER BY filename COLLATE NOCASE",
         )
@@ -606,6 +643,11 @@ pub fn list_items(conn: &Connection, collection_id: i64) -> Result<Vec<Collectio
                 thumbnail_key: row.get(8)?,
                 thumbnail_status: status.to_string(),
                 is_favorite: favorite != 0,
+                stitch_count: row.get(11)?,
+                color_count: row.get(12)?,
+                color_changes: row.get(13)?,
+                design_width_mm: row.get(14)?,
+                design_height_mm: row.get(15)?,
             })
         })
         .map_err(|e| format!("Falha ao listar itens: {e}"))?
@@ -622,7 +664,7 @@ pub fn get_item_by_path(
 ) -> Result<Option<CollectionItem>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, collection_id, path, filename, size, modified_at, page_count, file_type, thumbnail_key, thumbnail_status, is_favorite
+            "SELECT id, collection_id, path, filename, size, modified_at, page_count, file_type, thumbnail_key, thumbnail_status, is_favorite, stitch_count, color_count, color_changes, design_width_mm, design_height_mm
              FROM files WHERE collection_id = ?1 AND path = ?2",
         )
         .map_err(|e| format!("Falha ao preparar consulta de item: {e}"))?;
@@ -643,6 +685,11 @@ pub fn get_item_by_path(
                 thumbnail_key: row.get(8)?,
                 thumbnail_status: status.to_string(),
                 is_favorite: favorite != 0,
+                stitch_count: row.get(11)?,
+                color_count: row.get(12)?,
+                color_changes: row.get(13)?,
+                design_width_mm: row.get(14)?,
+                design_height_mm: row.get(15)?,
             })
         })
         .optional()
@@ -696,6 +743,25 @@ pub fn set_item_thumbnail(
         params![page_count, thumbnail_key, status, id],
     )
     .map_err(|e| format!("Falha ao atualizar thumbnail do item: {e}"))?;
+    Ok(())
+}
+
+/// Persists embroidery metadata (stitch/color counts and design size) for an
+/// item. Called right after its thumbnail is generated.
+pub fn set_item_embroidery_stats(
+    conn: &Connection,
+    id: i64,
+    stitch_count: i64,
+    color_count: i64,
+    color_changes: i64,
+    width_mm: f64,
+    height_mm: f64,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE files SET stitch_count = ?1, color_count = ?2, color_changes = ?3, design_width_mm = ?4, design_height_mm = ?5 WHERE id = ?6",
+        params![stitch_count, color_count, color_changes, width_mm, height_mm, id],
+    )
+    .map_err(|e| format!("Falha ao salvar metadados do bordado: {e}"))?;
     Ok(())
 }
 
@@ -758,7 +824,7 @@ pub fn list_all_thumbnail_keys(conn: &Connection) -> Result<Vec<String>, String>
 pub fn get_item_by_id(conn: &Connection, id: i64) -> Result<Option<CollectionItem>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, collection_id, path, filename, size, modified_at, page_count, file_type, thumbnail_key, thumbnail_status, is_favorite
+            "SELECT id, collection_id, path, filename, size, modified_at, page_count, file_type, thumbnail_key, thumbnail_status, is_favorite, stitch_count, color_count, color_changes, design_width_mm, design_height_mm
              FROM files WHERE id = ?1",
         )
         .map_err(|e| format!("Falha ao preparar consulta de item por id: {e}"))?;
@@ -779,6 +845,11 @@ pub fn get_item_by_id(conn: &Connection, id: i64) -> Result<Option<CollectionIte
                 thumbnail_key: row.get(8)?,
                 thumbnail_status: status.to_string(),
                 is_favorite: favorite != 0,
+                stitch_count: row.get(11)?,
+                color_count: row.get(12)?,
+                color_changes: row.get(13)?,
+                design_width_mm: row.get(14)?,
+                design_height_mm: row.get(15)?,
             })
         })
         .optional()

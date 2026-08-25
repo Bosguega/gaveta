@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CollectionItem } from '@/types';
-import { formatBytes, formatPageCount, getFileTypeIcon } from '@/utils/format';
+import { formatBytes, formatColorChanges, formatColorCount, formatEmbroiderySize, formatPageCount, formatStitchCount, getFileTypeIcon } from '@/utils/format';
 import { getThumbnailUrl } from '@/services/thumbnails';
 
 interface Props {
@@ -48,6 +48,14 @@ export function ItemCard({ item, selected, onSelect, onOpen, onRevealInFolder, o
     }, []);
 
     const showPlaceholder = !imgSrc || item.thumbnail_status !== 'ready';
+
+    const isEmbroidery = item.file_type === 'embroidery';
+    const embroideryDetails = [
+        formatStitchCount(item.stitch_count),
+        formatColorCount(item.color_count),
+        formatColorChanges(item.color_changes),
+        formatEmbroiderySize(item.design_width_mm, item.design_height_mm),
+    ].filter(Boolean);
 
     const handleContextMenu = (event: React.MouseEvent) => {
         event.preventDefault();
@@ -127,8 +135,16 @@ export function ItemCard({ item, selected, onSelect, onOpen, onRevealInFolder, o
                         {item.filename}
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">
-                        {formatBytes(item.size)} · {formatPageCount(item.page_count, item.file_type)}
+                        {formatBytes(item.size)}
+                        {isEmbroidery && item.stitch_count
+                            ? <> · {formatStitchCount(item.stitch_count)}</>
+                            : <> · {formatPageCount(item.page_count, item.file_type)}</>}
                     </div>
+                    {isEmbroidery && embroideryDetails.length > 1 && (
+                        <div className="text-xs text-slate-400 mt-0.5" title={embroideryDetails.join(' · ')}>
+                            {embroideryDetails.slice(1).join(' · ')}
+                        </div>
+                    )}
                 </div>
             </div>
 

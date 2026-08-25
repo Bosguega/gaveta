@@ -61,4 +61,33 @@ export function formatModifiedAt(modifiedAt: string): string {
     }
     const date = new Date(secs * 1000);
     return date.toLocaleDateString('pt-BR');
+}
+
+export function formatStitchCount(count: number | null): string {
+    if (count === null || count <= 0) {
+        return '';
+    }
+    return `${count.toLocaleString('pt-BR')} pontos`;
+}
+
+export function formatColorCount(count: number | null): string {
+    if (count === null || count <= 0) {
+        return '';
+    }
+    return `${count} ${count === 1 ? 'cor' : 'cores'}`;
+}
+
+export function formatColorChanges(changes: number | null): string {
+    if (changes === null || changes <= 0) {
+        return '';
+    }
+    return `${changes} ${changes === 1 ? 'troca' : 'trocas'}`;
+}
+
+export function formatEmbroiderySize(widthMm: number | null, heightMm: number | null): string {
+    if (widthMm === null || heightMm === null || widthMm <= 0 || heightMm <= 0) {
+        return '';
+    }
+    const cm = (mm: number) => (mm / 10).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    return `${cm(widthMm)} × ${cm(heightMm)} cm`;
 }

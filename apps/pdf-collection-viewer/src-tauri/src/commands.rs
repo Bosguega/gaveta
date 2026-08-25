@@ -291,6 +291,18 @@ pub async fn update_collection_scan(
                     let conn = state.0.lock().map_err(|e| e.to_string())?;
                     db::set_item_thumbnail(&conn, *item_id, output.page_count, Some(&output.thumbnail_key), ThumbnailStatus::Ready)?;
                 }
+                if let Some(stats) = output.embroidery_stats {
+                    let conn = state.0.lock().map_err(|e| e.to_string())?;
+                    db::set_item_embroidery_stats(
+                        &conn,
+                        *item_id,
+                        stats.stitch_count,
+                        stats.color_count,
+                        stats.color_changes,
+                        stats.width_mm,
+                        stats.height_mm,
+                    )?;
+                }
                 result.thumbnails_generated += 1;
             }
             Err(e) => {
