@@ -171,7 +171,8 @@ mod pes_test {
         stitch_data.extend_from_slice(&[5, 10]); // stitch 2
         stitch_data.extend_from_slice(&[0xFF]); // end
         
-        let start = 1024; // pec_offset + 512
+        let start = 512 + 527; // pec_offset (LA:) + 527
+        bytes.resize(start + stitch_data.len() + 1, 0);
         bytes[start..start + stitch_data.len()].copy_from_slice(&stitch_data);
         
         let parsed = pes::parse_pes(&bytes);
@@ -229,17 +230,25 @@ mod tests {
 
     #[test]
     fn test_synthetic_pec_pattern() {
-        let mut bytes = vec![0u8; 600];
+        // Layout standalone conforme pyembroidery: "#PEC0001" (8 bytes),
+        // depois "LA:" na posição 8; stream de stitches em 8 + 527 = 535.
+        let mut bytes = vec![0u8; 700];
         bytes[..8].copy_from_slice(b"#PEC0001");
-        // No offset 512 (0x200), adiciona pontos
-        bytes[512] = 10; // dx
-        bytes[513] = 15; // dy
-        bytes[514] = 0xFF; // End
+        bytes[8..11].copy_from_slice(b"LA:");
+        bytes[56] = 1; // 2 cores
+        bytes[57] = 16;
+        bytes[58] = 24;
+
+        bytes[535] = 10; // dx
+        bytes[536] = 15; // dy
+        bytes[537] = 20;
+        bytes[538] = 25;
+        bytes[539] = 0xFF; // End
 
         let parsed = pes::parse_pes(&bytes);
         assert!(parsed.is_ok());
         let pattern = parsed.unwrap();
-        assert_eq!(pattern.stitches.len(), 2);
+        assert_eq!(pattern.stitches.len(), 3); // 2 stitches + End
     }
 
     #[test]

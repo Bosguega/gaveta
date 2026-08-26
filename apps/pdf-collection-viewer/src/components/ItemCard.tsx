@@ -35,7 +35,7 @@ export function ItemCard({ item, selected, onSelect, onOpen, onRevealInFolder, o
         return () => {
             active = false;
         };
-    }, [item.thumbnail_key, item.thumbnail_status]);
+    }, [item.thumbnail_key, item.thumbnail_status, item.modified_at]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {

@@ -105,39 +105,33 @@ fn locate_pes_pec(bytes: &[u8]) -> Result<usize, String> {
 /// Algumas versões do PES usam cabeçalhos de tamanhos diferentes.
 /// Esta função prioriza o offset padrão da versão e usa detecção
 /// heurística apenas como fallback.
-fn find_stitch_stream_start(pec: &[u8], pec_offset: usize, version: &str) -> Result<usize, String> {
-    let default_offsets: std::collections::HashMap<&str, usize> = [
-        ("0050", 528),
-        ("0001", 512),
-        ("0060", 528),
-    ].iter().cloned().collect();
+/// Localiza o início do stream de stitches dentro da seção PEC.
+///
+/// O offset determinístico é 527 bytes após a base do conteúdo PEC
+/// (ver pyembroidery PecReader.read_pec). A heurística é mantida apenas
+/// como fallback para arquivos malformados.
+fn find_stitch_stream_start(pec: &[u8], pec_content: usize, _version: &str) -> Result<usize, String> {
+    const STITCH_STREAM_REL: usize = 527;
 
-    let default_rel = default_offsets.get(version).copied().unwrap_or(512);
-    let default_offset = pec_offset + default_rel;
-
-    if default_rel < pec.len() && looks_like_stitch_stream(&pec[default_rel..]) {
-        return Ok(default_offset);
+    if STITCH_STREAM_REL < pec.len() && looks_like_stitch_stream(&pec[STITCH_STREAM_REL..]) {
+        return Ok(pec_content + STITCH_STREAM_REL);
     }
 
-    let candidates = match version {
-        "0050" => vec![528, 512, 256],
-        "0001" => vec![512, 528, 256],
-        "0060" => vec![528, 512, 256],
-        _ => vec![512, 528, 256],
-    };
-
-    for &rel in &candidates {
+    // Fallback heurístico para arquivos desviantes.
+    for &rel in &[512usize, 528, 256] {
         if rel >= pec.len() {
             continue;
         }
 
         if looks_like_stitch_stream(&pec[rel..]) {
-            return Ok(pec_offset + rel);
+            return Ok(pec_content + rel);
         }
     }
 
-    if default_rel < pec.len() {
-        return Ok(default_offset);
+    if STITCH_STREAM_REL < pec.len() {
+        return Ok(pec_content + STITCH_STREAM_REL);
+    } else if !pec.is_empty() {
+        return Ok(pec_content);
     }
 
     Err("Não foi possível localizar o stream de stitches".to_string())
@@ -318,8 +312,18 @@ fn decode_pes_coordinate(
 
 /// Parser para arquivos Brother PES.
 ///
-/// Suporta múltiplas versões (PES0001, PES0050, PES0060, etc.).
-/// A versão é detectada automaticamente pelo cabeçalho.
+/// Suporta múltiplas versões (PES0001, PES0050, PES0060, etc.) e também
+/// arquivos PEC standalone ("#PEC0001").
+///
+/// Layout interno do bloco PEC, a partir da base P (ver pyembroidery,
+/// PecReader.read_pec):
+///     P + 48       = contagem de mudanças de cor
+///     P + 49..     = índices da paleta (n = mudanças + 1)
+///     P + 527      = primeiro byte do stream de stitches
+///                    (49 + n + (0x1D0 - n) + 3 + 0x0B => constante 527)
+///
+/// Arquivos .pec iniciam com a assinatura "#PEC0001" (8 bytes) que deve
+/// ser consumida antes de aplicar os offsets acima.
 pub fn parse_pes(bytes: &[u8]) -> Result<EmbroideryPattern, String> {
     if bytes.len() < 12 {
         return Err("Arquivo PES/PEC inválido (muito curto)".to_string());
@@ -346,35 +350,28 @@ pub fn parse_pes(bytes: &[u8]) -> Result<EmbroideryPattern, String> {
     // Localiza a seção incorporada
     // ------------------------------------------------------------
 
-    let pec_offset = if is_pec {
-        0
+    // Base do conteúdo PEC dentro do slice `bytes`.
+    // Em ambos os casos a base aponta para "LA:" e todos os offsets
+    // internos (+48 paleta, +527 stitches) são medidos a partir dela.
+    let pec_content = if is_pec {
+        // Standalone: consome a assinatura "#PEC0001" (8 bytes).
+        8usize
     } else {
         locate_pes_pec(bytes)?
     };
-
-    let pec = &bytes[pec_offset..];
-
-    // PEC standalone começa com #PEC.
-    // PES incorporado pode começar com "LA:" ou outros metadados.
-    if is_pec && !pec.starts_with(b"#PEC") {
-        return Err("Bloco PEC inválido".to_string());
-    }
 
     // ------------------------------------------------------------
     // Paleta
     // ------------------------------------------------------------
 
-    let palette = parse_pes_palette(pec);
+    let palette = parse_pes_palette(&bytes[pec_content.min(bytes.len())..]);
 
     // ------------------------------------------------------------
     // Stream de stitches
     // ------------------------------------------------------------
 
-    let stitch_offset = if is_pec {
-        pec_offset + 512
-    } else {
-        find_stitch_stream_start(pec, pec_offset, &version)?
-    };
+    let stitch_offset =
+        find_stitch_stream_start(&bytes[pec_content.min(bytes.len())..], pec_content, &version)?;
 
     // ------------------------------------------------------------
     // Inicialização do padrão
