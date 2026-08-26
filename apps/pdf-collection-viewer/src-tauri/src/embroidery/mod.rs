@@ -425,12 +425,14 @@ mod tests {
         bytes[0x101] = 20; // stitch (dx=10, dy=-20)
         bytes[0x102] = 0x7F;
         bytes[0x103] = 0x08; // color change
-        bytes[0x104] = 5;
-        bytes[0x105] = 10; // stitch (dx=5, dy=-10)
-        bytes[0x106] = 0x7F;
-        bytes[0x107] = 0x7F; // end
-        bytes[0x108] = 0;
-        bytes[0x109] = 0;
+        bytes[0x104] = 0;
+        bytes[0x105] = 0; // parâmetros do color change (consumidos)
+        bytes[0x106] = 5;
+        bytes[0x107] = 10; // stitch (dx=5, dy=-10)
+        bytes[0x108] = 0x7F;
+        bytes[0x109] = 0x7F; // end
+        bytes[0x10A] = 0;
+        bytes[0x10B] = 0;
 
         let parsed = xxx::parse_xxx(&bytes);
         assert!(parsed.is_ok());
@@ -441,13 +443,17 @@ mod tests {
     #[test]
     fn test_synthetic_sew_pattern() {
         let mut bytes = vec![0u8; 0x1D78 + 10];
-        bytes[0..2].copy_from_slice(&1u16.to_le_bytes()); // 1 color
-        bytes[0x1D78] = 5;
-        bytes[0x1D79] = 10;
-        bytes[0x1D7A] = 0x80;
-        bytes[0x1D7B] = 0x10; // End
-        bytes[0x1D7C] = 0;
-        bytes[0x1D7D] = 0;
+        bytes[0..2].copy_from_slice(&1u16.to_le_bytes()); // 1 cor
+        bytes[2..4].copy_from_slice(&10u16.to_le_bytes()); // Red
+        let o = 0x1D78;
+        bytes[o] = 5;
+        bytes[o + 1] = 10; // stitch
+        bytes[o + 2] = 0x80;
+        bytes[o + 3] = 0x02; // jump
+        bytes[o + 4] = 1;
+        bytes[o + 5] = 2;
+        bytes[o + 6] = 0x80;
+        bytes[o + 7] = 0x00; // controle desconhecido → encerra
 
         let parsed = sew::parse_sew(&bytes);
         assert!(parsed.is_ok());
