@@ -256,7 +256,9 @@ fn parse_pes_palette(pec: &[u8]) -> Vec<Rgba<u8>> {
 /// Decodifica uma coordenada do stream de stitches PES.
 ///
 /// Retorna:
-///     (delta, is_jump, is_trim)
+///     Some((delta, is_jump, is_trim)) | None quando o stream termina
+///     de forma truncada no meio de uma coordenada longa (deve ser
+///     tratado como fim do desenho, como na referência).
 ///
 /// Formato curto:
 ///     0xxxxxxx
@@ -274,11 +276,11 @@ fn decode_pes_coordinate(
     byte: u8,
     data: &[u8],
     cursor: &mut usize,
-) -> Result<(i32, bool, bool), String> {
+) -> Result<Option<(i32, bool, bool)>, String> {
     // Coordenada longa
     if byte & 0x80 != 0 {
         if *cursor >= data.len() {
-            return Err("Coordenada PES longa truncada".to_string());
+            return Ok(None);
         }
 
         let low = data[*cursor];
@@ -297,7 +299,7 @@ fn decode_pes_coordinate(
             value -= 0x1000;
         }
 
-        Ok((value, is_jump, is_trim))
+        Ok(Some((value, is_jump, is_trim)))
     } else {
         // Coordenada curta: signed 7-bit.
         let value = if byte & 0x40 != 0 {
@@ -306,7 +308,7 @@ fn decode_pes_coordinate(
             byte as i32
         };
 
-        Ok((value, false, false))
+        Ok(Some((value, false, false)))
     }
 }
 
@@ -380,9 +382,11 @@ pub fn parse_pes(bytes: &[u8]) -> Result<EmbroideryPattern, String> {
     let mut pattern = EmbroideryPattern::new();
     pattern.palette = Some(palette);
 
-    // PES0050 usa convenção de Y invertida (crescente para baixo).
-    // PEC standalone e outras versões PES usam convenção normal.
-    pattern.invert_y = version == "0050";
+    // Convenção de eixo: no formato PES/PEC o Y cresce para baixo
+    // (coordenadas de tela), igual ao pyembroidery, que nunca inverte por
+    // versão. O renderer usa invert_y para NÃO aplicar o espelhamento padrão,
+    // portanto ele deve ser true para todas as versões.
+    pattern.invert_y = true;
 
     let mut cursor = stitch_offset;
 
@@ -398,75 +402,60 @@ pub fn parse_pes(bytes: &[u8]) -> Result<EmbroideryPattern, String> {
         cursor += 1;
 
         // --------------------------------------------------------
-        // Fim do desenho
+        // Fim do desenho (par FF 00, como na referência)
         // --------------------------------------------------------
-
+        // Um byte FF isolado ainda pode ocorrer como coordenada
+        // longa (flags jump|trim + nibble alto F), por isso só
+        // encerramos quando ele é seguido de 0x00.
         if first == 0xFF {
-            if cursor < bytes.len() && bytes[cursor] == 0x00 {
-            }
-            pattern.add_stitch(x, y, StitchType::End);
-            break;
-        }
-
-        // --------------------------------------------------------
-        // Comandos especiais (0xFE)
-        // --------------------------------------------------------
-
-        if first == 0xFE {
-            if cursor >= bytes.len() {
+            let is_end = cursor >= bytes.len() || bytes[cursor] == 0x00;
+            if is_end {
+                pattern.add_stitch(x, y, StitchType::End);
                 break;
             }
-
-            let cmd = bytes[cursor];
-            cursor += 1;
-
-            match cmd {
-                0xB0 => {
-                    if cursor < bytes.len() {
-                        cursor += 1;
-                    }
-
-                    pattern.add_stitch(x, y, StitchType::ColorChange);
-                }
-                0xB1 => {
-                    if cursor < bytes.len() {
-                        cursor += 1;
-                    }
-
-                    pattern.add_stitch(x, y, StitchType::Jump);
-                }
-                _ => {
-                    if cursor < bytes.len() {
-                        cursor += 1;
-                    }
-                }
-            }
-
-            continue;
+            // Caso contrário, FF é tratado como coordenada normal abaixo.
         }
 
         // --------------------------------------------------------
         // Coordenada X
+        // Comandos especiais: FE B0 = troca de cor (consome 1 byte
+        // extra). Qualquer outro par FE xx segue o fluxo de
+        // coordenadas, igual ao pyembroidery.
         // --------------------------------------------------------
 
-        let (dx, jump_x, trim_x) =
-            decode_pes_coordinate(first, bytes, &mut cursor)?;
+        if first == 0xFE {
+            if cursor < bytes.len() && bytes[cursor] == 0xB0 {
+                cursor += 1;
+                pattern.add_stitch(x, y, StitchType::ColorChange);
+                continue;
+            }
+        }
+
+        let Some((dx, jump_x, trim_x)) =
+            decode_pes_coordinate(first, bytes, &mut cursor)?
+        else {
+            break;
+        };
 
         // --------------------------------------------------------
         // Coordenada Y
         // --------------------------------------------------------
+        // Stream truncado (arquivo corrompido/cortado): encerra
+        // graciosamente como a referência, em vez de invalidar
+        // todo o desenho já decodificado.
 
         if cursor >= bytes.len() {
-            return Err(
-                "Coordenada Y ausente no final do stream PES".to_string()
-            );
+            break;
         }
 
         let second = bytes[cursor];
         cursor += 1;
 
-        let (dy, jump_y, trim_y) =
-            decode_pes_coordinate(second, bytes, &mut cursor)?;
+        let Some((dy, jump_y, trim_y)) =
+            decode_pes_coordinate(second, bytes, &mut cursor)?
+        else {
+            break;
+        };
 
         x += dx as f32;
         y += dy as f32;
