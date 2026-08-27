@@ -1,0 +1,42 @@
+{
+    "productName": "Embroidery Viewer",
+    "version": "0.1.0",
+    "identifier": "com.bosguega.embroideryviewer",
+    "build": {
+        "frontendDist": "../dist",
+        "devUrl": "http://localhost:1421",
+        "beforeDevCommand": "pnpm dev",
+        "beforeBuildCommand": "pnpm build"
+    },
+    "bundle": {
+        "icon": [
+            "icons/icon.svg"
+        ]
+    },
+    "app": {
+        "windows": [
+            {
+                "label": "main",
+                "title": "Embroidery Viewer",
+                "width": 1400,
+                "height": 900,
+                "minWidth": 900,
+                "minHeight": 600,
+                "resizable": true,
+                "fullscreen": false
+            }
+        ],
+        "security": {
+            "assetProtocol": {
+                "enable": true,
+                "scope": [
+                    "$APPDATA/**",
+                    "$HOME/**",
+                    "$DESKTOP/**",
+                    "$DOCUMENT/**",
+                    "$PICTURE/**"
+                ]
+            }
+        }
+    }
+}

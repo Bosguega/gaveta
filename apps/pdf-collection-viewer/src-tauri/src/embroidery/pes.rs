@@ -338,7 +338,12 @@ pub fn parse_pes(bytes: &[u8]) -> Result<EmbroideryPattern, String> {
 
         if first == 0xFE {
             if cursor < bytes.len() && bytes[cursor] == 0xB0 {
-                cursor += 1;
+                // Comando de troca de cor: consome B0 + 1 byte extra de
+                // dados (igual ao pyembroidery, que faz f.seek(1,1)).
+                cursor += 1; // B0
+                if cursor < bytes.len() {
+                    cursor += 1; // byte extra
+                }
                 pattern.add_stitch(x, y, StitchType::ColorChange);
                 continue;
             }

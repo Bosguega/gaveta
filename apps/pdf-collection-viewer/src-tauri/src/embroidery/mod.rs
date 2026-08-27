@@ -171,7 +171,7 @@ mod pes_test {
         stitch_data.extend_from_slice(&[5, 10]); // stitch 2
         stitch_data.extend_from_slice(&[0xFF]); // end
         
-        let start = 512 + 527; // pec_offset (LA:) + 527
+        let start = 512 + 528; // pec_offset (LA:) + 528
         bytes.resize(start + stitch_data.len() + 1, 0);
         bytes[start..start + stitch_data.len()].copy_from_slice(&stitch_data);
         
@@ -231,19 +231,19 @@ mod tests {
     #[test]
     fn test_synthetic_pec_pattern() {
         // Layout standalone conforme pyembroidery: "#PEC0001" (8 bytes),
-        // depois "LA:" na posição 8; stream de stitches em 8 + 527 = 535.
+        // depois "LA:" na posição 8; stream de stitches em 8 + 528 = 536.
         let mut bytes = vec![0u8; 700];
         bytes[..8].copy_from_slice(b"#PEC0001");
         bytes[8..11].copy_from_slice(b"LA:");
-        bytes[56] = 1; // 2 cores
-        bytes[57] = 16;
-        bytes[58] = 24;
+        bytes[48 + 8] = 1; // 2 cores (contagem lida a partir da base 8)
+        bytes[49 + 8] = 16;
+        bytes[50 + 8] = 24;
 
-        bytes[535] = 10; // dx
-        bytes[536] = 15; // dy
-        bytes[537] = 20;
-        bytes[538] = 25;
-        bytes[539] = 0xFF; // End
+        bytes[536] = 10; // dx
+        bytes[537] = 15; // dy
+        bytes[538] = 20;
+        bytes[539] = 25;
+        bytes[540] = 0xFF; // End (seguido de 0x00)
 
         let parsed = pes::parse_pes(&bytes);
         assert!(parsed.is_ok());

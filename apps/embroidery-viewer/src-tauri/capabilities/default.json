@@ -1,0 +1,12 @@
+{
+    "identifier": "default",
+    "description": "Permissões principais do app Embroidery Viewer",
+    "windows": [
+        "main"
+    ],
+    "permissions": [
+        "core:default",
+        "dialog:default",
+        "opener:default"
+    ]
+}

@@ -1,0 +1,31 @@
+[package]
+name = "embroidery-viewer"
+version = "0.1.0"
+description = "Visualizador de bordados com comparação entre parser Rust e pyembroidery"
+authors = ["Embroidery Viewer"]
+edition = "2021"
+
+[lib]
+name = "embroidery_viewer_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.0.0", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+walkdir = "2"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+
+[profile.dev]
+split-debuginfo = "unpacked"
+incremental = false
