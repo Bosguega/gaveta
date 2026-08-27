@@ -6,13 +6,15 @@ import { getThumbnailUrl } from '@/services/thumbnails';
 interface Props {
     item: CollectionItem;
     selected: boolean;
+    /** Changes whenever thumbnails are regenerated so cached URLs are refetched. */
+    refreshKey?: number;
     onSelect: () => void;
     onOpen: () => void;
     onRevealInFolder: () => void;
     onToggleFavorite: () => void;
 }
 
-export function ItemCard({ item, selected, onSelect, onOpen, onRevealInFolder, onToggleFavorite }: Props) {
+export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onRevealInFolder, onToggleFavorite }: Props) {
     const [imgSrc, setImgSrc] = useState<string>('');
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
     const contextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -20,7 +22,13 @@ export function ItemCard({ item, selected, onSelect, onOpen, onRevealInFolder, o
     useEffect(() => {
         let active = true;
         if (item.thumbnail_status === 'ready' && item.thumbnail_key) {
-            getThumbnailUrl(item.thumbnail_key, item.modified_at)
+            // After a manual regeneration the key and modified_at stay the
+            // same, so the epoch is appended to bust the cached URL.
+            const version =
+                refreshKey && refreshKey > 0
+                    ? `${item.modified_at}@r${refreshKey}`
+                    : item.modified_at;
+            getThumbnailUrl(item.thumbnail_key, version)
                 .then((url) => {
                     if (active) {
                         setImgSrc(url);
@@ -35,7 +43,7 @@ export function ItemCard({ item, selected, onSelect, onOpen, onRevealInFolder, o
         return () => {
             active = false;
         };
-    }, [item.thumbnail_key, item.thumbnail_status, item.modified_at]);
+    }, [item.thumbnail_key, item.thumbnail_status, item.modified_at, refreshKey]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {

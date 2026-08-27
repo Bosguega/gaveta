@@ -468,6 +468,13 @@ pub struct RemoveDuplicateResult {
     pub affected_other_collections: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegenerateThumbnailsResult {
+    pub requested: usize,
+    pub regenerated: usize,
+    pub failed: usize,
+}
+
 fn sha256_file(path: &str) -> Result<String, String> {
     let file = File::open(path).map_err(|e| format!("Não foi possível abrir o arquivo: {e}"))?;
     let mut reader = BufReader::new(file);
@@ -738,4 +745,103 @@ pub fn pick_image_file(app: AppHandle) -> Result<Option<String>, String> {
         Ok(None) => Ok(None),
         Err(e) => Err(format!("Falha ao obter imagem: {e}")),
     }
+}
+
+// Thumbnail regeneration for selected items
+
+/// Regenerates thumbnails for the given items using the standard render
+/// pipeline. The cached thumbnail (and the DB record) is only replaced after
+/// the new render succeeded, so a failure keeps the current thumbnail intact
+/// and processing continues with the remaining items.
+#[tauri::command]
+pub async fn regenerate_thumbnails(
+    app: AppHandle,
+    state: State<'_, DbState>,
+    collection_id: i64,
+    item_ids: Vec<i64>,
+) -> Result<RegenerateThumbnailsResult, String> {
+    let cache = db::cache_dir(&app)?;
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Não foi possível localizar os recursos do aplicativo: {e}"))?;
+
+    let total = item_ids.len();
+    let mut regenerated = 0usize;
+    let mut failed = 0usize;
+
+    for (index, item_id) in item_ids.iter().enumerate() {
+        let _ = app.emit(
+            "regenerate-progress",
+            db::ScanProgress {
+                stage: "Gerando miniaturas".to_string(),
+                current: index + 1,
+                total,
+            },
+        );
+
+        let item = {
+            let conn = state.0.lock().map_err(|e| e.to_string())?;
+            db::get_item_by_id(&conn, *item_id)?
+        };
+
+        let Some(item) = item else {
+            eprintln!("[regenerate] Item {item_id} não encontrado, ignorando");
+            failed += 1;
+            continue;
+        };
+
+        if item.collection_id != collection_id {
+            eprintln!("[regenerate] Item {item_id} não pertence à coleção {collection_id}, ignorando");
+            failed += 1;
+            continue;
+        }
+
+        match thumbnails::render_thumbnail(&item.path, &item.file_type, &cache, &resource_dir) {
+            Ok(output) => {
+                {
+                    let conn = state.0.lock().map_err(|e| e.to_string())?;
+                    db::set_item_thumbnail(
+                        &conn,
+                        item.id,
+                        output.page_count,
+                        Some(&output.thumbnail_key),
+                        ThumbnailStatus::Ready,
+                    )?;
+                }
+                if let Some(stats) = output.embroidery_stats {
+                    let conn = state.0.lock().map_err(|e| e.to_string())?;
+                    db::set_item_embroidery_stats(
+                        &conn,
+                        item.id,
+                        stats.stitch_count,
+                        stats.color_count,
+                        stats.color_changes,
+                        stats.width_mm,
+                        stats.height_mm,
+                    )?;
+                }
+                regenerated += 1;
+            }
+            Err(e) => {
+                eprintln!("[regenerate] Erro ao regenerar miniatura de {}: {}", item.path, e);
+                failed += 1;
+            }
+        }
+    }
+
+    let _ = app.emit(
+        "regenerate-progress",
+        db::ScanProgress {
+            stage: "Concluído".to_string(),
+            current: total,
+            total,
+        },
+    );
+
+    Ok(RegenerateThumbnailsResult {
+        requested: total,
+        regenerated,
+        failed,
+    })
 }

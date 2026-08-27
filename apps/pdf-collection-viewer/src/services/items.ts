@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import type {
     CollectionItem,
     DuplicateAnalysis,
+    RegenerateThumbnailsResult,
     RemoveDuplicateResult,
     ScanProgress,
     UpdateResult,
@@ -50,6 +51,16 @@ export async function revealInFolder(path: string): Promise<void> {
     return invoke<void>('reveal_in_folder', { path });
 }
 
+export async function regenerateThumbnails(
+    collectionId: number,
+    itemIds: number[],
+): Promise<RegenerateThumbnailsResult> {
+    return invoke<RegenerateThumbnailsResult>('regenerate_thumbnails', {
+        collectionId,
+        itemIds,
+    });
+}
+
 function listenToProgress(
     eventName: string,
     callback: (progress: ScanProgress) => void,
@@ -81,4 +92,8 @@ export function listenToUpdateProgress(callback: (progress: ScanProgress) => voi
 
 export function listenToAnalyzeProgress(callback: (progress: ScanProgress) => void): () => void {
     return listenToProgress('analyze-progress', callback);
+}
+
+export function listenToRegenerateProgress(callback: (progress: ScanProgress) => void): () => void {
+    return listenToProgress('regenerate-progress', callback);
 }

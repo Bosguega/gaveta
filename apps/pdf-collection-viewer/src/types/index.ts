@@ -86,6 +86,12 @@ export interface RemoveDuplicateResult {
     affected_other_collections: number;
 }
 
+export interface RegenerateThumbnailsResult {
+    requested: number;
+    regenerated: number;
+    failed: number;
+}
+
 export type SortOption =
     | 'name-asc'
     | 'name-desc'

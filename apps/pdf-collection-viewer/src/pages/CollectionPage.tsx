@@ -3,9 +3,9 @@ import { ItemCard } from '@/components/ItemCard';
 import { DuplicateAnalysisModal } from '@/components/DuplicateAnalysisModal';
 import { useAppStore } from '@/store/useAppStore';
 import { getCollection } from '@/services/collections';
-import { listItems, updateCollectionScan, openFile, listenToUpdateProgress, cancelScan, toggleFavorite, revealInFolder } from '@/services/items';
+import { listItems, updateCollectionScan, openFile, listenToUpdateProgress, cancelScan, toggleFavorite, revealInFolder, regenerateThumbnails, listenToRegenerateProgress } from '@/services/items';
 import { clearThumbnailUrlCache } from '@/services/thumbnails';
-import { SORT_OPTIONS, type SortOption } from '@/types';
+import { SORT_OPTIONS, type ScanProgress, type SortOption } from '@/types';
 import { getFileTypeIcon, getFileTypeLabel } from '@/utils/format';
 
 const EMBROIDERY_EXTENSIONS = ['dst', 'exp', 'pes', 'pec', 'jef', 'vp3', 'xxx', 'vip', 'hus', 'sew'];
@@ -17,7 +17,20 @@ function getFileExtension(filename: string): string {
 }
 
 export function CollectionPage() {
-    const { currentCollectionId, closeCollection, items, setItems, isUpdating, setIsUpdating, updateProgress, setUpdateProgress } = useAppStore();
+    const {
+        currentCollectionId,
+        closeCollection,
+        items,
+        setItems,
+        isUpdating,
+        setIsUpdating,
+        updateProgress,
+        setUpdateProgress,
+        selectedItemIds,
+        toggleItemSelection,
+        setSelectedItems,
+        clearSelection,
+    } = useAppStore();
     const [collectionName, setCollectionName] = useState('');
     const [search, setSearch] = useState('');
     const [sort, setSort] = useState<SortOption>('name-asc');
@@ -25,12 +38,15 @@ export function CollectionPage() {
     const [typeMenuOpen, setTypeMenuOpen] = useState(false);
     const [embroideryMenuOpen, setEmbroideryMenuOpen] = useState(false);
     const typeMenuRef = useRef<HTMLDivElement | null>(null);
-    const [selectedId, setSelectedId] = useState<number | null>(null);
     const [unavailableCount, setUnavailableCount] = useState(0);
     const [erroredCount, setErroredCount] = useState(0);
     const [error, setError] = useState<string | null>(null);
     const [showDuplicates, setShowDuplicates] = useState(false);
     const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+    const [isRegenerating, setIsRegenerating] = useState(false);
+    const [regenProgress, setRegenProgress] = useState<ScanProgress | null>(null);
+    const [regenSummary, setRegenSummary] = useState<{ regenerated: number; failed: number } | null>(null);
+    const [thumbEpoch, setThumbEpoch] = useState(0);
 
     const loadItems = async () => {
         if (currentCollectionId === null) return;
@@ -42,18 +58,43 @@ export function CollectionPage() {
         }
     };
 
+    const selectedIds = useMemo(() => Array.from(selectedItemIds), [selectedItemIds]);
+
+    const handleRegenerateThumbnails = async () => {
+        if (currentCollectionId === null || isRegenerating || selectedIds.length === 0) return;
+        setIsRegenerating(true);
+        setError(null);
+        setRegenSummary(null);
+        setRegenProgress({ stage: 'Iniciando...', current: 0, total: selectedIds.length });
+        try {
+            const result = await regenerateThumbnails(currentCollectionId, selectedIds);
+            setRegenSummary({ regenerated: result.regenerated, failed: result.failed });
+            clearThumbnailUrlCache();
+            setThumbEpoch((epoch) => epoch + 1);
+            await loadItems();
+        } catch (reason) {
+            setError(reason instanceof Error ? reason.message : 'Não foi possível gerar as miniaturas.');
+        } finally {
+            setIsRegenerating(false);
+            setRegenProgress(null);
+        }
+    };
+
     useEffect(() => {
         if (currentCollectionId === null) return;
 
         setSearch('');
         setSort('name-asc');
         setSelectedFileType('all');
-        setSelectedId(null);
+        setSelectedItems([]);
         setUnavailableCount(0);
         setErroredCount(0);
         setError(null);
         setShowFavoritesOnly(false);
         setShowDuplicates(false);
+        setIsRegenerating(false);
+        setRegenProgress(null);
+        setRegenSummary(null);
 
         getCollection(currentCollectionId)
             .then((detail) => setCollectionName(detail?.name ?? ''))
@@ -68,6 +109,19 @@ export function CollectionPage() {
         });
         return unlisten;
     }, []);
+
+    useEffect(() => {
+        const unlisten = listenToRegenerateProgress((progress) => {
+            setRegenProgress(progress);
+        });
+        return unlisten;
+    }, []);
+
+    // Keep the selection aligned with what is visible: whenever a filter
+    // changes, drop it so no hidden item stays selected.
+    useEffect(() => {
+        clearSelection();
+    }, [search, selectedFileType, showFavoritesOnly, clearSelection]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -404,6 +458,38 @@ export function CollectionPage() {
                     ))}
                 </select>
             </div>
+
+            <div className="mb-6 flex flex-wrap items-center gap-2">
+                <button
+                    onClick={() => setSelectedItems(filteredAndSorted.map((item) => item.id))}
+                    disabled={filteredAndSorted.length === 0 || isRegenerating}
+                    className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Selecionar todos os itens exibidos pelo filtro atual"
+                >
+                    Selecionar todos
+                </button>
+                <button
+                    onClick={clearSelection}
+                    disabled={selectedIds.length === 0 || isRegenerating}
+                    className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                    Limpar seleção
+                </button>
+                <span className="text-sm text-slate-500">
+                    {selectedIds.length} selecionado{selectedIds.length === 1 ? '' : 's'}
+                </span>
+                <button
+                    onClick={handleRegenerateThumbnails}
+                    disabled={selectedIds.length === 0 || isRegenerating}
+                    className="ml-auto px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Gerar novamente as miniaturas dos itens selecionados"
+                >
+                    {isRegenerating
+                        ? 'Gerando...'
+                        : `🔄 Gerar as miniaturas novamente${selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}`}
+                </button>
+            </div>
+
             {error && <div className="mb-6 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
             {isUpdating && updateProgress && (
@@ -424,6 +510,33 @@ export function CollectionPage() {
                 </div>
             )}
 
+            {isRegenerating && regenProgress && (
+                <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+                    <div className="text-sm text-blue-800 mb-2">
+                        {regenProgress.stage}: {regenProgress.current} / {regenProgress.total}
+                    </div>
+                    <div className="h-2 bg-blue-200 rounded-full overflow-hidden">
+                        <div
+                            className="h-full bg-blue-600 transition-all"
+                            style={{
+                                width: regenProgress.total > 0
+                                    ? `${(regenProgress.current / regenProgress.total) * 100}%`
+                                    : '0%',
+                            }}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {regenSummary && (
+                <div className="mb-6 rounded-lg bg-green-50 p-3 text-sm text-green-800">
+                    Miniaturas regeneradas: {regenSummary.regenerated} concluída(s)
+                    {regenSummary.failed > 0
+                        ? `, ${regenSummary.failed} com erro (miniaturas antigas mantidas)`
+                        : ''}.
+                </div>
+            )}
+
             {filteredAndSorted.length === 0 ? (
                 <div className="text-center py-16 text-slate-500">
                     <div className="text-5xl mb-4">📄</div>
@@ -440,8 +553,9 @@ export function CollectionPage() {
                         <ItemCard
                             key={item.id}
                             item={item}
-                            selected={selectedId === item.id}
-                            onSelect={() => setSelectedId(item.id)}
+                            selected={selectedItemIds.has(item.id)}
+                            refreshKey={thumbEpoch}
+                            onSelect={() => toggleItemSelection(item.id)}
                             onOpen={() => handleOpenFile(item.path)}
                             onRevealInFolder={() => handleRevealInFolder(item.path)}
                             onToggleFavorite={() => handleToggleFavorite(item.id)}

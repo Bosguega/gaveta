@@ -81,7 +81,6 @@ fn generate_pdf_thumbnail(
     resource_dir: &Path,
 ) -> Result<Option<i64>, String> {
     let key = thumbnail_key(pdf_path);
-    let output_path = cache_dir.join(&key);
 
     // Bind explicitly so a missing runtime library becomes a recoverable PDF
     // thumbnail error instead of crashing the application.
@@ -141,8 +140,7 @@ fn generate_pdf_thumbnail(
         .write_image(&img, actual_width, actual_height, image::ExtendedColorType::Rgba8)
         .map_err(|e| format!("Falha ao codificar WebP: {e}"))?;
 
-    fs::write(&output_path, &encoded)
-        .map_err(|e| format!("Falha ao salvar thumbnail: {e}"))?;
+    write_thumbnail_atomic(cache_dir, &key, &encoded)?;
 
     Ok(Some(page_count))
 }
@@ -155,7 +153,6 @@ fn generate_image_thumbnail(
     cache_dir: &Path,
 ) -> Result<(), String> {
     let key = thumbnail_key(image_path);
-    let output_path = cache_dir.join(&key);
 
     let img = image::open(image_path).map_err(|e| format!("Falha ao abrir imagem: {e}"))?;
 
@@ -181,8 +178,26 @@ fn generate_image_thumbnail(
         .write_image(&rgba, actual_width, actual_height, image::ExtendedColorType::Rgba8)
         .map_err(|e| format!("Falha ao codificar WebP: {e}"))?;
 
-    fs::write(&output_path, &encoded)
-        .map_err(|e| format!("Falha ao salvar thumbnail: {e}"))?;
+    write_thumbnail_atomic(cache_dir, &key, &encoded)?;
+
+    Ok(())
+}
+
+/// Writes thumbnail bytes to the cache atomically: the data lands in a
+/// temporary file first and is only renamed over the final key after the write
+/// succeeded. A failed write therefore never destroys the previously cached
+/// thumbnail.
+pub fn write_thumbnail_atomic(cache_dir: &Path, key: &str, bytes: &[u8]) -> Result<(), String> {
+    let final_path = cache_dir.join(key);
+    let temp_path = cache_dir.join(format!("{key}.tmp"));
+
+    fs::write(&temp_path, bytes)
+        .map_err(|e| format!("Falha ao salvar thumbnail temporária: {e}"))?;
+
+    if let Err(e) = fs::rename(&temp_path, &final_path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(format!("Falha ao salvar thumbnail: {e}"));
+    }
 
     Ok(())
 }

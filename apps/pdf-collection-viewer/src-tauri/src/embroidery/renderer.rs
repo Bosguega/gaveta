@@ -2,7 +2,6 @@ use crate::embroidery::{EmbroideryPattern, StitchType};
 use crate::thumbnails::thumbnail_key;
 use image::codecs::webp::WebPEncoder;
 use image::{ExtendedColorType, ImageEncoder, Rgba, RgbaImage};
-use std::fs;
 use std::path::Path;
 
 const CANVAS_SIZE: u32 = 300;
@@ -156,7 +155,6 @@ pub fn save_pattern_thumbnail(
     cache_dir: &Path,
 ) -> Result<(), String> {
     let key = thumbnail_key(path);
-    let output_path = cache_dir.join(&key);
 
     let img = render_pattern(pattern);
     let (w, h) = (img.width(), img.height());
@@ -168,8 +166,7 @@ pub fn save_pattern_thumbnail(
         .write_image(&raw_bytes, w, h, ExtendedColorType::Rgba8)
         .map_err(|e| format!("Falha ao codificar WebP de bordado: {e}"))?;
 
-    fs::write(&output_path, &encoded)
-        .map_err(|e| format!("Falha ao salvar thumbnail de bordado: {e}"))?;
+    crate::thumbnails::write_thumbnail_atomic(cache_dir, &key, &encoded)?;
 
     Ok(())
 }
