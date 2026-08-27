@@ -6,7 +6,7 @@ use image::ImageEncoder;
 use pdfium_render::prelude::*;
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const THUMBNAIL_WIDTH: i32 = 300;
 
@@ -190,9 +190,4 @@ fn generate_image_thumbnail(
 /// Checks if a thumbnail file exists in the cache.
 pub fn thumbnail_exists(cache_dir: &Path, key: &str) -> bool {
     cache_dir.join(key).exists()
-}
-
-/// Returns the full path to a cached thumbnail.
-pub fn thumbnail_path(cache_dir: &Path, key: &str) -> PathBuf {
-    cache_dir.join(key)
 }

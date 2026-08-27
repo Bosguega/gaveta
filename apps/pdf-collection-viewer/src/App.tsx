@@ -1,6 +1,5 @@
 import { HomePage } from '@/pages/HomePage';
 import { CollectionPage } from '@/pages/CollectionPage';
-import SplashScreen from '@/components/SplashScreen';
 import { useAppStore } from '@/store/useAppStore';
 
 function App() {
@@ -12,8 +11,6 @@ function App() {
                 Collection Viewer
             </header>
             {currentCollectionId === null ? <HomePage /> : <CollectionPage />}
-            {/* Temporarily visible to preview the splash. Lifecycle will be wired later. */}
-            <SplashScreen visible={false} />
         </div>
     );
 }

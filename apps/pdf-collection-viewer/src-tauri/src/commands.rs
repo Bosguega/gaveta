@@ -5,6 +5,7 @@ use crate::thumbnails;
 use crate::ScanCancels;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
@@ -502,6 +503,19 @@ pub async fn analyze_duplicates(
     let mut groups: Vec<DuplicateGroup> = Vec::new();
     let mut unreadable_count = 0usize;
 
+    // Pass 1 — bucket by file size. Two identical files necessarily have the
+    // same byte length, so any file whose size occurs only once cannot be a
+    // duplicate and never needs a full content hash. This turns a large
+    // collection of mostly-unique files into a tiny hashing workload.
+    let mut size_counts: HashMap<i64, usize> = HashMap::new();
+    for item in &items {
+        *size_counts.entry(item.size).or_insert(0) += 1;
+    }
+
+    // Maps (size, content hash) -> index in `groups` for O(1) lookups while
+    // grouping, instead of a linear search over every group per item.
+    let mut group_index: HashMap<(i64, String), usize> = HashMap::new();
+
     for (index, item) in items.iter().enumerate() {
         let _ = app.emit(
             "analyze-progress",
@@ -511,6 +525,11 @@ pub async fn analyze_duplicates(
                 total,
             },
         );
+
+        // Skip files that share their byte size with no other file.
+        if size_counts.get(&item.size).copied().unwrap_or(0) < 2 {
+            continue;
+        }
 
         let hash = match sha256_file(&item.path) {
             Ok(h) => h,
@@ -534,14 +553,17 @@ pub async fn analyze_duplicates(
             hash: hash.clone(),
         };
 
-        if let Some(group) = groups.iter_mut().find(|g| g.hash == hash) {
-            group.items.push(dup_item);
-        } else {
-            groups.push(DuplicateGroup {
-                hash,
-                size: item.size,
-                items: vec![dup_item],
-            });
+        match group_index.get(&(item.size, hash.clone())) {
+            Some(&group_id) => groups[group_id].items.push(dup_item),
+            None => {
+                let group_id = groups.len();
+                groups.push(DuplicateGroup {
+                    hash,
+                    size: item.size,
+                    items: vec![dup_item],
+                });
+                group_index.insert((item.size, groups[group_id].hash.clone()), group_id);
+            }
         }
     }
 
