@@ -117,6 +117,8 @@ export const ITEMS_PER_PAGE_OPTIONS = [50, 100, 500];
 
 export const DEFAULT_ITEMS_PER_PAGE = 100;
 
+export const EMBROIDERY_EXTENSIONS = ['dst', 'exp', 'pes', 'pec', 'jef', 'vp3', 'xxx', 'vip', 'hus', 'sew'];
+
 export const COLLECTION_ICONS = [
     '📚',
     '📖',
@@ -135,3 +137,4 @@ export const COLLECTION_ICONS = [
     '🎵',
     '🏠',
 ];
+

@@ -90,4 +90,11 @@ export function formatEmbroiderySize(widthMm: number | null, heightMm: number | 
     }
     const cm = (mm: number) => (mm / 10).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
     return `${cm(widthMm)} × ${cm(heightMm)} cm`;
-}
+}
+
+export function getFileExtension(filename: string): string {
+    const idx = filename.lastIndexOf('.');
+    if (idx < 0) return '';
+    return filename.slice(idx + 1).toLowerCase();
+}
+

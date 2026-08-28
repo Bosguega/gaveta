@@ -37,7 +37,7 @@ pub fn create_collection(
         return Err("Adicione pelo menos um caminho de pasta".to_string());
     }
 
-    validate_collection_paths(&paths)?;
+    validate_collection_paths(&paths, true)?;
 
     let resolved_icon_path = resolve_icon_path(&app, icon_path.as_deref())?;
 
@@ -63,7 +63,8 @@ pub fn update_collection(
         return Err("Adicione pelo menos um caminho de pasta".to_string());
     }
 
-    validate_collection_paths(&paths)?;
+    validate_collection_paths(&paths, false)?;
+
 
     let resolved_icon_path = resolve_icon_path(&app, icon_path.as_deref())?;
 
@@ -417,14 +418,22 @@ pub fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
     }
 }
 
-fn validate_collection_paths(paths: &[String]) -> Result<(), String> {
+fn validate_collection_paths(paths: &[String], require_accessible: bool) -> Result<(), String> {
+    if paths.is_empty() {
+        return Err("Adicione pelo menos um caminho de pasta".to_string());
+    }
     for path in paths {
-        if !Path::new(path).is_dir() {
-            return Err(format!("A pasta não existe ou não está acessível: {path}"));
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            return Err("O caminho da pasta não pode ser vazio".to_string());
+        }
+        if require_accessible && !Path::new(trimmed).is_dir() {
+            return Err(format!("A pasta não existe ou não está acessível: {trimmed}"));
         }
     }
     Ok(())
 }
+
 
 #[tauri::command]
 pub fn get_cache_dir(app: AppHandle) -> Result<String, String> {

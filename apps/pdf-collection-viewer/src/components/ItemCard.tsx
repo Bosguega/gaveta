@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CollectionItem } from '@/types';
-import { formatBytes, formatColorChanges, formatColorCount, formatEmbroiderySize, formatPageCount, formatStitchCount, getFileTypeIcon } from '@/utils/format';
-import { getThumbnailUrl } from '@/services/thumbnails';
+import { formatBytes, formatColorChanges, formatColorCount, formatEmbroiderySize, formatPageCount, formatStitchCount } from '@/utils/format';
+import { ItemThumbnail } from '@/components/common/ItemThumbnail';
 
 interface Props {
     item: CollectionItem;
@@ -15,35 +15,8 @@ interface Props {
 }
 
 export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onRevealInFolder, onToggleFavorite }: Props) {
-    const [imgSrc, setImgSrc] = useState<string>('');
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
     const contextMenuRef = useRef<HTMLDivElement | null>(null);
-
-    useEffect(() => {
-        let active = true;
-        if (item.thumbnail_status === 'ready' && item.thumbnail_key) {
-            // After a manual regeneration the key and modified_at stay the
-            // same, so the epoch is appended to bust the cached URL.
-            const version =
-                refreshKey && refreshKey > 0
-                    ? `${item.modified_at}@r${refreshKey}`
-                    : item.modified_at;
-            getThumbnailUrl(item.thumbnail_key, version)
-                .then((url) => {
-                    if (active) {
-                        setImgSrc(url);
-                    }
-                })
-                .catch(() => {
-                    if (active) {
-                        setImgSrc('');
-                    }
-                });
-        }
-        return () => {
-            active = false;
-        };
-    }, [item.thumbnail_key, item.thumbnail_status, item.modified_at, refreshKey]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -54,8 +27,6 @@ export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onRevea
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
-
-    const showPlaceholder = !imgSrc || item.thumbnail_status !== 'ready';
 
     const isEmbroidery = item.file_type === 'embroidery';
     const embroideryDetails = [
@@ -76,7 +47,6 @@ export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onRevea
         setContextMenu({ x: Math.max(0, x), y: Math.max(0, y) });
     };
 
-
     const handleMenuItemClick = (action: () => void) => {
         setContextMenu(null);
         action();
@@ -91,23 +61,12 @@ export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onRevea
                 onContextMenu={handleContextMenu}
                 title={item.path}
             >
-                <div className="aspect-[3/4] bg-slate-100 flex items-center justify-center overflow-hidden">
-                    {!showPlaceholder ? (
-                        <img
-                            src={imgSrc}
-                            alt={item.filename}
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                            onError={() => setImgSrc('')}
-                        />
-                    ) : (
-                        <div className="flex flex-col items-center justify-center text-slate-400">
-                            <span className="text-4xl mb-2">{getFileTypeIcon(item.file_type)}</span>
-                            <span className="text-xs">
-                                {item.thumbnail_status === 'error' ? 'Miniatura indisponível' : 'Sem miniatura'}
-                            </span>
-                        </div>
-                    )}
+                <div className="aspect-[3/4] bg-slate-100 flex items-center justify-center overflow-hidden relative">
+                    <ItemThumbnail
+                        item={item}
+                        refreshKey={refreshKey}
+                        size="full"
+                    />
 
                     <button
                         type="button"
@@ -137,6 +96,7 @@ export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onRevea
                         Abrir ↗
                     </button>
                 </div>
+
 
                 <div className="p-3">
                     <div className="font-medium text-sm text-slate-800 truncate" title={item.filename}>

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { DuplicateAnalysis, DuplicateGroup, DuplicateItem, RemoveDuplicateResult, ScanProgress } from '@/types';
 import { analyzeDuplicates, listenToAnalyzeProgress, openFile, removeDuplicate, revealInFolder } from '@/services/items';
-import { getThumbnailUrl } from '@/services/thumbnails';
-import { formatBytes, formatModifiedAt, getFileTypeIcon } from '@/utils/format';
+import { formatBytes, formatModifiedAt } from '@/utils/format';
+import { ItemThumbnail } from '@/components/common/ItemThumbnail';
+import { ProgressBar } from '@/components/common/ProgressBar';
 
 interface Props {
     collectionId: number;
@@ -36,47 +37,6 @@ function createInitialState(groups: DuplicateGroup[]): ItemStateMap {
     return state;
 }
 
-function Thumb({ item }: { item: DuplicateItem }) {
-    const [imgSrc, setImgSrc] = useState('');
-
-    useEffect(() => {
-        let active = true;
-        if (item.thumbnail_status === 'ready' && item.thumbnail_key) {
-            getThumbnailUrl(item.thumbnail_key, item.modified_at)
-                .then((url) => {
-                    if (active) {
-                        setImgSrc(url);
-                    }
-                })
-                .catch(() => {
-                    if (active) {
-                        setImgSrc('');
-                    }
-                });
-        }
-        return () => {
-            active = false;
-        };
-    }, [item.thumbnail_key, item.thumbnail_status, item.modified_at]);
-
-    if (imgSrc) {
-        return (
-            <img
-                src={imgSrc}
-                alt={item.filename}
-                className="w-12 h-16 object-cover rounded-md border border-slate-200"
-                loading="lazy"
-                onError={() => setImgSrc('')}
-            />
-        );
-    }
-
-    return (
-        <div className="w-12 h-16 flex items-center justify-center bg-slate-100 rounded-md border border-slate-200 text-slate-400">
-            <span className="text-xl">{getFileTypeIcon(item.file_type)}</span>
-        </div>
-    );
-}
 
 export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Props) {
     const [analysis, setAnalysis] = useState<DuplicateAnalysis | null>(null);
@@ -300,21 +260,7 @@ export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Pro
                     {loading && (
                         <div className="py-12 text-center">
                             {progress && (
-                                <div className="mb-4">
-                                    <div className="text-sm text-slate-600 mb-2">
-                                        {progress.stage}: {progress.current} / {progress.total}
-                                    </div>
-                                    <div className="h-2 bg-slate-200 rounded-full overflow-hidden max-w-sm mx-auto">
-                                        <div
-                                            className="h-full bg-blue-600 transition-all"
-                                            style={{
-                                                width: progress.total > 0
-                                                    ? `${(progress.current / progress.total) * 100}%`
-                                                    : '0%',
-                                            }}
-                                        />
-                                    </div>
-                                </div>
+                                <ProgressBar progress={progress} className="max-w-md mx-auto mb-4" />
                             )}
                             <div className="text-slate-500">Analisando arquivos...</div>
                         </div>
@@ -368,8 +314,9 @@ export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Pro
                                                 title="Manter este arquivo"
                                                 className="accent-green-600"
                                             />
-                                            <Thumb item={item} />
+                                            <ItemThumbnail item={item} size="sm" />
                                             <div className="flex-1 min-w-0">
+
                                                 <div className="text-sm font-medium text-slate-800 truncate" title={item.filename}>
                                                     {item.filename}
                                                 </div>

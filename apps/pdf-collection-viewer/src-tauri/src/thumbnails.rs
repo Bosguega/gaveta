@@ -117,21 +117,12 @@ fn generate_pdf_thumbnail(
     let _height = bitmap.height() as u32;
     let bytes = bitmap.as_raw_bytes();
 
-    // The bitmap from pdfium is already in RGBA format.
-    // Copy channels directly without swapping R and B.
-    let mut rgba = Vec::with_capacity(bytes.len());
-    for chunk in bytes.chunks_exact(4) {
-        rgba.push(chunk[0]); // R
-        rgba.push(chunk[1]); // G
-        rgba.push(chunk[2]); // B
-        rgba.push(chunk[3]); // A
-    }
-
     let actual_width = width;
-    let actual_height = rgba.len() as u32 / (actual_width * 4);
+    let actual_height = bytes.len() as u32 / (actual_width * 4);
 
-    let img = image::RgbaImage::from_raw(actual_width, actual_height, rgba)
+    let img = image::RgbaImage::from_raw(actual_width, actual_height, bytes.to_vec())
         .ok_or_else(|| "Falha ao criar imagem".to_string())?;
+
 
     // Encode as WebP (lossless)
     let mut encoded = Vec::new();

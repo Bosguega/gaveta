@@ -1,43 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ItemCard } from '@/components/ItemCard';
 import { DuplicateAnalysisModal } from '@/components/DuplicateAnalysisModal';
+import { ProgressBar } from '@/components/common/ProgressBar';
+import { Pagination } from '@/components/common/Pagination';
+import { FileTypeFilterMenu } from '@/components/collection/FileTypeFilterMenu';
 import { useAppStore } from '@/store/useAppStore';
 import { getCollection } from '@/services/collections';
-import { listItems, updateCollectionScan, openFile, listenToUpdateProgress, cancelScan, toggleFavorite, revealInFolder, regenerateThumbnails, listenToRegenerateProgress } from '@/services/items';
+import {
+    listItems,
+    updateCollectionScan,
+    openFile,
+    listenToUpdateProgress,
+    cancelScan,
+    toggleFavorite,
+    revealInFolder,
+    regenerateThumbnails,
+    listenToRegenerateProgress,
+} from '@/services/items';
 import { clearThumbnailUrlCache } from '@/services/thumbnails';
-import { SORT_OPTIONS, ITEMS_PER_PAGE_OPTIONS, type ScanProgress, type SortOption } from '@/types';
-import { getFileTypeIcon, getFileTypeLabel } from '@/utils/format';
-
-const EMBROIDERY_EXTENSIONS = ['dst', 'exp', 'pes', 'pec', 'jef', 'vp3', 'xxx', 'vip', 'hus', 'sew'];
-
-function getFileExtension(filename: string): string {
-    const idx = filename.lastIndexOf('.');
-    if (idx < 0) return '';
-    return filename.slice(idx + 1).toLowerCase();
-}
-
-/**
- * Builds the pagination page list: first and last pages, the pages around the
- * current one, and `…` placeholders for the gaps in between.
- */
-function getPageNumbers(currentPage: number, totalPages: number): (number | '…')[] {
-    if (totalPages <= 7) {
-        return Array.from({ length: totalPages }, (_, i) => i + 1);
-    }
-
-    const wanted = new Set<number>([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
-    const pages: (number | '…')[] = [];
-    let previous = 0;
-    for (let candidate = 1; candidate <= totalPages; candidate++) {
-        if (!wanted.has(candidate)) continue;
-        if (previous > 0 && candidate - previous > 1) {
-            pages.push('…');
-        }
-        pages.push(candidate);
-        previous = candidate;
-    }
-    return pages;
-}
+import { SORT_OPTIONS, ITEMS_PER_PAGE_OPTIONS, EMBROIDERY_EXTENSIONS, type ScanProgress, type SortOption } from '@/types';
+import { getFileExtension } from '@/utils/format';
 
 export function CollectionPage() {
     const {
@@ -56,13 +38,11 @@ export function CollectionPage() {
         itemsPerPage,
         setItemsPerPage,
     } = useAppStore();
+
     const [collectionName, setCollectionName] = useState('');
     const [search, setSearch] = useState('');
     const [sort, setSort] = useState<SortOption>('name-asc');
     const [selectedFileType, setSelectedFileType] = useState<string>('all');
-    const [typeMenuOpen, setTypeMenuOpen] = useState(false);
-    const [embroideryMenuOpen, setEmbroideryMenuOpen] = useState(false);
-    const typeMenuRef = useRef<HTMLDivElement | null>(null);
     const [unavailableCount, setUnavailableCount] = useState(0);
     const [erroredCount, setErroredCount] = useState(0);
     const [error, setError] = useState<string | null>(null);
@@ -73,7 +53,6 @@ export function CollectionPage() {
     const [regenSummary, setRegenSummary] = useState<{ regenerated: number; failed: number } | null>(null);
     const [thumbEpoch, setThumbEpoch] = useState(0);
     const [page, setPage] = useState(1);
-    const [pageInput, setPageInput] = useState('');
 
     const loadItems = async () => {
         if (currentCollectionId === null) return;
@@ -123,7 +102,6 @@ export function CollectionPage() {
         setRegenProgress(null);
         setRegenSummary(null);
         setPage(1);
-        setPageInput('');
 
         getCollection(currentCollectionId)
             .then((detail) => setCollectionName(detail?.name ?? ''))
@@ -146,27 +124,15 @@ export function CollectionPage() {
         return unlisten;
     }, []);
 
-    // Keep the selection aligned with what is visible: whenever a filter
-    // changes, drop it so no hidden item stays selected.
+    // Drop selection when any filter changes to prevent hidden items from staying selected
     useEffect(() => {
         clearSelection();
     }, [search, selectedFileType, showFavoritesOnly, clearSelection]);
 
-    // Any filter, ordering or page-size change sends the user back to page 1.
+    // Filter, sort or pagination changes return to page 1
     useEffect(() => {
         setPage(1);
     }, [search, selectedFileType, showFavoritesOnly, sort, itemsPerPage]);
-
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (typeMenuRef.current && !typeMenuRef.current.contains(event.target as Node)) {
-                setTypeMenuOpen(false);
-                setEmbroideryMenuOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
 
     const handleUpdate = async () => {
         if (currentCollectionId === null || isUpdating) return;
@@ -239,17 +205,6 @@ export function CollectionPage() {
         return Array.from(set).sort();
     }, [items]);
 
-    const selectedTypeLabel = useMemo(() => {
-        if (selectedFileType === 'all') return 'Todos os formatos';
-        if (selectedFileType === 'pdf' || selectedFileType === 'image') {
-            return `${getFileTypeIcon(selectedFileType)} ${getFileTypeLabel(selectedFileType)}`;
-        }
-        if (selectedFileType === 'embroidery') {
-            return `${getFileTypeIcon('embroidery')} ${getFileTypeLabel('embroidery')}`;
-        }
-        return `${getFileTypeIcon('embroidery')} .${selectedFileType.toUpperCase()}`;
-    }, [selectedFileType]);
-
     const filteredAndSorted = useMemo(() => {
         const query = search.trim().toLowerCase();
         let result = items;
@@ -279,72 +234,65 @@ export function CollectionPage() {
                 sorted.sort((a, b) => b.filename.localeCompare(a.filename, 'pt-BR'));
                 break;
             case 'size-asc':
-                sorted.sort((a, b) => a.size - b.size);
+                sorted.sort((a, b) => a.size - b.size || a.filename.localeCompare(b.filename, 'pt-BR'));
                 break;
             case 'size-desc':
-                sorted.sort((a, b) => b.size - a.size);
+                sorted.sort((a, b) => b.size - a.size || a.filename.localeCompare(b.filename, 'pt-BR'));
                 break;
             case 'modified-desc':
                 sorted.sort((a, b) => {
                     const aTime = parseInt(a.modified_at, 10) || 0;
                     const bTime = parseInt(b.modified_at, 10) || 0;
-                    return bTime - aTime;
+                    return bTime - aTime || a.filename.localeCompare(b.filename, 'pt-BR');
                 });
                 break;
             case 'modified-asc':
                 sorted.sort((a, b) => {
                     const aTime = parseInt(a.modified_at, 10) || 0;
                     const bTime = parseInt(b.modified_at, 10) || 0;
-                    return aTime - bTime;
+                    return aTime - bTime || a.filename.localeCompare(b.filename, 'pt-BR');
                 });
                 break;
             case 'pages-asc':
                 sorted.sort((a, b) => {
-                    if (a.page_count === null && b.page_count === null) return 0;
+                    if (a.page_count === null && b.page_count === null) {
+                        return a.filename.localeCompare(b.filename, 'pt-BR');
+                    }
                     if (a.page_count === null) return 1;
                     if (b.page_count === null) return -1;
-                    return a.page_count - b.page_count;
+                    return a.page_count - b.page_count || a.filename.localeCompare(b.filename, 'pt-BR');
                 });
                 break;
             case 'pages-desc':
                 sorted.sort((a, b) => {
-                    if (a.page_count === null && b.page_count === null) return 0;
+                    if (a.page_count === null && b.page_count === null) {
+                        return a.filename.localeCompare(b.filename, 'pt-BR');
+                    }
                     if (a.page_count === null) return 1;
                     if (b.page_count === null) return -1;
-                    return b.page_count - a.page_count;
+                    return b.page_count - a.page_count || a.filename.localeCompare(b.filename, 'pt-BR');
                 });
                 break;
         }
         return sorted;
     }, [items, search, sort, showFavoritesOnly, selectedFileType]);
 
-    // Pagination slices the already-filtered and sorted list (order: items →
-    // filters → ordering → pagination).
     const totalItems = filteredAndSorted.length;
     const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
     const currentPage = Math.min(page, totalPages);
-    const rangeStart = totalItems === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
-    const rangeEnd = Math.min(currentPage * itemsPerPage, totalItems);
     const pageItems = useMemo(
         () => filteredAndSorted.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
         [filteredAndSorted, currentPage, itemsPerPage],
     );
 
-    const handleGoToPage = () => {
-        const parsed = Number.parseInt(pageInput, 10);
-        if (!Number.isNaN(parsed)) {
-            setPage(Math.min(totalPages, Math.max(1, parsed)));
-        }
-        setPageInput('');
-    };
-
     return (
         <div className="p-8">
+            {/* Header */}
             <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
                     <button
                         onClick={closeCollection}
-                        className="text-slate-600 hover:text-slate-900"
+                        className="text-slate-600 hover:text-slate-900 font-medium"
                         title="Voltar"
                     >
                         ← Voltar
@@ -367,7 +315,7 @@ export function CollectionPage() {
                     {isUpdating ? (
                         <button
                             onClick={handleCancel}
-                            className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700"
+                            className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"
                         >
                             Cancelar
                         </button>
@@ -376,14 +324,14 @@ export function CollectionPage() {
                             <button
                                 onClick={() => setShowDuplicates(true)}
                                 disabled={items.length === 0}
-                                className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                                className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed font-medium"
                                 title={items.length === 0 ? 'Atualize a coleção primeiro' : 'Analisar duplicados nesta coleção'}
                             >
                                 🔍 Analisar duplicados
                             </button>
                             <button
                                 onClick={handleUpdate}
-                                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
                             >
                                 🔄 Atualizar
                             </button>
@@ -392,6 +340,7 @@ export function CollectionPage() {
                 </div>
             </div>
 
+            {/* Filter and search bar */}
             <div className="flex items-center gap-3 mb-6">
                 <input
                     type="text"
@@ -400,106 +349,26 @@ export function CollectionPage() {
                     placeholder="🔎 Buscar arquivos..."
                     className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                {distinctFileTypes.length > 1 && (
-                    <div className="relative" ref={typeMenuRef}>
-                        <button
-                            onClick={() => setTypeMenuOpen((prev) => !prev)}
-                            className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 flex items-center gap-2"
-                            title="Filtrar por tipo de arquivo"
-                        >
-                            <span>{selectedTypeLabel}</span>
-                            <span className="text-slate-400 text-xs">▼</span>
-                        </button>
-                        {typeMenuOpen && (
-                            <div className="absolute left-0 top-full mt-1 z-20 w-64 bg-white border border-slate-200 rounded-lg shadow-lg py-1">
-                                <button
-                                    onClick={() => {
-                                        setSelectedFileType('all');
-                                        setTypeMenuOpen(false);
-                                    }}
-                                    className={`w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 ${selectedFileType === 'all' ? 'bg-blue-50 font-medium text-blue-700' : 'text-slate-700'}`}
-                                >
-                                    📁 Todos os formatos
-                                </button>
-                                {distinctFileTypes.includes('pdf') && (
-                                    <button
-                                        onClick={() => {
-                                            setSelectedFileType('pdf');
-                                            setTypeMenuOpen(false);
-                                        }}
-                                        className={`w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 ${selectedFileType === 'pdf' ? 'bg-blue-50 font-medium text-blue-700' : 'text-slate-700'}`}
-                                    >
-                                        📄 PDF
-                                    </button>
-                                )}
-                                {distinctFileTypes.includes('image') && (
-                                    <button
-                                        onClick={() => {
-                                            setSelectedFileType('image');
-                                            setTypeMenuOpen(false);
-                                        }}
-                                        className={`w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 ${selectedFileType === 'image' ? 'bg-blue-50 font-medium text-blue-700' : 'text-slate-700'}`}
-                                    >
-                                        🖼️ Imagem
-                                    </button>
-                                )}
-                                {distinctFileTypes.includes('embroidery') && (
-                                    <div
-                                        className="relative"
-                                        onMouseEnter={() => setEmbroideryMenuOpen(true)}
-                                        onMouseLeave={() => setEmbroideryMenuOpen(false)}
-                                    >
-                                        <button
-                                            onClick={() => {
-                                                setSelectedFileType('embroidery');
-                                                setTypeMenuOpen(false);
-                                            }}
-                                            className={`w-full flex items-center justify-between px-3 py-1.5 text-sm hover:bg-slate-50 ${selectedFileType === 'embroidery' || EMBROIDERY_EXTENSIONS.includes(selectedFileType)
-                                                ? 'bg-blue-50 font-medium text-blue-700'
-                                                : 'text-slate-700'
-                                                }`}
-                                        >
-                                            <span>🧵 Bordados</span>
-                                            <span className="text-slate-400 text-xs">▶</span>
-                                        </button>
-                                        {embroideryMenuOpen && (
-                                            <div className="absolute left-full top-0 ml-1 w-48 bg-white border border-slate-200 rounded-lg shadow-lg py-1">
-                                                {distinctEmbroideryExtensions.length > 0 ? (
-                                                    distinctEmbroideryExtensions.map((ext) => (
-                                                        <button
-                                                            key={ext}
-                                                            onClick={() => {
-                                                                setSelectedFileType(ext);
-                                                                setTypeMenuOpen(false);
-                                                                setEmbroideryMenuOpen(false);
-                                                            }}
-                                                            className={`w-full text-left px-3 py-1.5 text-sm uppercase hover:bg-slate-50 ${selectedFileType === ext ? 'bg-blue-50 font-medium text-blue-700' : 'text-slate-700'
-                                                                }`}
-                                                        >
-                                                            .{ext}
-                                                        </button>
-                                                    ))
-                                                ) : (
-                                                    <div className="px-3 py-1.5 text-sm text-slate-500">Sem extensões</div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                )}
+
+                <FileTypeFilterMenu
+                    distinctFileTypes={distinctFileTypes}
+                    distinctEmbroideryExtensions={distinctEmbroideryExtensions}
+                    selectedFileType={selectedFileType}
+                    onSelectFileType={setSelectedFileType}
+                />
+
                 <button
                     onClick={() => setShowFavoritesOnly((prev) => !prev)}
-                    className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${showFavoritesOnly
-                        ? 'bg-amber-400 border-amber-400 text-white'
-                        : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
-                        }`}
+                    className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                        showFavoritesOnly
+                            ? 'bg-amber-400 border-amber-400 text-white'
+                            : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+                    }`}
                     title={showFavoritesOnly ? 'Mostrar todos os arquivos' : 'Mostrar apenas favoritos'}
                 >
                     ★ {showFavoritesOnly ? 'Favoritos' : 'Todos'}
                 </button>
+
                 <select
                     value={sort}
                     onChange={(e) => setSort(e.target.value as SortOption)}
@@ -511,6 +380,7 @@ export function CollectionPage() {
                         </option>
                     ))}
                 </select>
+
                 <select
                     value={itemsPerPage}
                     onChange={(e) => setItemsPerPage(Number(e.target.value))}
@@ -525,6 +395,7 @@ export function CollectionPage() {
                 </select>
             </div>
 
+            {/* Batch actions bar */}
             <div className="mb-6 flex flex-wrap items-center gap-2">
                 <button
                     onClick={() => setSelectedItems(filteredAndSorted.map((item) => item.id))}
@@ -559,39 +430,11 @@ export function CollectionPage() {
             {error && <div className="mb-6 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
             {isUpdating && updateProgress && (
-                <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-                    <div className="text-sm text-blue-800 mb-2">
-                        {updateProgress.stage}: {updateProgress.current} / {updateProgress.total}
-                    </div>
-                    <div className="h-2 bg-blue-200 rounded-full overflow-hidden">
-                        <div
-                            className="h-full bg-blue-600 transition-all"
-                            style={{
-                                width: updateProgress.total > 0
-                                    ? `${(updateProgress.current / updateProgress.total) * 100}%`
-                                    : '0%',
-                            }}
-                        />
-                    </div>
-                </div>
+                <ProgressBar progress={updateProgress} className="mb-6" />
             )}
 
             {isRegenerating && regenProgress && (
-                <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-                    <div className="text-sm text-blue-800 mb-2">
-                        {regenProgress.stage}: {regenProgress.current} / {regenProgress.total}
-                    </div>
-                    <div className="h-2 bg-blue-200 rounded-full overflow-hidden">
-                        <div
-                            className="h-full bg-blue-600 transition-all"
-                            style={{
-                                width: regenProgress.total > 0
-                                    ? `${(regenProgress.current / regenProgress.total) * 100}%`
-                                    : '0%',
-                            }}
-                        />
-                    </div>
-                </div>
+                <ProgressBar progress={regenProgress} className="mb-6" />
             )}
 
             {regenSummary && (
@@ -603,6 +446,7 @@ export function CollectionPage() {
                 </div>
             )}
 
+            {/* Content items grid or empty state */}
             {filteredAndSorted.length === 0 ? (
                 <div className="text-center py-16 text-slate-500">
                     <div className="text-5xl mb-4">📄</div>
@@ -630,94 +474,16 @@ export function CollectionPage() {
                 </div>
             )}
 
-            {totalPages > 1 && (
-                <div className="mt-6 flex flex-col items-center gap-3">
-                    <div className="flex flex-wrap items-center justify-center gap-1">
-                        <button
-                            onClick={() => setPage(1)}
-                            disabled={currentPage === 1}
-                            className="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                            title="Primeira página"
-                        >
-                            «
-                        </button>
-                        <button
-                            onClick={() => setPage(currentPage - 1)}
-                            disabled={currentPage === 1}
-                            className="px-3 py-1.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                            ‹ Anterior
-                        </button>
-                        {getPageNumbers(currentPage, totalPages).map((entry, index) =>
-                            entry === '…' ? (
-                                <span key={`ellipsis-${index}`} className="px-1 text-sm text-slate-400">
-                                    …
-                                </span>
-                            ) : (
-                                <button
-                                    key={entry}
-                                    onClick={() => setPage(entry)}
-                                    className={`px-3 py-1.5 rounded-lg text-sm border ${
-                                        entry === currentPage
-                                            ? 'bg-blue-600 border-blue-600 text-white'
-                                            : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-                                    }`}
-                                >
-                                    {entry}
-                                </button>
-                            ),
-                        )}
-                        <button
-                            onClick={() => setPage(currentPage + 1)}
-                            disabled={currentPage === totalPages}
-                            className="px-3 py-1.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                            Próxima ›
-                        </button>
-                        <button
-                            onClick={() => setPage(totalPages)}
-                            disabled={currentPage === totalPages}
-                            className="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                            title="Última página"
-                        >
-                            »
-                        </button>
-                    </div>
+            {/* Pagination Component */}
+            <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setPage}
+            />
 
-                    <div className="flex flex-wrap items-center justify-center gap-3 text-sm text-slate-500">
-                        <span>
-                            Página {currentPage} de {totalPages} · mostrando {rangeStart}–{rangeEnd} de {totalItems}
-                        </span>
-                        <form
-                            onSubmit={(event) => {
-                                event.preventDefault();
-                                handleGoToPage();
-                            }}
-                            className="flex items-center gap-2"
-                        >
-                            <label htmlFor="go-to-page" className="text-slate-500">
-                                Ir para a página
-                            </label>
-                            <input
-                                id="go-to-page"
-                                type="number"
-                                min={1}
-                                max={totalPages}
-                                value={pageInput}
-                                onChange={(event) => setPageInput(event.target.value)}
-                                className="w-20 px-2 py-1 border border-slate-300 rounded-lg text-sm text-slate-700"
-                            />
-                            <button
-                                type="submit"
-                                className="px-3 py-1 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 hover:bg-slate-50"
-                            >
-                                Ir
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            )}
-
+            {/* Duplicates modal */}
             {showDuplicates && currentCollectionId !== null && (
                 <DuplicateAnalysisModal
                     collectionId={currentCollectionId}
