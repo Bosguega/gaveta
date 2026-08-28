@@ -3,7 +3,9 @@ import { ItemCard } from '@/components/ItemCard';
 import { DuplicateAnalysisModal } from '@/components/DuplicateAnalysisModal';
 import { ProgressBar } from '@/components/common/ProgressBar';
 import { Pagination } from '@/components/common/Pagination';
+import { QuickLookModal } from '@/components/common/QuickLookModal';
 import { FileTypeFilterMenu } from '@/components/collection/FileTypeFilterMenu';
+import { CollectionStatsModal } from '@/components/collection/CollectionStatsModal';
 import { useAppStore } from '@/store/useAppStore';
 import { getCollection } from '@/services/collections';
 import {
@@ -18,12 +20,32 @@ import {
     listenToRegenerateProgress,
 } from '@/services/items';
 import { clearThumbnailUrlCache } from '@/services/thumbnails';
-import { SORT_OPTIONS, ITEMS_PER_PAGE_OPTIONS, EMBROIDERY_EXTENSIONS, type ScanProgress, type SortOption } from '@/types';
+import {
+    SORT_OPTIONS,
+    ITEMS_PER_PAGE_OPTIONS,
+    SIZE_FILTER_OPTIONS,
+    STITCH_FILTER_OPTIONS,
+    EMBROIDERY_EXTENSIONS,
+    type CollectionDetail,
+    type ScanProgress,
+    type SortOption,
+    type SizeFilterOption,
+    type StitchFilterOption,
+} from '@/types';
 import { getFileExtension } from '@/utils/format';
+
+function getParentDirectory(filePath: string): string {
+    const normalized = filePath.replace(/\\/g, '/');
+    const idx = normalized.lastIndexOf('/');
+    if (idx <= 0) return 'Raiz';
+    return normalized.slice(0, idx);
+}
 
 export function CollectionPage() {
     const {
         currentCollectionId,
+        focusedItemId,
+        setFocusedItemId,
         closeCollection,
         items,
         setItems,
@@ -37,22 +59,33 @@ export function CollectionPage() {
         clearSelection,
         itemsPerPage,
         setItemsPerPage,
+        gridDensity,
+        setGridDensity,
+        viewMode,
+        setViewMode,
     } = useAppStore();
 
-    const [collectionName, setCollectionName] = useState('');
+    const [collectionDetail, setCollectionDetail] = useState<CollectionDetail | null>(null);
     const [search, setSearch] = useState('');
     const [sort, setSort] = useState<SortOption>('name-asc');
     const [selectedFileType, setSelectedFileType] = useState<string>('all');
+    const [sizeFilter, setSizeFilter] = useState<SizeFilterOption>('all');
+    const [stitchFilter, setStitchFilter] = useState<StitchFilterOption>('all');
+
     const [unavailableCount, setUnavailableCount] = useState(0);
     const [erroredCount, setErroredCount] = useState(0);
     const [error, setError] = useState<string | null>(null);
     const [showDuplicates, setShowDuplicates] = useState(false);
+    const [showStats, setShowStats] = useState(false);
     const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
     const [isRegenerating, setIsRegenerating] = useState(false);
     const [regenProgress, setRegenProgress] = useState<ScanProgress | null>(null);
     const [regenSummary, setRegenSummary] = useState<{ regenerated: number; failed: number } | null>(null);
     const [thumbEpoch, setThumbEpoch] = useState(0);
     const [page, setPage] = useState(1);
+
+    // QuickLook State
+    const [quickLookIndex, setQuickLookIndex] = useState<number | null>(null);
 
     const loadItems = async () => {
         if (currentCollectionId === null) return;
@@ -92,23 +125,38 @@ export function CollectionPage() {
         setSearch('');
         setSort('name-asc');
         setSelectedFileType('all');
+        setSizeFilter('all');
+        setStitchFilter('all');
         setSelectedItems([]);
         setUnavailableCount(0);
         setErroredCount(0);
         setError(null);
         setShowFavoritesOnly(false);
         setShowDuplicates(false);
+        setShowStats(false);
         setIsRegenerating(false);
         setRegenProgress(null);
         setRegenSummary(null);
+        setQuickLookIndex(null);
         setPage(1);
 
         getCollection(currentCollectionId)
-            .then((detail) => setCollectionName(detail?.name ?? ''))
-            .catch(() => setCollectionName(''));
+            .then((detail) => setCollectionDetail(detail))
+            .catch(() => setCollectionDetail(null));
 
         loadItems();
     }, [currentCollectionId]);
+
+    // Handle focused item from global search
+    useEffect(() => {
+        if (focusedItemId !== null && items.length > 0) {
+            const item = items.find((it) => it.id === focusedItemId);
+            if (item) {
+                setSelectedItems([focusedItemId]);
+            }
+            setFocusedItemId(null);
+        }
+    }, [focusedItemId, items, setSelectedItems, setFocusedItemId]);
 
     useEffect(() => {
         const unlisten = listenToUpdateProgress((progress) => {
@@ -127,12 +175,12 @@ export function CollectionPage() {
     // Drop selection when any filter changes to prevent hidden items from staying selected
     useEffect(() => {
         clearSelection();
-    }, [search, selectedFileType, showFavoritesOnly, clearSelection]);
+    }, [search, selectedFileType, sizeFilter, stitchFilter, showFavoritesOnly, clearSelection]);
 
     // Filter, sort or pagination changes return to page 1
     useEffect(() => {
         setPage(1);
-    }, [search, selectedFileType, showFavoritesOnly, sort, itemsPerPage]);
+    }, [search, selectedFileType, sizeFilter, stitchFilter, showFavoritesOnly, sort, itemsPerPage]);
 
     const handleUpdate = async () => {
         if (currentCollectionId === null || isUpdating) return;
@@ -213,6 +261,7 @@ export function CollectionPage() {
             result = result.filter((item) => item.is_favorite);
         }
 
+        // File type filter
         if (selectedFileType === 'embroidery') {
             result = result.filter((item) => item.file_type === 'embroidery');
         } else if (selectedFileType === 'pdf' || selectedFileType === 'image') {
@@ -221,8 +270,29 @@ export function CollectionPage() {
             result = result.filter((item) => getFileExtension(item.filename) === selectedFileType);
         }
 
+        // Size filter
+        if (sizeFilter === 'lt-2mb') {
+            result = result.filter((item) => item.size < 2 * 1024 * 1024);
+        } else if (sizeFilter === '2mb-10mb') {
+            result = result.filter((item) => item.size >= 2 * 1024 * 1024 && item.size <= 10 * 1024 * 1024);
+        } else if (sizeFilter === '10mb-50mb') {
+            result = result.filter((item) => item.size > 10 * 1024 * 1024 && item.size <= 50 * 1024 * 1024);
+        } else if (sizeFilter === 'gt-50mb') {
+            result = result.filter((item) => item.size > 50 * 1024 * 1024);
+        }
+
+        // Stitch count filter (embroidery only)
+        if (stitchFilter === 'lt-10k') {
+            result = result.filter((item) => item.stitch_count !== null && item.stitch_count < 10000);
+        } else if (stitchFilter === '10k-30k') {
+            result = result.filter((item) => item.stitch_count !== null && item.stitch_count >= 10000 && item.stitch_count <= 30000);
+        } else if (stitchFilter === 'gt-30k') {
+            result = result.filter((item) => item.stitch_count !== null && item.stitch_count > 30000);
+        }
+
+        // Search filter
         if (query) {
-            result = result.filter((item) => item.filename.toLowerCase().includes(query));
+            result = result.filter((item) => item.filename.toLowerCase().includes(query) || item.path.toLowerCase().includes(query));
         }
 
         const sorted = [...result];
@@ -275,7 +345,7 @@ export function CollectionPage() {
                 break;
         }
         return sorted;
-    }, [items, search, sort, showFavoritesOnly, selectedFileType]);
+    }, [items, search, sort, showFavoritesOnly, selectedFileType, sizeFilter, stitchFilter]);
 
     const totalItems = filteredAndSorted.length;
     const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
@@ -285,37 +355,101 @@ export function CollectionPage() {
         [filteredAndSorted, currentPage, itemsPerPage],
     );
 
+    // Grouping by folder
+    const groupedItems = useMemo(() => {
+        if (viewMode !== 'folder') return null;
+        const groups: Record<string, typeof pageItems> = {};
+        for (const item of pageItems) {
+            const parent = getParentDirectory(item.path);
+            if (!groups[parent]) {
+                groups[parent] = [];
+            }
+            groups[parent].push(item);
+        }
+        return groups;
+    }, [pageItems, viewMode]);
+
+    // Spacebar shortcut for Quick Look
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === ' ' && quickLookIndex === null) {
+                const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+                if (['input', 'textarea', 'select'].includes(targetTag)) return;
+
+                e.preventDefault();
+                if (selectedIds.length > 0) {
+                    const foundIndex = pageItems.findIndex((it) => it.id === selectedIds[0]);
+                    if (foundIndex >= 0) {
+                        setQuickLookIndex(foundIndex);
+                        return;
+                    }
+                }
+                if (pageItems.length > 0) {
+                    setQuickLookIndex(0);
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [quickLookIndex, selectedIds, pageItems]);
+
+    // Grid density CSS classes
+    const gridColsClass =
+        gridDensity === 'compact'
+            ? 'grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-3'
+            : gridDensity === 'large'
+            ? 'grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-6'
+            : 'grid-cols-[repeat(auto-fill,minmax(165px,1fr))] gap-4';
+
+    const hasEmbroidery = distinctFileTypes.includes('embroidery');
+
     return (
-        <div className="p-8">
+        <div className="p-8 max-w-[1600px] mx-auto">
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                 <div className="flex items-center gap-3">
                     <button
                         onClick={closeCollection}
-                        className="text-slate-600 hover:text-slate-900 font-medium"
+                        className="text-slate-600 hover:text-slate-900 font-medium px-2 py-1 rounded hover:bg-slate-200/60 transition-colors"
                         title="Voltar"
                     >
                         ← Voltar
                     </button>
-                    {collectionName && (
-                        <h1 className="text-xl font-semibold text-slate-800">{collectionName}</h1>
+                    {collectionDetail?.name && (
+                        <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                            <span>{collectionDetail.name}</span>
+                            <span className="text-xs font-normal text-slate-400">({items.length} itens)</span>
+                        </h1>
                     )}
                 </div>
-                <div className="flex items-center gap-3">
+
+                <div className="flex flex-wrap items-center gap-2.5">
                     {unavailableCount > 0 && (
-                        <span className="text-sm text-amber-600">
+                        <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
                             ⚠ {unavailableCount} local(is) indisponível(is)
                         </span>
                     )}
                     {erroredCount > 0 && (
-                        <span className="text-sm text-amber-600" title="Pastas com erro de leitura foram preservadas para não apagar itens ou favoritos">
-                            ⚠ {erroredCount} local(is) com erro de leitura (itens preservados)
+                        <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200" title="Pastas com erro de leitura foram preservadas para não apagar itens ou favoritos">
+                            ⚠ {erroredCount} local(is) preservados
                         </span>
                     )}
+
+                    <button
+                        type="button"
+                        onClick={() => setShowStats(true)}
+                        disabled={items.length === 0}
+                        className="px-3 py-1.5 text-sm bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium disabled:opacity-40"
+                        title="Ver estatísticas e resumo da coleção"
+                    >
+                        📊 Estatísticas
+                    </button>
+
                     {isUpdating ? (
                         <button
                             onClick={handleCancel}
-                            className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"
+                            className="px-4 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium shadow-sm"
                         >
                             Cancelar
                         </button>
@@ -324,14 +458,14 @@ export function CollectionPage() {
                             <button
                                 onClick={() => setShowDuplicates(true)}
                                 disabled={items.length === 0}
-                                className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed font-medium"
+                                className="px-3.5 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40 font-medium shadow-sm"
                                 title={items.length === 0 ? 'Atualize a coleção primeiro' : 'Analisar duplicados nesta coleção'}
                             >
-                                🔍 Analisar duplicados
+                                🔍 Duplicados
                             </button>
                             <button
                                 onClick={handleUpdate}
-                                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                                className="px-3.5 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-sm"
                             >
                                 🔄 Atualizar
                             </button>
@@ -340,16 +474,18 @@ export function CollectionPage() {
                 </div>
             </div>
 
-            {/* Filter and search bar */}
-            <div className="flex items-center gap-3 mb-6">
+            {/* Filter, search and display controls bar */}
+            <div className="flex flex-wrap items-center gap-3 mb-6 bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
+                {/* Search input */}
                 <input
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="🔎 Buscar arquivos..."
-                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 min-w-[200px] px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50/50"
                 />
 
+                {/* File Type Filter */}
                 <FileTypeFilterMenu
                     distinctFileTypes={distinctFileTypes}
                     distinctEmbroideryExtensions={distinctEmbroideryExtensions}
@@ -357,9 +493,40 @@ export function CollectionPage() {
                     onSelectFileType={setSelectedFileType}
                 />
 
+                {/* Size Filter */}
+                <select
+                    value={sizeFilter}
+                    onChange={(e) => setSizeFilter(e.target.value as SizeFilterOption)}
+                    className="px-3 py-1.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-700"
+                    title="Filtrar por tamanho"
+                >
+                    {SIZE_FILTER_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                            {option.label}
+                        </option>
+                    ))}
+                </select>
+
+                {/* Stitch count Filter (only if collection has embroidery) */}
+                {hasEmbroidery && (
+                    <select
+                        value={stitchFilter}
+                        onChange={(e) => setStitchFilter(e.target.value as StitchFilterOption)}
+                        className="px-3 py-1.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-700"
+                        title="Filtrar por quantidade de pontos de bordado"
+                    >
+                        {STITCH_FILTER_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+                )}
+
+                {/* Favorites button */}
                 <button
                     onClick={() => setShowFavoritesOnly((prev) => !prev)}
-                    className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
                         showFavoritesOnly
                             ? 'bg-amber-400 border-amber-400 text-white'
                             : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
@@ -369,10 +536,12 @@ export function CollectionPage() {
                     ★ {showFavoritesOnly ? 'Favoritos' : 'Todos'}
                 </button>
 
+                {/* Sort selector */}
                 <select
                     value={sort}
                     onChange={(e) => setSort(e.target.value as SortOption)}
-                    className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm text-slate-700"
+                    className="px-3 py-1.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-700"
+                    title="Critério de ordenação"
                 >
                     {SORT_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -381,18 +550,80 @@ export function CollectionPage() {
                     ))}
                 </select>
 
+                {/* Items per page selector */}
                 <select
                     value={itemsPerPage}
                     onChange={(e) => setItemsPerPage(Number(e.target.value))}
-                    className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm text-slate-700"
+                    className="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-700"
                     title="Itens por página"
                 >
                     {ITEMS_PER_PAGE_OPTIONS.map((option) => (
                         <option key={option} value={option}>
-                            {option} / página
+                            {option} / pág
                         </option>
                     ))}
                 </select>
+
+                {/* Divider */}
+                <div className="h-6 w-px bg-slate-200 hidden sm:block" />
+
+                {/* View Mode (Flat vs Folder) */}
+                <div className="flex items-center rounded-lg border border-slate-300 bg-slate-100 p-0.5">
+                    <button
+                        type="button"
+                        onClick={() => setViewMode('flat')}
+                        className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                            viewMode === 'flat' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="Visualização em Grade Contínua"
+                    >
+                        ▦ Grade
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setViewMode('folder')}
+                        className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                            viewMode === 'folder' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="Agrupar por Subpastas"
+                    >
+                        📁 Pastas
+                    </button>
+                </div>
+
+                {/* Grid Density Switcher */}
+                <div className="flex items-center rounded-lg border border-slate-300 bg-slate-100 p-0.5" title="Tamanho das miniaturas">
+                    <button
+                        type="button"
+                        onClick={() => setGridDensity('compact')}
+                        className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+                            gridDensity === 'compact' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="Miniaturas pequenas"
+                    >
+                        S
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setGridDensity('normal')}
+                        className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+                            gridDensity === 'normal' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="Miniaturas normais"
+                    >
+                        M
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setGridDensity('large')}
+                        className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+                            gridDensity === 'large' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="Miniaturas grandes com detalhes"
+                    >
+                        L
+                    </button>
+                </div>
             </div>
 
             {/* Batch actions bar */}
@@ -400,7 +631,7 @@ export function CollectionPage() {
                 <button
                     onClick={() => setSelectedItems(filteredAndSorted.map((item) => item.id))}
                     disabled={filteredAndSorted.length === 0 || isRegenerating}
-                    className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="px-3 py-1.5 border border-slate-300 rounded-lg bg-white text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
                     title="Selecionar todos os itens exibidos pelo filtro atual"
                 >
                     Selecionar todos
@@ -408,22 +639,36 @@ export function CollectionPage() {
                 <button
                     onClick={clearSelection}
                     disabled={selectedIds.length === 0 || isRegenerating}
-                    className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="px-3 py-1.5 border border-slate-300 rounded-lg bg-white text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
                 >
                     Limpar seleção
                 </button>
-                <span className="text-sm text-slate-500">
+                <span className="text-xs text-slate-500">
                     {selectedIds.length} selecionado{selectedIds.length === 1 ? '' : 's'}
                 </span>
+
+                {selectedIds.length > 0 && (
+                    <button
+                        onClick={() => {
+                            const foundIndex = pageItems.findIndex((it) => it.id === selectedIds[0]);
+                            setQuickLookIndex(foundIndex >= 0 ? foundIndex : 0);
+                        }}
+                        className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-1"
+                        title="Pré-visualizar item selecionado (Espaço)"
+                    >
+                        🔍 Pré-visualizar (Espaço)
+                    </button>
+                )}
+
                 <button
                     onClick={handleRegenerateThumbnails}
                     disabled={selectedIds.length === 0 || isRegenerating}
-                    className="ml-auto px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="ml-auto px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-40 shadow-xs"
                     title="Gerar novamente as miniaturas dos itens selecionados"
                 >
                     {isRegenerating
                         ? 'Gerando...'
-                        : `🔄 Gerar as miniaturas novamente${selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}`}
+                        : `🔄 Regenerar miniaturas${selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}`}
                 </button>
             </div>
 
@@ -448,18 +693,54 @@ export function CollectionPage() {
 
             {/* Content items grid or empty state */}
             {filteredAndSorted.length === 0 ? (
-                <div className="text-center py-16 text-slate-500">
+                <div className="text-center py-20 text-slate-500 bg-white rounded-2xl border border-dashed border-slate-300">
                     <div className="text-5xl mb-4">📄</div>
-                    <p className="text-lg">
-                        {items.length === 0 ? 'Nenhum arquivo encontrado' : 'Nenhum resultado para a busca'}
+                    <p className="text-lg font-semibold text-slate-700">
+                        {items.length === 0 ? 'Nenhum arquivo encontrado' : 'Nenhum resultado para os filtros atuais'}
                     </p>
                     {items.length === 0 && (
-                        <p className="text-sm mt-1">Clique em "Atualizar" para escanear as pastas</p>
+                        <p className="text-sm mt-1">Clique em "Atualizar" para escanear as pastas configuradas</p>
                     )}
                 </div>
+            ) : viewMode === 'folder' && groupedItems ? (
+                /* Grouped by Folder View */
+                <div className="space-y-8">
+                    {Object.entries(groupedItems).map(([folderPath, groupItems]) => (
+                        <div key={folderPath} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                            <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100">
+                                <span className="text-base">📁</span>
+                                <h3 className="text-sm font-bold text-slate-800 truncate" title={folderPath}>
+                                    {folderPath}
+                                </h3>
+                                <span className="text-xs text-slate-400 ml-auto font-medium">
+                                    {groupItems.length} arquivo(s)
+                                </span>
+                            </div>
+                            <div className={`grid ${gridColsClass}`}>
+                                {groupItems.map((item) => (
+                                    <ItemCard
+                                        key={item.id}
+                                        item={item}
+                                        selected={selectedItemIds.has(item.id)}
+                                        refreshKey={thumbEpoch}
+                                        onSelect={() => toggleItemSelection(item.id)}
+                                        onOpen={() => handleOpenFile(item.path)}
+                                        onQuickLook={() => {
+                                            const idx = pageItems.findIndex((it) => it.id === item.id);
+                                            setQuickLookIndex(idx >= 0 ? idx : 0);
+                                        }}
+                                        onRevealInFolder={() => handleRevealInFolder(item.path)}
+                                        onToggleFavorite={() => handleToggleFavorite(item.id)}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
             ) : (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-4">
-                    {pageItems.map((item) => (
+                /* Flat Grid View */
+                <div className={`grid ${gridColsClass}`}>
+                    {pageItems.map((item, index) => (
                         <ItemCard
                             key={item.id}
                             item={item}
@@ -467,6 +748,7 @@ export function CollectionPage() {
                             refreshKey={thumbEpoch}
                             onSelect={() => toggleItemSelection(item.id)}
                             onOpen={() => handleOpenFile(item.path)}
+                            onQuickLook={() => setQuickLookIndex(index)}
                             onRevealInFolder={() => handleRevealInFolder(item.path)}
                             onToggleFavorite={() => handleToggleFavorite(item.id)}
                         />
@@ -483,7 +765,31 @@ export function CollectionPage() {
                 onPageChange={setPage}
             />
 
-            {/* Duplicates modal */}
+            {/* Quick Look Fullscreen Preview Modal */}
+            {quickLookIndex !== null && pageItems.length > 0 && (
+                <QuickLookModal
+                    items={pageItems}
+                    currentIndex={quickLookIndex}
+                    onClose={() => setQuickLookIndex(null)}
+                    onNavigate={(index) => setQuickLookIndex(index)}
+                    onOpenFile={handleOpenFile}
+                    onRevealInFolder={handleRevealInFolder}
+                    onToggleFavorite={handleToggleFavorite}
+                    refreshKey={thumbEpoch}
+                />
+            )}
+
+            {/* Collection Stats Modal */}
+            {showStats && collectionDetail && (
+                <CollectionStatsModal
+                    collectionName={collectionDetail.name}
+                    items={items}
+                    pathsCount={collectionDetail.paths.length}
+                    onClose={() => setShowStats(false)}
+                />
+            )}
+
+            {/* Duplicates Modal */}
             {showDuplicates && currentCollectionId !== null && (
                 <DuplicateAnalysisModal
                     collectionId={currentCollectionId}

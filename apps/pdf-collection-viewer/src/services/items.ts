@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import type {
     CollectionItem,
     DuplicateAnalysis,
+    GlobalSearchResultItem,
     RegenerateThumbnailsResult,
     RemoveDuplicateResult,
     ScanProgress,
@@ -12,6 +13,11 @@ import type {
 export async function listItems(collectionId: number): Promise<CollectionItem[]> {
     return invoke<CollectionItem[]>('list_items', { collectionId });
 }
+
+export async function searchAllItems(query: string, limit?: number): Promise<GlobalSearchResultItem[]> {
+    return invoke<GlobalSearchResultItem[]>('search_all_items', { query, limit });
+}
+
 
 export async function updateCollectionScan(collectionId: number): Promise<UpdateResult> {
     return invoke<UpdateResult>('update_collection_scan', { collectionId });

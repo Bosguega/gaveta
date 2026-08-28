@@ -854,3 +854,24 @@ pub async fn regenerate_thumbnails(
         failed,
     })
 }
+
+#[tauri::command]
+pub fn toggle_collection_pin(state: State<'_, DbState>, id: i64) -> Result<bool, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    db::toggle_collection_pin(&conn, id)
+}
+
+#[tauri::command]
+pub fn search_all_items(
+    state: State<'_, DbState>,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<db::GlobalSearchResultItem>, String> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    db::search_all_items(&conn, trimmed, limit.unwrap_or(50))
+}
+

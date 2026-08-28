@@ -71,3 +71,8 @@ export async function saveCollectionCover(srcPath: string, rect: CoverCropRect):
         cropH: rect.cropH,
     });
 }
+
+export async function toggleCollectionPin(id: number): Promise<boolean> {
+    return invoke<boolean>('toggle_collection_pin', { id });
+}
+

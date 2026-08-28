@@ -10,11 +10,12 @@ interface Props {
     refreshKey?: number;
     onSelect: () => void;
     onOpen: () => void;
+    onQuickLook?: () => void;
     onRevealInFolder: () => void;
     onToggleFavorite: () => void;
 }
 
-export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onRevealInFolder, onToggleFavorite }: Props) {
+export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onQuickLook, onRevealInFolder, onToggleFavorite }: Props) {
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
     const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -83,19 +84,37 @@ export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onRevea
                     >
                         ★
                     </button>
-                    <button
-                        type="button"
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            onOpen();
-                        }}
-                        onDoubleClick={(event) => event.stopPropagation()}
-                        className="absolute top-2 right-2 px-2.5 py-1.5 rounded-lg bg-blue-600/90 hover:bg-blue-700 text-white text-xs font-medium shadow-sm opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
-                        title="Abrir arquivo"
-                    >
-                        Abrir ↗
-                    </button>
+
+                    <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {onQuickLook && (
+                            <button
+                                type="button"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    onQuickLook();
+                                }}
+                                onDoubleClick={(event) => event.stopPropagation()}
+                                className="w-8 h-8 rounded-lg bg-slate-900/80 hover:bg-slate-900 text-white text-xs flex items-center justify-center shadow-sm backdrop-blur-sm transition-colors"
+                                title="Pré-visualizar (Espaço)"
+                            >
+                                🔍
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onOpen();
+                            }}
+                            onDoubleClick={(event) => event.stopPropagation()}
+                            className="px-2.5 py-1.5 rounded-lg bg-blue-600/90 hover:bg-blue-700 text-white text-xs font-medium shadow-sm backdrop-blur-sm transition-colors"
+                            title="Abrir arquivo"
+                        >
+                            Abrir ↗
+                        </button>
+                    </div>
                 </div>
+
 
 
                 <div className="p-3">

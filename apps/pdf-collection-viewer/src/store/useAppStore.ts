@@ -1,11 +1,11 @@
 import { create } from 'zustand';
-import { DEFAULT_ITEMS_PER_PAGE, ITEMS_PER_PAGE_OPTIONS } from '@/types';
+import { DEFAULT_ITEMS_PER_PAGE, ITEMS_PER_PAGE_OPTIONS, type GridDensity, type ViewMode } from '@/types';
 import type { Collection, CollectionItem, ScanProgress } from '@/types';
 
 const ITEMS_PER_PAGE_KEY = 'pdf-collection-viewer:items-per-page';
+const GRID_DENSITY_KEY = 'pdf-collection-viewer:grid-density';
+const VIEW_MODE_KEY = 'pdf-collection-viewer:view-mode';
 
-// Persisted in localStorage: only the page-size preference, never the
-// current page (that is ephemeral UI state).
 function loadItemsPerPage(): number {
     try {
         const raw = localStorage.getItem(ITEMS_PER_PAGE_KEY);
@@ -19,11 +19,37 @@ function loadItemsPerPage(): number {
     return DEFAULT_ITEMS_PER_PAGE;
 }
 
+function loadGridDensity(): GridDensity {
+    try {
+        const raw = localStorage.getItem(GRID_DENSITY_KEY) as GridDensity;
+        if (raw === 'compact' || raw === 'normal' || raw === 'large') {
+            return raw;
+        }
+    } catch {
+        // fall through
+    }
+    return 'normal';
+}
+
+function loadViewMode(): ViewMode {
+    try {
+        const raw = localStorage.getItem(VIEW_MODE_KEY) as ViewMode;
+        if (raw === 'flat' || raw === 'folder') {
+            return raw;
+        }
+    } catch {
+        // fall through
+    }
+    return 'flat';
+}
+
 interface AppState {
     // Navigation
     currentCollectionId: number | null;
-    openCollection: (id: number) => void;
+    focusedItemId: number | null;
+    openCollection: (id: number, focusedItemId?: number | null) => void;
     closeCollection: () => void;
+    setFocusedItemId: (id: number | null) => void;
 
     // Collections
     collections: Collection[];
@@ -33,15 +59,19 @@ interface AppState {
     items: CollectionItem[];
     setItems: (items: CollectionItem[]) => void;
 
-    // Selection (generic, reusable by future batch actions)
+    // Selection
     selectedItemIds: Set<number>;
     toggleItemSelection: (id: number) => void;
     setSelectedItems: (ids: number[]) => void;
     clearSelection: () => void;
 
-    // Pagination preference (persisted; the current page is not)
+    // Preferences (persisted)
     itemsPerPage: number;
     setItemsPerPage: (count: number) => void;
+    gridDensity: GridDensity;
+    setGridDensity: (density: GridDensity) => void;
+    viewMode: ViewMode;
+    setViewMode: (mode: ViewMode) => void;
 
     // Update state
     isUpdating: boolean;
@@ -52,8 +82,10 @@ interface AppState {
 
 export const useAppStore = create<AppState>((set) => ({
     currentCollectionId: null,
-    openCollection: (id) => set({ currentCollectionId: id }),
-    closeCollection: () => set({ currentCollectionId: null }),
+    focusedItemId: null,
+    openCollection: (id, focusedItemId = null) => set({ currentCollectionId: id, focusedItemId }),
+    closeCollection: () => set({ currentCollectionId: null, focusedItemId: null }),
+    setFocusedItemId: (id) => set({ focusedItemId: id }),
 
     collections: [],
     setCollections: (collections) => set({ collections }),
@@ -80,9 +112,29 @@ export const useAppStore = create<AppState>((set) => ({
         try {
             localStorage.setItem(ITEMS_PER_PAGE_KEY, String(count));
         } catch {
-            // Persistence is best-effort; the in-memory value still applies.
+            // persistence best effort
         }
         set({ itemsPerPage: count });
+    },
+
+    gridDensity: loadGridDensity(),
+    setGridDensity: (gridDensity) => {
+        try {
+            localStorage.setItem(GRID_DENSITY_KEY, gridDensity);
+        } catch {
+            // persistence best effort
+        }
+        set({ gridDensity });
+    },
+
+    viewMode: loadViewMode(),
+    setViewMode: (viewMode) => {
+        try {
+            localStorage.setItem(VIEW_MODE_KEY, viewMode);
+        } catch {
+            // persistence best effort
+        }
+        set({ viewMode });
     },
 
     isUpdating: false,
@@ -90,3 +142,4 @@ export const useAppStore = create<AppState>((set) => ({
     setIsUpdating: (isUpdating) => set({ isUpdating }),
     setUpdateProgress: (updateProgress) => set({ updateProgress }),
 }));
+

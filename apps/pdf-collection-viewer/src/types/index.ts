@@ -4,6 +4,7 @@ export interface Collection {
     icon: string;
     icon_path: string | null;
     include_subfolders: boolean;
+    is_pinned: boolean;
     item_count: number;
     created_at: string;
     updated_at: string;
@@ -15,10 +16,46 @@ export interface CollectionDetail {
     icon: string;
     icon_path: string | null;
     include_subfolders: boolean;
+    is_pinned: boolean;
     paths: string[];
     created_at: string;
     updated_at: string;
 }
+
+export interface GlobalSearchResultItem {
+    id: number;
+    collection_id: number;
+    collection_name: string;
+    path: string;
+    filename: string;
+    size: number;
+    modified_at: string;
+    page_count: number | null;
+    file_type: string;
+    thumbnail_key: string | null;
+    thumbnail_status: string;
+    is_favorite: boolean;
+}
+
+export type GridDensity = 'compact' | 'normal' | 'large';
+export type ViewMode = 'flat' | 'folder';
+
+export type SizeFilterOption = 'all' | 'lt-2mb' | '2mb-10mb' | '10mb-50mb' | 'gt-50mb';
+export const SIZE_FILTER_OPTIONS: { value: SizeFilterOption; label: string }[] = [
+    { value: 'all', label: 'Todos os tamanhos' },
+    { value: 'lt-2mb', label: '< 2 MB' },
+    { value: '2mb-10mb', label: '2 – 10 MB' },
+    { value: '10mb-50mb', label: '10 – 50 MB' },
+    { value: 'gt-50mb', label: '> 50 MB' },
+];
+
+export type StitchFilterOption = 'all' | 'lt-10k' | '10k-30k' | 'gt-30k';
+export const STITCH_FILTER_OPTIONS: { value: StitchFilterOption; label: string }[] = [
+    { value: 'all', label: 'Todos os pontos' },
+    { value: 'lt-10k', label: '< 10.000 pts' },
+    { value: '10k-30k', label: '10k – 30k pts' },
+    { value: 'gt-30k', label: '> 30.000 pts' },
+];
 
 export interface CollectionItem {
     id: number;
@@ -38,6 +75,7 @@ export interface CollectionItem {
     design_width_mm: number | null;
     design_height_mm: number | null;
 }
+
 
 export interface ScanProgress {
     stage: string;

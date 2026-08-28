@@ -66,6 +66,7 @@ pub struct Collection {
     pub icon: String,
     pub icon_path: Option<String>,
     pub include_subfolders: bool,
+    pub is_pinned: bool,
     pub item_count: i64,
     pub created_at: String,
     pub updated_at: String,
@@ -79,10 +80,28 @@ pub struct CollectionDetail {
     pub icon: String,
     pub icon_path: Option<String>,
     pub include_subfolders: bool,
+    pub is_pinned: bool,
     pub paths: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GlobalSearchResultItem {
+    pub id: i64,
+    pub collection_id: i64,
+    pub collection_name: String,
+    pub path: String,
+    pub filename: String,
+    pub size: i64,
+    pub modified_at: String,
+    pub page_count: Option<i64>,
+    pub file_type: String,
+    pub thumbnail_key: Option<String>,
+    pub thumbnail_status: String,
+    pub is_favorite: bool,
+}
+
 
 /// A single file belonging to a collection.
 ///
@@ -349,8 +368,27 @@ pub fn open_and_migrate(app: &tauri::AppHandle) -> Result<Connection, String> {
         }
     }
 
+    // Migration 6: add is_pinned column to collections if missing
+    let has_is_pinned: bool = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('collections') WHERE name = 'is_pinned'")
+        .map_err(|e| format!("Falha ao verificar coluna is_pinned: {e}"))?
+        .query_row([], |row| {
+            let count: i64 = row.get(0)?;
+            Ok(count > 0)
+        })
+        .map_err(|e| format!("Falha ao verificar coluna is_pinned: {e}"))?;
+
+    if !has_is_pinned {
+        conn.execute(
+            "ALTER TABLE collections ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| format!("Falha ao adicionar coluna is_pinned: {e}"))?;
+    }
+
     Ok(conn)
 }
+
 
 // ── Collections ──
 
@@ -463,23 +501,25 @@ fn sha256_hex(input: &str) -> String {
 pub fn list_collections(conn: &Connection) -> Result<Vec<Collection>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT c.id, c.name, c.icon, c.icon_path, c.include_subfolders, c.created_at, c.updated_at,
+            "SELECT c.id, c.name, c.icon, c.icon_path, c.include_subfolders, c.created_at, c.updated_at, c.is_pinned,
                     (SELECT COUNT(*) FROM files f WHERE f.collection_id = c.id) as item_count
              FROM collections c
-             ORDER BY c.name COLLATE NOCASE",
+             ORDER BY c.is_pinned DESC, c.name COLLATE NOCASE",
         )
         .map_err(|e| format!("Falha ao preparar listagem: {e}"))?;
 
     let collections = stmt
         .query_map([], |row| {
             let include: i64 = row.get(4)?;
+            let pinned: i64 = row.get(7)?;
             Ok(Collection {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 icon: row.get(2)?,
                 icon_path: row.get(3)?,
                 include_subfolders: include != 0,
-                item_count: row.get(7)?,
+                is_pinned: pinned != 0,
+                item_count: row.get(8)?,
                 created_at: row.get(5)?,
                 updated_at: row.get(6)?,
             })
@@ -494,7 +534,7 @@ pub fn list_collections(conn: &Connection) -> Result<Vec<Collection>, String> {
 pub fn get_collection(conn: &Connection, id: i64) -> Result<Option<CollectionDetail>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, icon, icon_path, include_subfolders, created_at, updated_at
+            "SELECT id, name, icon, icon_path, include_subfolders, created_at, updated_at, is_pinned
              FROM collections WHERE id = ?1",
         )
         .map_err(|e| format!("Falha ao preparar consulta: {e}"))?;
@@ -502,12 +542,14 @@ pub fn get_collection(conn: &Connection, id: i64) -> Result<Option<CollectionDet
     let result = stmt
         .query_row(params![id], |row| {
             let include: i64 = row.get(4)?;
+            let pinned: i64 = row.get(7)?;
             Ok(CollectionDetail {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 icon: row.get(2)?,
                 icon_path: row.get(3)?,
                 include_subfolders: include != 0,
+                is_pinned: pinned != 0,
                 paths: Vec::new(),
                 created_at: row.get(5)?,
                 updated_at: row.get(6)?,
@@ -546,8 +588,8 @@ pub fn create_collection(
     let include = if include_subfolders { 1 } else { 0 };
 
     conn.execute(
-        "INSERT INTO collections (name, icon, icon_path, include_subfolders, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO collections (name, icon, icon_path, include_subfolders, is_pinned, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6)",
         params![name, icon, icon_path, include, now, now],
     )
     .map_err(|e| format!("Falha ao criar coleção: {e}"))?;
@@ -568,13 +610,77 @@ pub fn create_collection(
         icon: icon.to_string(),
         icon_path: icon_path.map(|s| s.to_string()),
         include_subfolders,
+        is_pinned: false,
         item_count: 0,
         created_at: now.clone(),
         updated_at: now,
     })
 }
 
+pub fn toggle_collection_pin(conn: &Connection, id: i64) -> Result<bool, String> {
+    let current: i64 = conn
+        .query_row(
+            "SELECT is_pinned FROM collections WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Falha ao consultar estado de fixação da coleção: {e}"))?;
+
+    let new_value = if current != 0 { 0 } else { 1 };
+    conn.execute(
+        "UPDATE collections SET is_pinned = ?1 WHERE id = ?2",
+        params![new_value, id],
+    )
+    .map_err(|e| format!("Falha ao atualizar fixação da coleção: {e}"))?;
+
+    Ok(new_value != 0)
+}
+
+pub fn search_all_items(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<GlobalSearchResultItem>, String> {
+    let pattern = format!("%{query}%");
+    let mut stmt = conn
+        .prepare(
+            "SELECT f.id, f.collection_id, c.name, f.path, f.filename, f.size, f.modified_at, f.page_count, f.file_type, f.thumbnail_key, f.thumbnail_status, f.is_favorite
+             FROM files f
+             JOIN collections c ON c.id = f.collection_id
+             WHERE f.filename LIKE ?1 OR f.path LIKE ?1
+             ORDER BY f.filename COLLATE NOCASE
+             LIMIT ?2",
+        )
+        .map_err(|e| format!("Falha ao preparar busca global: {e}"))?;
+
+    let rows = stmt
+        .query_map(params![pattern, limit as i64], |row| {
+            let status: ThumbnailStatus = row.get(10)?;
+            let favorite: i64 = row.get(11)?;
+            Ok(GlobalSearchResultItem {
+                id: row.get(0)?,
+                collection_id: row.get(1)?,
+                collection_name: row.get(2)?,
+                path: row.get(3)?,
+                filename: row.get(4)?,
+                size: row.get(5)?,
+                modified_at: row.get(6)?,
+                page_count: row.get(7)?,
+                file_type: row.get(8)?,
+                thumbnail_key: row.get(9)?,
+                thumbnail_status: status.to_string(),
+                is_favorite: favorite != 0,
+            })
+        })
+        .map_err(|e| format!("Falha ao executar busca global: {e}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Falha ao ler resultados da busca: {e}"))?;
+
+    Ok(rows)
+}
+
 pub fn update_collection(
+
     conn: &Connection,
     id: i64,
     name: &str,
