@@ -5,7 +5,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { getCollection } from '@/services/collections';
 import { listItems, updateCollectionScan, openFile, listenToUpdateProgress, cancelScan, toggleFavorite, revealInFolder, regenerateThumbnails, listenToRegenerateProgress } from '@/services/items';
 import { clearThumbnailUrlCache } from '@/services/thumbnails';
-import { SORT_OPTIONS, type ScanProgress, type SortOption } from '@/types';
+import { SORT_OPTIONS, ITEMS_PER_PAGE_OPTIONS, type ScanProgress, type SortOption } from '@/types';
 import { getFileTypeIcon, getFileTypeLabel } from '@/utils/format';
 
 const EMBROIDERY_EXTENSIONS = ['dst', 'exp', 'pes', 'pec', 'jef', 'vp3', 'xxx', 'vip', 'hus', 'sew'];
@@ -14,6 +14,29 @@ function getFileExtension(filename: string): string {
     const idx = filename.lastIndexOf('.');
     if (idx < 0) return '';
     return filename.slice(idx + 1).toLowerCase();
+}
+
+/**
+ * Builds the pagination page list: first and last pages, the pages around the
+ * current one, and `…` placeholders for the gaps in between.
+ */
+function getPageNumbers(currentPage: number, totalPages: number): (number | '…')[] {
+    if (totalPages <= 7) {
+        return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+
+    const wanted = new Set<number>([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
+    const pages: (number | '…')[] = [];
+    let previous = 0;
+    for (let candidate = 1; candidate <= totalPages; candidate++) {
+        if (!wanted.has(candidate)) continue;
+        if (previous > 0 && candidate - previous > 1) {
+            pages.push('…');
+        }
+        pages.push(candidate);
+        previous = candidate;
+    }
+    return pages;
 }
 
 export function CollectionPage() {
@@ -30,6 +53,8 @@ export function CollectionPage() {
         toggleItemSelection,
         setSelectedItems,
         clearSelection,
+        itemsPerPage,
+        setItemsPerPage,
     } = useAppStore();
     const [collectionName, setCollectionName] = useState('');
     const [search, setSearch] = useState('');
@@ -47,6 +72,8 @@ export function CollectionPage() {
     const [regenProgress, setRegenProgress] = useState<ScanProgress | null>(null);
     const [regenSummary, setRegenSummary] = useState<{ regenerated: number; failed: number } | null>(null);
     const [thumbEpoch, setThumbEpoch] = useState(0);
+    const [page, setPage] = useState(1);
+    const [pageInput, setPageInput] = useState('');
 
     const loadItems = async () => {
         if (currentCollectionId === null) return;
@@ -95,6 +122,8 @@ export function CollectionPage() {
         setIsRegenerating(false);
         setRegenProgress(null);
         setRegenSummary(null);
+        setPage(1);
+        setPageInput('');
 
         getCollection(currentCollectionId)
             .then((detail) => setCollectionName(detail?.name ?? ''))
@@ -122,6 +151,11 @@ export function CollectionPage() {
     useEffect(() => {
         clearSelection();
     }, [search, selectedFileType, showFavoritesOnly, clearSelection]);
+
+    // Any filter, ordering or page-size change sends the user back to page 1.
+    useEffect(() => {
+        setPage(1);
+    }, [search, selectedFileType, showFavoritesOnly, sort, itemsPerPage]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -283,6 +317,26 @@ export function CollectionPage() {
         }
         return sorted;
     }, [items, search, sort, showFavoritesOnly, selectedFileType]);
+
+    // Pagination slices the already-filtered and sorted list (order: items →
+    // filters → ordering → pagination).
+    const totalItems = filteredAndSorted.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+    const currentPage = Math.min(page, totalPages);
+    const rangeStart = totalItems === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
+    const rangeEnd = Math.min(currentPage * itemsPerPage, totalItems);
+    const pageItems = useMemo(
+        () => filteredAndSorted.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
+        [filteredAndSorted, currentPage, itemsPerPage],
+    );
+
+    const handleGoToPage = () => {
+        const parsed = Number.parseInt(pageInput, 10);
+        if (!Number.isNaN(parsed)) {
+            setPage(Math.min(totalPages, Math.max(1, parsed)));
+        }
+        setPageInput('');
+    };
 
     return (
         <div className="p-8">
@@ -457,6 +511,18 @@ export function CollectionPage() {
                         </option>
                     ))}
                 </select>
+                <select
+                    value={itemsPerPage}
+                    onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                    className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm text-slate-700"
+                    title="Itens por página"
+                >
+                    {ITEMS_PER_PAGE_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                            {option} / página
+                        </option>
+                    ))}
+                </select>
             </div>
 
             <div className="mb-6 flex flex-wrap items-center gap-2">
@@ -549,7 +615,7 @@ export function CollectionPage() {
                 </div>
             ) : (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-4">
-                    {filteredAndSorted.map((item) => (
+                    {pageItems.map((item) => (
                         <ItemCard
                             key={item.id}
                             item={item}
@@ -561,6 +627,94 @@ export function CollectionPage() {
                             onToggleFavorite={() => handleToggleFavorite(item.id)}
                         />
                     ))}
+                </div>
+            )}
+
+            {totalPages > 1 && (
+                <div className="mt-6 flex flex-col items-center gap-3">
+                    <div className="flex flex-wrap items-center justify-center gap-1">
+                        <button
+                            onClick={() => setPage(1)}
+                            disabled={currentPage === 1}
+                            className="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                            title="Primeira página"
+                        >
+                            «
+                        </button>
+                        <button
+                            onClick={() => setPage(currentPage - 1)}
+                            disabled={currentPage === 1}
+                            className="px-3 py-1.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            ‹ Anterior
+                        </button>
+                        {getPageNumbers(currentPage, totalPages).map((entry, index) =>
+                            entry === '…' ? (
+                                <span key={`ellipsis-${index}`} className="px-1 text-sm text-slate-400">
+                                    …
+                                </span>
+                            ) : (
+                                <button
+                                    key={entry}
+                                    onClick={() => setPage(entry)}
+                                    className={`px-3 py-1.5 rounded-lg text-sm border ${
+                                        entry === currentPage
+                                            ? 'bg-blue-600 border-blue-600 text-white'
+                                            : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                                    }`}
+                                >
+                                    {entry}
+                                </button>
+                            ),
+                        )}
+                        <button
+                            onClick={() => setPage(currentPage + 1)}
+                            disabled={currentPage === totalPages}
+                            className="px-3 py-1.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            Próxima ›
+                        </button>
+                        <button
+                            onClick={() => setPage(totalPages)}
+                            disabled={currentPage === totalPages}
+                            className="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                            title="Última página"
+                        >
+                            »
+                        </button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-center gap-3 text-sm text-slate-500">
+                        <span>
+                            Página {currentPage} de {totalPages} · mostrando {rangeStart}–{rangeEnd} de {totalItems}
+                        </span>
+                        <form
+                            onSubmit={(event) => {
+                                event.preventDefault();
+                                handleGoToPage();
+                            }}
+                            className="flex items-center gap-2"
+                        >
+                            <label htmlFor="go-to-page" className="text-slate-500">
+                                Ir para a página
+                            </label>
+                            <input
+                                id="go-to-page"
+                                type="number"
+                                min={1}
+                                max={totalPages}
+                                value={pageInput}
+                                onChange={(event) => setPageInput(event.target.value)}
+                                className="w-20 px-2 py-1 border border-slate-300 rounded-lg text-sm text-slate-700"
+                            />
+                            <button
+                                type="submit"
+                                className="px-3 py-1 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 hover:bg-slate-50"
+                            >
+                                Ir
+                            </button>
+                        </form>
+                    </div>
                 </div>
             )}
 

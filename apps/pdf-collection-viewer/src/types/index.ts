@@ -113,6 +113,10 @@ export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
     { value: 'pages-desc', label: 'Páginas: maior → menor' },
 ];
 
+export const ITEMS_PER_PAGE_OPTIONS = [50, 100, 500];
+
+export const DEFAULT_ITEMS_PER_PAGE = 100;
+
 export const COLLECTION_ICONS = [
     '📚',
     '📖',
