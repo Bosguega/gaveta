@@ -9,6 +9,7 @@ const backupItemSchema = z.object({
   quantity: z.number().nonnegative(),
   unit: z.string().optional(),
   price: z.number().nonnegative(),
+  paid_price: z.number().optional(),
   total: z.number().nonnegative().optional(),
 });
 
@@ -18,6 +19,7 @@ const backupReceiptSchema = z.object({
   date: z.string().min(1),
   items: z.array(backupItemSchema).default([]),
   created_at: z.string().optional(),
+  total_discount: z.number().optional(),
 });
 
 export const backupSchema = z.object({

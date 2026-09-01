@@ -74,4 +74,69 @@ describe("PriceEditModal", () => {
 
     expect(onSavePaidPrice).toHaveBeenCalledWith(7.5);
   });
+
+  it("applies negative total input as discount on original total", () => {
+    const onSavePaidPrice = vi.fn();
+
+    render(
+      <PriceEditModal
+        item={item}
+        isOpen
+        busy={false}
+        onCancel={vi.fn()}
+        onSavePaidPrice={onSavePaidPrice}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Total pago"), {
+      target: { value: "-1,50" },
+    });
+    // (25,00 - 1,50) / 2 = 11,75
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    expect(onSavePaidPrice).toHaveBeenCalledWith(11.75);
+  });
+
+  it("applies negative unit price input as discount on original unit price", () => {
+    const onSavePaidPrice = vi.fn();
+
+    render(
+      <PriceEditModal
+        item={item}
+        isOpen
+        busy={false}
+        onCancel={vi.fn()}
+        onSavePaidPrice={onSavePaidPrice}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Preço pago /un"), {
+      target: { value: "-2,50" },
+    });
+    // 12,50 - 2,50 = 10,00
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    expect(onSavePaidPrice).toHaveBeenCalledWith(10);
+  });
+
+  it("shows effective values in summary when using negative discount", () => {
+    render(
+      <PriceEditModal
+        item={item}
+        isOpen
+        busy={false}
+        onCancel={vi.fn()}
+        onSavePaidPrice={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Total pago"), {
+      target: { value: "-1,50" },
+    });
+
+    // Resumo deve exibir os valores efetivos (11,75 / 23,50), não o "-1,50" digitado
+    expect(screen.getByText("11,75")).toBeInTheDocument();
+    expect(screen.getByText("23,50")).toBeInTheDocument();
+    expect(screen.queryByText("-1,50")).not.toBeInTheDocument();
+  });
 });

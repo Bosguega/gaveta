@@ -26,6 +26,7 @@ interface DbReceiptRow {
   establishment_display?: string | null;
   date: string;
   created_at?: string | null;
+  total_discount?: number | null;
   items?: DbItemRow[] | null;
 }
 
@@ -94,6 +95,7 @@ async function saveReceiptAtomic(
     p_items: items.map((item: ReceiptItem) =>
       mapReceiptItemToDb(item, scopedReceiptId)
     ),
+    p_total_discount: receiptData.total_discount ?? null,
   });
 
   if (error) {
@@ -114,6 +116,7 @@ function mapDbReceiptToReceipt(row: DbReceiptRow): Receipt {
     establishment_display: row.establishment_display ?? undefined,
     date: formatToBR(row.date),
     items: (row.items || []).map(mapDbItemToReceiptItem),
+    total_discount: row.total_discount ?? undefined,
   };
 }
 
@@ -161,6 +164,7 @@ export async function getReceiptsPaginated(
       establishment_display,
       date,
       created_at,
+      total_discount,
       items (
         id,
         name,
@@ -174,7 +178,7 @@ export async function getReceiptsPaginated(
         total
       )
     `
-    : "id, establishment, establishment_display, date, created_at";
+    : "id, establishment, establishment_display, date, created_at, total_discount";
 
   let query = client
     .from("receipts")

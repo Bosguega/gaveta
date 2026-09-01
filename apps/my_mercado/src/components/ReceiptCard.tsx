@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback, useState } from "react";
-import { Trash2, ChevronDown, ChevronUp, Edit3, Pencil } from "lucide-react";
+import { Trash2, ChevronDown, ChevronUp, Edit3, Pencil, Tag } from "lucide-react";
 import { parseBRL, formatBRL } from "../utils/currency";
 import { formatQuantity } from "../utils/format";
 import { calculateReceiptTotal } from "../utils/analytics";
@@ -114,6 +114,23 @@ export const ReceiptCard = React.memo(function ReceiptCard({
     }, [receipt]);
     const displayDate = useMemo(() => formatToBR(receipt.date) || receipt.date, [receipt.date]);
 
+    // Desconto da nota ainda não distribuído nos itens via paid_price
+    const pendingDiscount = useMemo(() => {
+        const totalDiscount = receipt.total_discount ?? 0;
+        if (totalDiscount <= 0.005) return 0;
+
+        // Soma dos descontos já inseridos pelo usuário nos itens (price - paid_price)
+        const appliedDiscount = receipt.items.reduce((sum, item) => {
+            if (item.paid_price !== undefined && item.paid_price !== null && item.paid_price < item.price) {
+                return sum + (item.price - item.paid_price) * item.quantity;
+            }
+            return sum;
+        }, 0);
+
+        const remaining = totalDiscount - appliedDiscount;
+        return remaining > 0.005 ? remaining : 0;
+    }, [receipt.total_discount, receipt.items]);
+
     // Memoizar o callback de toggle
     const handleToggle = useCallback(() => {
         onToggle(receipt.id);
@@ -157,6 +174,15 @@ export const ReceiptCard = React.memo(function ReceiptCard({
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
+                        {pendingDiscount > 0 && (
+                            <span
+                                className="flex items-center bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full text-xs whitespace-nowrap"
+                                title={`Desconto de R$ ${pendingDiscount.toFixed(2).replace(".", ",")} ainda não inserido — edite o preço pago dos itens`}
+                            >
+                                <Tag size={12} className="mr-1" />
+                                R$ {pendingDiscount.toFixed(2).replace(".", ",")}
+                            </span>
+                        )}
                         <span className="text-[var(--success)] font-bold text-[1.1rem] whitespace-nowrap">
                             R$ {total.toFixed(2).replace(".", ",")}
                         </span>

@@ -22,21 +22,26 @@ ALTER TABLE receipts ADD COLUMN IF NOT EXISTS establishment_display TEXT;
 -- 3. RLS
 ALTER TABLE establishment_dictionary ENABLE ROW LEVEL SECURITY;
 
+-- Policies idempotentes (CREATE POLICY não suporta IF NOT EXISTS)
+DROP POLICY IF EXISTS "Usuarios podem ler seus proprios mapeamentos" ON establishment_dictionary;
 CREATE POLICY "Usuarios podem ler seus proprios mapeamentos"
     ON establishment_dictionary
     FOR SELECT
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Usuarios podem inserir seus proprios mapeamentos" ON establishment_dictionary;
 CREATE POLICY "Usuarios podem inserir seus proprios mapeamentos"
     ON establishment_dictionary
     FOR INSERT
     WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Usuarios podem atualizar seus proprios mapeamentos" ON establishment_dictionary;
 CREATE POLICY "Usuarios podem atualizar seus proprios mapeamentos"
     ON establishment_dictionary
     FOR UPDATE
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Usuarios podem deletar seus proprios mapeamentos" ON establishment_dictionary;
 CREATE POLICY "Usuarios podem deletar seus proprios mapeamentos"
     ON establishment_dictionary
     FOR DELETE

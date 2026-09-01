@@ -98,11 +98,14 @@ export function PriceEditModal({
   const nextPaidPrice = useMemo(() => {
     if (editedField === "total") {
       const parsed = parseBRL(totalValue);
-      return parsed < 0 ? item.price + parsed : parsed / quantity;
+      // If negative, user is providing a discount on the original total
+      const effectiveTotal = parsed < 0 ? originalTotal + parsed : parsed;
+      return effectiveTotal / quantity;
     }
     const parsed = parseBRL(paidPriceValue);
+    // If negative, user is providing a discount on the original unit price
     return parsed < 0 ? item.price + parsed : parsed;
-  }, [editedField, paidPriceValue, item.price, quantity, totalValue]);
+  }, [editedField, paidPriceValue, item.price, quantity, totalValue, originalTotal]);
 
   // Check if the field currently being edited is empty (whitespace-only)
   const isEditedFieldEmpty = useMemo(() => {
@@ -112,9 +115,9 @@ export function PriceEditModal({
 
   const isInvalid = isEditedFieldEmpty || !Number.isFinite(nextPaidPrice) || nextPaidPrice < 0;
 
-  // Visual preview values (recalculated in real-time)
-  const previewPaidUnit = useMemo(() => parseBRL(paidPriceValue), [paidPriceValue]);
-  const previewPaidTotal = useMemo(() => parseBRL(totalValue), [totalValue]);
+  // Visual preview values (recalculated in real-time, always showing effective values)
+  const previewPaidUnit = nextPaidPrice;
+  const previewPaidTotal = nextPaidPrice * quantity;
 
   const handleSave = useCallback(() => {
     onSavePaidPrice(nextPaidPrice);
