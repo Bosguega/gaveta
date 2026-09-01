@@ -1,0 +1,26 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Modelos baixados
+models/
+checkpoints/
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.gguf
+
+# Imagens geradas / saídas
+outputs/
+
+# Logs
+*.log
+
+# Resultados gerados
+result_*.json
+
+# Ambiente
+.env

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>image-gen</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; background: #111; color: #eee; }
+    h1 { font-size: 1.3rem; }
+    label { display: block; margin-top: .8rem; font-size: .85rem; color: #aaa; }
+    input, select, textarea { width: 100%; box-sizing: border-box; padding: .5rem; background: #222; color: #eee; border: 1px solid #444; border-radius: 4px; }
+    .row { display: flex; gap: .8rem; }
+    .row > div { flex: 1; }
+    button { margin-top: 1rem; padding: .7rem 1.5rem; background: #4a7; color: #111; border: 0; border-radius: 4px; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: wait; }
+    #status { margin-top: .8rem; font-size: .9rem; color: #aaa; min-height: 1.2em; }
+    #progress-wrap { margin-top: .5rem; display: flex; flex-direction: column; gap: .35rem; }
+    .meter { display: flex; align-items: center; gap: .5rem; font-size: .75rem; color: #888; }
+    .meter label { width: 46px; flex: none; text-align: right; }
+    .meter .track { flex: 1; background: #222; border-radius: 4px; height: 8px; position: relative; overflow: hidden; }
+    .meter .fill { height: 100%; width: 0%; background: #4a7; transition: width .3s ease; }
+    .meter .fill.indeterminate { width: 40% !important; animation: slide 1.2s infinite ease-in-out; }
+    .meter .peak-mark { position: absolute; top: 0; height: 100%; width: 2px; background: #fd8; display: none; }
+    .meter .val { width: 150px; flex: none; }
+    @keyframes slide { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
+    #progress-info { font-size: .75rem; color: #888; margin-top: .3rem; min-height: 1em; }
+    #result { margin-top: 1rem; }
+    #result img { max-width: 100%; border-radius: 6px; }
+    #meta { font-size: .8rem; color: #888; margin-top: .4rem; }
+  </style>
+</head>
+<body>
+  <h1>image-gen</h1>
+  <label>Modelo</label>
+  <select id="model"></select>
+  <label>Prompt</label>
+  <textarea id="prompt" rows="3" placeholder="a photorealistic capybara sitting in a coffee shop"></textarea>
+  <label>Negative prompt</label>
+  <input id="negative" value="" />
+  <div class="row">
+    <div><label>Seed</label><input id="seed" type="number" placeholder="aleatório" /></div>
+    <div><label>Steps</label><input id="steps" type="number" value="30" /></div>
+    <div><label>Guidance</label><input id="guidance" type="number" step="0.5" value="7" /></div>
+  </div>
+  <div class="row">
+    <div><label>Width</label><input id="width" type="number" value="1024" step="64" /></div>
+    <div><label>Height</label><input id="height" type="number" value="1024" step="64" /></div>
+  </div>
+  <button id="generate">Generate</button>
+  <div id="progress-wrap" hidden>
+    <div class="meter"><label>VRAM</label><div class="track"><div id="bar-vram" class="fill"></div><div id="peak-mark" class="peak-mark"></div></div><span id="val-vram" class="val"></span></div>
+    <div class="meter"><label>RAM</label><div class="track"><div id="bar-ram" class="fill"></div></div><span id="val-ram" class="val"></span></div>
+    <div class="meter"><label>CPU</label><div class="track"><div id="bar-cpu" class="fill"></div></div><span id="val-cpu" class="val"></span></div>
+  </div>
+  <div id="progress-info"></div>
+  <div id="status"></div>
+  <div id="result">
+    <img id="img" hidden />
+    <div id="meta"></div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  // --- Progress polling -------------------------------------------------
+  let pollTimer = null;
+
+  function renderProgress(p) {
+    const info = $('progress-info');
+    if (p.phase === 'idle' || p.phase === 'done' || p.phase === 'error') {
+      $('progress-wrap').hidden = true;
+      info.textContent = '';
+      return;
+    }
+    $('progress-wrap').hidden = false;
+
+    // VRAM + peak marker
+    const vramBar = $('bar-vram');
+    if (p.phase === 'loading') {
+      vramBar.className = 'fill indeterminate';
+    } else if (p.vram_total_gb > 0) {
+      vramBar.className = 'fill';
+      vramBar.style.width = Math.min(100, (p.vram_used_gb / p.vram_total_gb) * 100) + '%';
+    }
+    $('val-vram').textContent = p.vram_total_gb > 0
+      ? `${p.vram_used_gb.toFixed(2)} / ${p.vram_total_gb.toFixed(1)} GB (pico ${p.peak_vram_used_gb.toFixed(2)})`
+      : '';
+    const peak = $('peak-mark');
+    if (p.vram_total_gb > 0 && p.peak_vram_used_gb > 0) {
+      peak.style.display = 'block';
+      peak.style.left = `calc(${Math.min(100, (p.peak_vram_used_gb / p.vram_total_gb) * 100)}% - 1px)`;
+    } else {
+      peak.style.display = 'none';
+    }
+
+    // RAM / CPU (psutil, amostrado no /progress)
+    if (p.ram_total_gb > 0) {
+      $('bar-ram').className = 'fill';
+      $('bar-ram').style.width = Math.min(100, (p.ram_used_gb / p.ram_total_gb) * 100) + '%';
+      $('val-ram').textContent = `${p.ram_used_gb.toFixed(2)} / ${p.ram_total_gb.toFixed(1)} GB`;
+    }
+    $('bar-cpu').className = 'fill';
+    $('bar-cpu').style.width = Math.min(100, Math.max(0, p.cpu_percent)) + '%';
+    $('val-cpu').textContent = `${p.cpu_percent.toFixed(0)}%`;
+
+    if (p.phase === 'loading') {
+      info.textContent = 'Carregando modelo na GPU... (primeiro uso pode demorar)';
+    } else if (p.phase === 'generating' && p.total_steps > 0) {
+      info.textContent = `Step ${p.step}/${p.total_steps} (${Math.round((p.step / p.total_steps) * 100)}%)`;
+    }
+  }
+
+  function startPolling() {
+    stopPolling();
+    pollTimer = setInterval(async () => {
+      try {
+        const res = await fetch('/progress');
+        if (res.ok) renderProgress(await res.json());
+      } catch { /* servidor indisponível — ignora */ }
+    }, 500);
+  }
+
+  function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    $('progress-wrap').hidden = true;
+    $('progress-info').textContent = '';
+  }
+  // ----------------------------------------------------------------------
+
+
+  fetch('/models')
+    .then(r => r.json())
+    .then(models => {
+      for (const m of models) {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = `${m.id} (${m.model_id})`;
+        $('model').appendChild(opt);
+      }
+      const first = models[0];
+      if (first) {
+        $('steps').value = first.defaults.steps;
+        $('guidance').value = first.defaults.guidance;
+        $('width').value = first.defaults.width;
+        $('height').value = first.defaults.height;
+      }
+    })
+    .catch(err => {
+      console.error('Falha ao carregar modelos:', err);
+      $('status').textContent = 'Erro ao carregar lista de modelos. Verifique se o servidor está rodando.';
+    });
+
+  $('generate').onclick = async () => {
+    $('generate').disabled = true;
+    $('status').textContent = 'Gerando... (pode demorar no primeiro uso: download/carregamento do modelo)';
+    $('img').hidden = true;
+    $('meta').textContent = '';
+    startPolling();
+    try {
+      const body = {
+        model: $('model').value,
+        prompt: $('prompt').value,
+        negative_prompt: $('negative').value,
+        steps: +$('steps').value,
+        guidance: +$('guidance').value,
+        width: +$('width').value,
+        height: +$('height').value,
+      };
+      if ($('seed').value !== '') body.seed = +$('seed').value;
+      const res = await fetch('/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || res.statusText);
+      $('img').src = data.image;
+      $('img').hidden = false;
+      $('meta').textContent = `model=${data.model} seed=${data.seed} time=${data.generation_time}s`;
+      $('status').textContent = 'Concluído.';
+    } catch (err) {
+      $('status').textContent = 'Erro: ' + err.message;
+    } finally {
+      stopPolling();
+      $('generate').disabled = false;
+    }
+  };
+</script>
+</body>
+</html>

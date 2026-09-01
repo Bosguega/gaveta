@@ -1,0 +1,20 @@
+{
+  "models": [
+    {
+      "id": "sdxl",
+      "model_id": "stabilityai/stable-diffusion-xl-base-1.0",
+      "type": "text2img.sdxl",
+      "default_steps": 30,
+      "default_guidance": 7.0,
+      "default_size": 1024
+    },
+    {
+      "id": "realvisxl-v5",
+      "model_id": "SG161222/RealVisXL_V5.0",
+      "type": "text2img.sdxl",
+      "default_steps": 30,
+      "default_guidance": 2.0,
+      "default_size": 1024
+    }
+  ]
+}

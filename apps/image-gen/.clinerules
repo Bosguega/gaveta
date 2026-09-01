@@ -1,0 +1,23 @@
+# image-gen — servidor local de geração de imagens
+
+## Objetivo
+Servidor local estilo `llama-server`, baseado em Diffusers. Não é um produto completo: servidor → modelo → GPU → geração → API → imagem.
+
+## Arquitetura
+- `src/generator/base.py` — interface genérica `Generator`
+- `src/generator/pipelines/` — um arquivo por modelo (SDXL, futuramente outros). Cada pipeline encapsula TODOS os seus componentes (encoders, tokenizers, transformer/unet, VAE, scheduler). O VAE não é global.
+- `src/generator/registry.py` — registro de pipelines por id. Adicionar modelo novo = criar arquivo + registrar.
+- Model IDs definidos em `models.json`, nunca hardcoded no código.
+
+## API
+- `POST /generate` — cria job, processa via fila interna em memória
+- `GET /models` — modelos disponíveis
+- `GET /images/{file}` — serve imagens de `outputs/`
+
+## GPU (RTX 3060 12GB)
+- FP16, `enable_model_cpu_offload()`, `enable_vae_slicing()` quando suportado
+- SDPA nativo do PyTorch; sem xformers, sem `torch.compile`
+- `enable_sequential_cpu_offload()` só como fallback
+
+## Não implementar ainda
+Banco de dados, fila distribuída, LoRA, ControlNet, IP-Adapter, img2img, inpainting, upscale, lote, React, auth, Docker.
