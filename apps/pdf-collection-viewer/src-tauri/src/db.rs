@@ -145,6 +145,8 @@ pub struct UpdateResult {
     pub thumbnails_generated: usize,
     pub unavailable_paths: Vec<String>,
     pub errored_paths: Vec<String>,
+    /// Items whose thumbnail could not be rendered (invalid/corrupt files).
+    pub thumbnail_failed_paths: Vec<String>,
 }
 
 fn database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {

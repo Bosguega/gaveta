@@ -75,6 +75,15 @@ export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onQuick
                         size="full"
                     />
 
+                    {item.thumbnail_status === 'error' && (
+                        <div
+                            className="absolute bottom-2 left-2 px-2 py-0.5 rounded text-[10px] font-medium bg-red-100/90 text-red-700 backdrop-blur-sm"
+                            title="Não foi possível gerar a miniatura: arquivo inválido ou corrompido"
+                        >
+                            ⚠ Arquivo inválido
+                        </div>
+                    )}
+
                     <button
                         type="button"
                         onClick={(event) => {

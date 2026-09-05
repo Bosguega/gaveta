@@ -33,10 +33,13 @@ export function CollectionStatsModal({
             byType[type].bytes += item.size;
         }
 
+        const erroredThumbnails = items.filter((item) => item.thumbnail_status === 'error').length;
+
         return {
             totalItems: items.length,
             totalBytes,
             favoritesCount,
+            erroredThumbnails,
             byType,
         };
     }, [items]);
@@ -63,7 +66,7 @@ export function CollectionStatsModal({
                 {/* Body */}
                 <div className="p-6 space-y-6">
                     {/* Primary summary cards */}
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-4 gap-3">
                         <div className="bg-blue-50 border border-blue-100 rounded-xl p-3.5 text-center">
                             <span className="text-xs font-medium text-blue-600 uppercase tracking-wide">Total de Itens</span>
                             <div className="text-2xl font-bold text-blue-900 mt-1">{stats.totalItems.toLocaleString('pt-BR')}</div>
@@ -82,6 +85,12 @@ export function CollectionStatsModal({
                             <span className="text-xs text-amber-600 mt-0.5 block">
                                 {stats.totalItems > 0 ? Math.round((stats.favoritesCount / stats.totalItems) * 100) : 0}% da coleção
                             </span>
+                        </div>
+
+                        <div className="bg-red-50 border border-red-100 rounded-xl p-3.5 text-center">
+                            <span className="text-xs font-medium text-red-600 uppercase tracking-wide">Inválidos</span>
+                            <div className="text-2xl font-bold text-red-900 mt-1">⚠ {stats.erroredThumbnails}</div>
+                            <span className="text-xs text-red-600 mt-0.5 block">miniatura não gerada</span>
                         </div>
                     </div>
 

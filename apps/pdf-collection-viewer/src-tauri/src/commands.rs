@@ -166,6 +166,7 @@ pub async fn update_collection_scan(
         thumbnails_generated: 0,
         unavailable_paths: Vec::new(),
         errored_paths: Vec::new(),
+        thumbnail_failed_paths: Vec::new(),
     };
 
     // 2. Scan all configured paths (no DB lock held during filesystem walk).
@@ -309,6 +310,7 @@ pub async fn update_collection_scan(
             }
             Err(e) => {
                 eprintln!("[thumbnail] Erro ao gerar miniatura para {}: {}", item_path, e);
+                result.thumbnail_failed_paths.push(item_path.clone());
                 {
                     let conn = state.0.lock().map_err(|e| e.to_string())?;
                     db::set_item_thumbnail(&conn, *item_id, None, None, ThumbnailStatus::Error)?;
@@ -482,6 +484,7 @@ pub struct RegenerateThumbnailsResult {
     pub requested: usize,
     pub regenerated: usize,
     pub failed: usize,
+    pub failed_paths: Vec<String>,
 }
 
 fn sha256_file(path: &str) -> Result<String, String> {
@@ -780,6 +783,7 @@ pub async fn regenerate_thumbnails(
     let total = item_ids.len();
     let mut regenerated = 0usize;
     let mut failed = 0usize;
+    let mut failed_paths: Vec<String> = Vec::new();
 
     for (index, item_id) in item_ids.iter().enumerate() {
         let _ = app.emit(
@@ -836,6 +840,7 @@ pub async fn regenerate_thumbnails(
             }
             Err(e) => {
                 eprintln!("[regenerate] Erro ao regenerar miniatura de {}: {}", item.path, e);
+                failed_paths.push(item.path.clone());
                 failed += 1;
             }
         }
@@ -854,6 +859,7 @@ pub async fn regenerate_thumbnails(
         requested: total,
         regenerated,
         failed,
+        failed_paths,
     })
 }
 

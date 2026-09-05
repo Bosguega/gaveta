@@ -97,7 +97,9 @@ export function CollectionPage() {
     const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
     const [isRegenerating, setIsRegenerating] = useState(false);
     const [regenProgress, setRegenProgress] = useState<ScanProgress | null>(null);
-    const [regenSummary, setRegenSummary] = useState<{ regenerated: number; failed: number } | null>(null);
+    const [regenSummary, setRegenSummary] = useState<{ regenerated: number; failed: number; failedPaths: string[] } | null>(null);
+    const [thumbErrors, setThumbErrors] = useState<string[] | null>(null);
+    const [showErrorsOnly, setShowErrorsOnly] = useState(false);
     const [thumbEpoch, setThumbEpoch] = useState(0);
     const [page, setPage] = useState(1);
 
@@ -124,7 +126,7 @@ export function CollectionPage() {
         setRegenProgress({ stage: 'Iniciando...', current: 0, total: selectedIds.length });
         try {
             const result = await regenerateThumbnails(currentCollectionId, selectedIds);
-            setRegenSummary({ regenerated: result.regenerated, failed: result.failed });
+            setRegenSummary({ regenerated: result.regenerated, failed: result.failed, failedPaths: result.failed_paths });
             clearThumbnailUrlCache();
             setThumbEpoch((epoch) => epoch + 1);
             await loadItems();
@@ -149,6 +151,8 @@ export function CollectionPage() {
         setErroredCount(0);
         setError(null);
         setShowFavoritesOnly(false);
+        setShowErrorsOnly(false);
+        setThumbErrors(null);
         setShowDuplicates(false);
         setShowStats(false);
         setIsRegenerating(false);
@@ -196,12 +200,12 @@ export function CollectionPage() {
     // Drop selection when any filter changes to prevent hidden items from staying selected
     useEffect(() => {
         clearSelection();
-    }, [search, selectedFileType, sizeFilter, stitchFilter, showFavoritesOnly, clearSelection]);
+    }, [search, selectedFileType, sizeFilter, stitchFilter, showFavoritesOnly, showErrorsOnly, clearSelection]);
 
     // Filter, sort or pagination changes return to page 1
     useEffect(() => {
         setPage(1);
-    }, [search, selectedFileType, sizeFilter, stitchFilter, showFavoritesOnly, sort, itemsPerPage]);
+    }, [search, selectedFileType, sizeFilter, stitchFilter, showFavoritesOnly, showErrorsOnly, sort, itemsPerPage]);
 
     const handleUpdate = async () => {
         if (currentCollectionId === null || isUpdating) return;
@@ -212,6 +216,7 @@ export function CollectionPage() {
             const result = await updateCollectionScan(currentCollectionId);
             setUnavailableCount(result.unavailable_paths.length);
             setErroredCount(result.errored_paths.length);
+            setThumbErrors(result.thumbnail_failed_paths.length > 0 ? result.thumbnail_failed_paths : null);
             clearThumbnailUrlCache();
             await loadItems();
         } catch (reason) {
@@ -280,6 +285,10 @@ export function CollectionPage() {
 
         if (showFavoritesOnly) {
             result = result.filter((item) => item.is_favorite);
+        }
+
+        if (showErrorsOnly) {
+            result = result.filter((item) => item.thumbnail_status === 'error');
         }
 
         // File type filter
@@ -366,7 +375,7 @@ export function CollectionPage() {
                 break;
         }
         return sorted;
-    }, [items, search, sort, showFavoritesOnly, selectedFileType, sizeFilter, stitchFilter]);
+    }, [items, search, sort, showFavoritesOnly, showErrorsOnly, selectedFileType, sizeFilter, stitchFilter]);
 
     const totalItems = filteredAndSorted.length;
     const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
@@ -575,6 +584,19 @@ export function CollectionPage() {
                     ★ {showFavoritesOnly ? 'Favoritos' : 'Todos'}
                 </button>}
 
+                {/* Thumbnail errors filter */}
+                {!isFavoritesView && <button
+                    onClick={() => setShowErrorsOnly((prev) => !prev)}
+                    className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+                        showErrorsOnly
+                            ? 'bg-red-500 border-red-500 text-white'
+                            : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+                    }`}
+                    title="Mostrar apenas arquivos com erro de miniatura (inválidos ou corrompidos)"
+                >
+                    ⚠ Com erro
+                </button>}
+
                 {/* Sort selector */}
                 <select
                     value={sort}
@@ -729,6 +751,33 @@ export function CollectionPage() {
                     {regenSummary.failed > 0
                         ? `, ${regenSummary.failed} com erro (miniaturas antigas mantidas)`
                         : ''}.
+                    {regenSummary.failedPaths.length > 0 && (
+                        <ul className="mt-1.5 list-disc list-inside text-xs text-red-700 max-h-32 overflow-y-auto">
+                            {regenSummary.failedPaths.map((path) => (
+                                <li key={path} className="truncate" title={path}>
+                                    {path}
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            )}
+
+            {thumbErrors && thumbErrors.length > 0 && (
+                <div className="mb-6 rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+                    <p className="font-medium">
+                        ⚠ {thumbErrors.length} arquivo(s) com miniatura não gerada — provavelmente inválidos ou corrompidos:
+                    </p>
+                    <ul className="mt-1.5 list-disc list-inside text-xs text-amber-700 max-h-32 overflow-y-auto">
+                        {thumbErrors.map((path) => (
+                            <li key={path} className="truncate" title={path}>
+                                {path}
+                            </li>
+                        ))}
+                    </ul>
+                    <p className="text-xs text-amber-600 mt-1.5">
+                        Use o filtro "⚠ Com erro" abaixo para localizá-los na grade.
+                    </p>
                 </div>
             )}
 

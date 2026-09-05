@@ -91,6 +91,7 @@ export interface UpdateResult {
     thumbnails_generated: number;
     unavailable_paths: string[];
     errored_paths: string[];
+    thumbnail_failed_paths: string[];
 }
 
 export interface DuplicateItem {
@@ -128,6 +129,7 @@ export interface RegenerateThumbnailsResult {
     requested: number;
     regenerated: number;
     failed: number;
+    failed_paths: string[];
 }
 
 export type SortOption =
