@@ -507,12 +507,12 @@ fn sha256_file(path: &str) -> Result<String, String> {
 pub async fn analyze_duplicates(
     app: AppHandle,
     state: State<'_, DbState>,
-    collection_id: i64,
+    collection_ids: Option<Vec<i64>>,
 ) -> Result<DuplicateAnalysis, String> {
     // Acquire the lock only to read the items; hashing happens without it.
     let items = {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
-        db::list_items(&conn, collection_id)?
+        db::list_items_filtered(&conn, collection_ids.as_deref(), false)?
     };
 
     let total = items.len();
@@ -614,7 +614,7 @@ pub async fn analyze_duplicates(
 #[tauri::command]
 pub fn remove_duplicate(
     state: State<'_, DbState>,
-    collection_id: i64,
+    collection_id: Option<i64>,
     item_id: i64,
     delete_from_disk: bool,
     expected_hash: Option<String>,
@@ -624,9 +624,11 @@ pub fn remove_duplicate(
     let item = db::get_item_by_id(&conn, item_id)?
         .ok_or_else(|| "Item não encontrado".to_string())?;
 
-    // Safety: ensure the item belongs to the given collection
-    if item.collection_id != collection_id {
-        return Err("O item não pertence a esta coleção".to_string());
+    // Safety: when a collection is given, ensure the item belongs to it
+    if let Some(expected_collection) = collection_id {
+        if item.collection_id != expected_collection {
+            return Err("O item não pertence a esta coleção".to_string());
+        }
     }
 
     if !delete_from_disk {
@@ -862,16 +864,26 @@ pub fn toggle_collection_pin(state: State<'_, DbState>, id: i64) -> Result<bool,
 }
 
 #[tauri::command]
+pub fn list_favorites(
+    state: State<'_, DbState>,
+    collection_ids: Option<Vec<i64>>,
+) -> Result<Vec<db::CollectionItem>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    db::list_items_filtered(&conn, collection_ids.as_deref(), true)
+}
+
+#[tauri::command]
 pub fn search_all_items(
     state: State<'_, DbState>,
     query: String,
     limit: Option<usize>,
+    collection_ids: Option<Vec<i64>>,
 ) -> Result<Vec<db::GlobalSearchResultItem>, String> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
         return Ok(Vec::new());
     }
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    db::search_all_items(&conn, trimmed, limit.unwrap_or(50))
+    db::search_all_items(&conn, trimmed, limit.unwrap_or(50), collection_ids.as_deref())
 }
 

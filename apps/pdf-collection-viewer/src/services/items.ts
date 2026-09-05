@@ -14,8 +14,20 @@ export async function listItems(collectionId: number): Promise<CollectionItem[]>
     return invoke<CollectionItem[]>('list_items', { collectionId });
 }
 
-export async function searchAllItems(query: string, limit?: number): Promise<GlobalSearchResultItem[]> {
-    return invoke<GlobalSearchResultItem[]>('search_all_items', { query, limit });
+export async function searchAllItems(
+    query: string,
+    limit?: number,
+    collectionIds?: number[] | null,
+): Promise<GlobalSearchResultItem[]> {
+    return invoke<GlobalSearchResultItem[]>('search_all_items', {
+        query,
+        limit,
+        collectionIds: collectionIds ?? null,
+    });
+}
+
+export async function listFavorites(collectionIds?: number[] | null): Promise<CollectionItem[]> {
+    return invoke<CollectionItem[]>('list_favorites', { collectionIds: collectionIds ?? null });
 }
 
 
@@ -35,21 +47,21 @@ export async function toggleFavorite(itemId: number): Promise<boolean> {
     return invoke<boolean>('toggle_favorite', { itemId });
 }
 
-export async function analyzeDuplicates(collectionId: number): Promise<DuplicateAnalysis> {
-    return invoke<DuplicateAnalysis>('analyze_duplicates', { collectionId });
+export async function analyzeDuplicates(collectionIds: number[] | null): Promise<DuplicateAnalysis> {
+    return invoke<DuplicateAnalysis>('analyze_duplicates', { collectionIds });
 }
 
 export async function removeDuplicate(
-    collectionId: number,
     itemId: number,
     deleteFromDisk: boolean,
     expectedHash?: string,
+    collectionId?: number | null,
 ): Promise<RemoveDuplicateResult> {
     return invoke<RemoveDuplicateResult>('remove_duplicate', {
-        collectionId,
         itemId,
         deleteFromDisk,
         expectedHash,
+        collectionId: collectionId ?? null,
     });
 }
 

@@ -640,21 +640,46 @@ pub fn search_all_items(
     conn: &Connection,
     query: &str,
     limit: usize,
+    collection_ids: Option<&[i64]>,
 ) -> Result<Vec<GlobalSearchResultItem>, String> {
     let pattern = format!("%{query}%");
+    let mut sql = String::from(
+        "SELECT f.id, f.collection_id, c.name, f.path, f.filename, f.size, f.modified_at, f.page_count, f.file_type, f.thumbnail_key, f.thumbnail_status, f.is_favorite
+         FROM files f
+         JOIN collections c ON c.id = f.collection_id
+         WHERE 1=1",
+    );
+    let mut bind_values: Vec<rusqlite::types::Value> = vec![pattern.into()];
+
+    if let Some(ids) = collection_ids {
+        if !ids.is_empty() {
+            let placeholders: Vec<String> = ids
+                .iter()
+                .enumerate()
+                .map(|(index, id)| {
+                    bind_values.push(rusqlite::types::Value::from(*id));
+                    format!("?{}", index + 2)
+                })
+                .collect();
+            sql.push_str(&format!(
+                " AND f.collection_id IN ({})",
+                placeholders.join(", ")
+            ));
+        }
+    }
+
+    let limit_index = bind_values.len() + 1;
+    bind_values.push(rusqlite::types::Value::from(limit as i64));
+    sql.push_str(&format!(
+        " ORDER BY f.filename COLLATE NOCASE LIMIT ?{limit_index}"
+    ));
+
     let mut stmt = conn
-        .prepare(
-            "SELECT f.id, f.collection_id, c.name, f.path, f.filename, f.size, f.modified_at, f.page_count, f.file_type, f.thumbnail_key, f.thumbnail_status, f.is_favorite
-             FROM files f
-             JOIN collections c ON c.id = f.collection_id
-             WHERE f.filename LIKE ?1 OR f.path LIKE ?1
-             ORDER BY f.filename COLLATE NOCASE
-             LIMIT ?2",
-        )
+        .prepare(&sql)
         .map_err(|e| format!("Falha ao preparar busca global: {e}"))?;
 
     let rows = stmt
-        .query_map(params![pattern, limit as i64], |row| {
+        .query_map(rusqlite::params_from_iter(bind_values.iter()), |row| {
             let status: ThumbnailStatus = row.get(10)?;
             let favorite: i64 = row.get(11)?;
             Ok(GlobalSearchResultItem {
@@ -925,6 +950,78 @@ pub fn list_all_thumbnail_keys(conn: &Connection) -> Result<Vec<String>, String>
         .map_err(|e| format!("Falha ao ler thumbnail keys: {e}"))?;
 
     Ok(keys)
+}
+
+
+/// Lists items across the given collections. When `collection_ids` is `None`
+/// (or empty) every collection is considered; `favorites_only` restricts the
+/// result to favorite items.
+pub fn list_items_filtered(
+    conn: &Connection,
+    collection_ids: Option<&[i64]>,
+    favorites_only: bool,
+) -> Result<Vec<CollectionItem>, String> {
+    let mut sql = String::from(
+        "SELECT id, collection_id, path, filename, size, modified_at, page_count, file_type, thumbnail_key, thumbnail_status, is_favorite, stitch_count, color_count, color_changes, design_width_mm, design_height_mm
+         FROM files WHERE 1=1",
+    );
+    let mut bind_values: Vec<rusqlite::types::Value> = Vec::new();
+
+    if let Some(ids) = collection_ids {
+        if !ids.is_empty() {
+            let placeholders: Vec<String> = ids
+                .iter()
+                .enumerate()
+                .map(|(index, id)| {
+                    bind_values.push(rusqlite::types::Value::from(*id));
+                    format!("?{}", index + 1)
+                })
+                .collect();
+            sql.push_str(&format!(
+                " AND collection_id IN ({})",
+                placeholders.join(", ")
+            ));
+        }
+    }
+
+    if favorites_only {
+        sql.push_str(" AND is_favorite = 1");
+    }
+
+    sql.push_str(" ORDER BY filename COLLATE NOCASE");
+
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| format!("Falha ao preparar listagem de itens: {e}"))?;
+
+    let items = stmt
+        .query_map(rusqlite::params_from_iter(bind_values.iter()), |row| {
+            let status: ThumbnailStatus = row.get(9)?;
+            let favorite: i64 = row.get(10)?;
+            Ok(CollectionItem {
+                id: row.get(0)?,
+                collection_id: row.get(1)?,
+                path: row.get(2)?,
+                filename: row.get(3)?,
+                size: row.get(4)?,
+                modified_at: row.get(5)?,
+                page_count: row.get(6)?,
+                file_type: row.get(7)?,
+                thumbnail_key: row.get(8)?,
+                thumbnail_status: status.to_string(),
+                is_favorite: favorite != 0,
+                stitch_count: row.get(11)?,
+                color_count: row.get(12)?,
+                color_changes: row.get(13)?,
+                design_width_mm: row.get(14)?,
+                design_height_mm: row.get(15)?,
+            })
+        })
+        .map_err(|e| format!("Falha ao listar itens: {e}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Falha ao ler itens: {e}"))?;
+
+    Ok(items)
 }
 
 pub fn get_item_by_id(conn: &Connection, id: i64) -> Result<Option<CollectionItem>, String> {

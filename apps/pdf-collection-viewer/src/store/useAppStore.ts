@@ -73,6 +73,10 @@ interface AppState {
     viewMode: ViewMode;
     setViewMode: (mode: ViewMode) => void;
 
+    // Scope (collection ids or null = all) used by the favorites virtual collection
+    favoritesScope: number[] | null;
+    setFavoritesScope: (ids: number[] | null) => void;
+
     // Update state
     isUpdating: boolean;
     updateProgress: ScanProgress | null;
@@ -136,6 +140,9 @@ export const useAppStore = create<AppState>((set) => ({
         }
         set({ viewMode });
     },
+
+    favoritesScope: null,
+    setFavoritesScope: (favoritesScope) => set({ favoritesScope }),
 
     isUpdating: false,
     updateProgress: null,

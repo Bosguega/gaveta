@@ -6,7 +6,8 @@ import { ItemThumbnail } from '@/components/common/ItemThumbnail';
 import { ProgressBar } from '@/components/common/ProgressBar';
 
 interface Props {
-    collectionId: number;
+    collectionIds: number[] | null;
+    scopeLabel?: string;
     onClose: () => void;
     onChanged: () => void;
 }
@@ -38,7 +39,7 @@ function createInitialState(groups: DuplicateGroup[]): ItemStateMap {
 }
 
 
-export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Props) {
+export function DuplicateAnalysisModal({ collectionIds, scopeLabel, onClose, onChanged }: Props) {
     const [analysis, setAnalysis] = useState<DuplicateAnalysis | null>(null);
     const [loading, setLoading] = useState(true);
     const [progress, setProgress] = useState<ScanProgress | null>(null);
@@ -53,7 +54,7 @@ export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Pro
         setNotice(null);
         setProgress({ stage: 'Iniciando...', current: 0, total: 0 });
         try {
-            const result = await analyzeDuplicates(collectionId);
+            const result = await analyzeDuplicates(collectionIds);
             setAnalysis(result);
             setItemState(createInitialState(result.groups));
         } catch (reason) {
@@ -68,7 +69,7 @@ export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Pro
         const unlisten = listenToAnalyzeProgress((p) => setProgress(p));
         runAnalysis();
         return unlisten;
-    }, [collectionId]);
+    }, [collectionIds]);
 
     const totalDuplicates = useMemo(() => {
         if (!analysis) return 0;
@@ -174,7 +175,7 @@ export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Pro
                     [itemId]: { ...prev[itemId], busy: true, error: null },
                 }));
                 try {
-                    const result = await removeDuplicate(collectionId, itemId, false);
+                    const result = await removeDuplicate(itemId, false);
                     applyResult(itemId, result);
                 } catch (reason) {
                     setItemState((prev) => ({
@@ -212,7 +213,7 @@ export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Pro
                     [itemId]: { ...prev[itemId], busy: true, error: null },
                 }));
                 try {
-                    const result = await removeDuplicate(collectionId, itemId, true, item?.hash);
+                    const result = await removeDuplicate(itemId, true, item?.hash);
                     applyResult(itemId, result);
                 } catch (reason) {
                     const message = reason instanceof Error ? reason.message : 'Falha ao remover.';
@@ -238,7 +239,7 @@ export function DuplicateAnalysisModal({ collectionId, onClose, onChanged }: Pro
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
                     <div>
-                        <h2 className="text-lg font-semibold text-slate-800">🔍 Duplicados nesta coleção</h2>
+                        <h2 className="text-lg font-semibold text-slate-800">🔍 Duplicados{scopeLabel ? ` — ${scopeLabel}` : ""}</h2>
                         {analysis && !loading && (
                             <p className="text-sm text-slate-500 mt-0.5">
                                 {analysis.groups.length} grupo(s) · {totalDuplicates} arquivo(s) duplicado(s)

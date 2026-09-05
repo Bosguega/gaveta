@@ -176,3 +176,6 @@ export const COLLECTION_ICONS = [
     '🏠',
 ];
 
+
+/// Virtual collection id used by the favorites view on the home page.
+export const FAVORITES_COLLECTION_ID = -1;

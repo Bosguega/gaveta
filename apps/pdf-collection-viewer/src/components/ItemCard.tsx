@@ -13,9 +13,15 @@ interface Props {
     onQuickLook?: () => void;
     onRevealInFolder: () => void;
     onToggleFavorite: () => void;
+
+    /** Collection badge shown on the card (favorites virtual view only). */
+    collectionName?: string;
+    collectionIcon?: string;
+    /** When set, adds a "go to collection" entry to the context menu. */
+    onGoToCollection?: () => void;
 }
 
-export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onQuickLook, onRevealInFolder, onToggleFavorite }: Props) {
+export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onQuickLook, onRevealInFolder, onToggleFavorite, collectionName, collectionIcon, onGoToCollection }: Props) {
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
     const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -127,6 +133,16 @@ export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onQuick
                             ? <> · {formatStitchCount(item.stitch_count)}</>
                             : <> · {formatPageCount(item.page_count, item.file_type)}</>}
                     </div>
+                    {collectionName && (
+                        <div className="mt-1">
+                            <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-blue-100/70 text-blue-800 max-w-full truncate"
+                                title={`Coleção: ${collectionName}`}
+                            >
+                                📁 {collectionIcon} {collectionName}
+                            </span>
+                        </div>
+                    )}
                     {isEmbroidery && embroideryDetails.length > 1 && (
                         <div className="text-xs text-slate-400 mt-0.5" title={embroideryDetails.join(' · ')}>
                             {embroideryDetails.slice(1).join(' · ')}
@@ -141,6 +157,14 @@ export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onQuick
                     className="fixed z-50 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[200px]"
                     style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
                 >
+                    {collectionName && (
+                        <div
+                            className="px-3 py-1.5 text-xs font-medium text-slate-400 border-b border-slate-100 mb-1 truncate"
+                            title={collectionName}
+                        >
+                            {collectionIcon} {collectionName}
+                        </div>
+                    )}
                     <button
                         type="button"
                         onClick={() => handleMenuItemClick(onOpen)}
@@ -157,6 +181,16 @@ export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onQuick
                         <span>📁</span>
                         <span>Abrir local do arquivo</span>
                     </button>
+                    {onGoToCollection && (
+                        <button
+                            type="button"
+                            onClick={() => handleMenuItemClick(onGoToCollection)}
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                        >
+                            <span>📚</span>
+                            <span>Ir para a coleção</span>
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={() => handleMenuItemClick(onToggleFavorite)}

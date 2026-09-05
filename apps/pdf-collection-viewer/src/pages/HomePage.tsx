@@ -11,13 +11,15 @@ import {
     getCollection,
     toggleCollectionPin,
 } from '@/services/collections';
+import { DuplicateAnalysisModal } from '@/components/DuplicateAnalysisModal';
 import { searchAllItems } from '@/services/items';
 import type { CollectionDetail, GlobalSearchResultItem } from '@/types';
+import { FAVORITES_COLLECTION_ID } from '@/types';
 import { formatBytes, getFileTypeLabel } from '@/utils/format';
 
 
 export function HomePage() {
-    const { collections, setCollections, openCollection, currentCollectionId } = useAppStore();
+    const { collections, setCollections, openCollection, currentCollectionId, setFavoritesScope } = useAppStore();
     const [showForm, setShowForm] = useState(false);
     const [editing, setEditing] = useState<CollectionDetail | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
@@ -27,6 +29,12 @@ export function HomePage() {
     const [globalSearch, setGlobalSearch] = useState('');
     const [searchResults, setSearchResults] = useState<GlobalSearchResultItem[]>([]);
     const [searching, setSearching] = useState(false);
+
+    // Scope: collection ids filter (null = all collections) shared by global search,
+    // favorites virtual collection and duplicates analysis
+    const [scope, setScope] = useState<number[] | null>(null);
+    const [scopeMenuOpen, setScopeMenuOpen] = useState(false);
+    const [showDuplicates, setShowDuplicates] = useState(false);
 
     const loadCollections = async () => {
         try {
@@ -54,7 +62,7 @@ export function HomePage() {
 
         setSearching(true);
         const timer = setTimeout(() => {
-            searchAllItems(query, 50)
+            searchAllItems(query, 50, scope)
                 .then((res) => {
                     setSearchResults(res);
                 })
@@ -67,7 +75,7 @@ export function HomePage() {
         }, 200);
 
         return () => clearTimeout(timer);
-    }, [globalSearch]);
+    }, [globalSearch, scope]);
 
     const handleCreate = async (data: {
         name: string;
@@ -163,6 +171,90 @@ export function HomePage() {
                             </button>
                         )}
                     </div>
+
+                    {/* Collection scope selector */}
+                    <div className="relative shrink-0">
+                        <button
+                            type="button"
+                            onClick={() => setScopeMenuOpen((prev) => !prev)}
+                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white hover:bg-slate-50"
+                            title="Escolher em quais coleções buscar (favoritos, duplicados e busca global)"
+                        >
+                            {scope === null ? ' Todas as coleções ▾' : `${scope.length} coleção(ões) ▾`}
+                        </button>
+                        {scopeMenuOpen && (
+                            <>
+                                <div className="fixed inset-0 z-40" onClick={() => setScopeMenuOpen(false)} />
+                                <div className="absolute right-0 top-full mt-1 w-64 max-h-72 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-2">
+                                    <label className="flex items-center gap-2 px-2 py-1.5 text-sm rounded-lg hover:bg-slate-50 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={scope === null}
+                                            onChange={() => {
+                                                setScope(null);
+                                                setScopeMenuOpen(false);
+                                            }}
+                                            className="accent-blue-600"
+                                        />
+                                        <span className="font-medium">Todas as coleções</span>
+                                    </label>
+                                    {collections.map((collection) => {
+                                        const checked = scope !== null && scope.includes(collection.id);
+                                        return (
+                                            <label
+                                                key={collection.id}
+                                                className="flex items-center gap-2 px-2 py-1.5 text-sm rounded-lg hover:bg-slate-50 cursor-pointer"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={checked}
+                                                    onChange={() => {
+                                                        setScope((prev) => {
+                                                            const base = prev ?? collections.map((col) => col.id);
+                                                            if (base.includes(collection.id)) {
+                                                                const next = base.filter((id) => id !== collection.id);
+                                                                return next.length === 0 ? null : next;
+                                                            }
+                                                            return [...base, collection.id];
+                                                        });
+                                                    }}
+                                                    className="accent-blue-600"
+                                                />
+                                                <span className="truncate">
+                                                    {collection.icon} {collection.name}
+                                                </span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </>
+                        )}
+                    </div>
+
+                    {/* Favorites virtual collection */}
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setFavoritesScope(scope);
+                            openCollection(FAVORITES_COLLECTION_ID);
+                        }}
+                        disabled={collections.length === 0}
+                        className="px-3 py-2 bg-amber-400 text-white text-sm font-medium rounded-lg hover:bg-amber-500 shrink-0 shadow-sm disabled:opacity-40"
+                        title="Abrir os favoritos das coleções no escopo selecionado"
+                    >
+                        ★ Favoritos
+                    </button>
+
+                    {/* Global duplicates analysis */}
+                    <button
+                        type="button"
+                        onClick={() => setShowDuplicates(true)}
+                        disabled={collections.length === 0}
+                        className="px-3 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 shrink-0 shadow-sm disabled:opacity-40"
+                        title="Buscar arquivos duplicados no escopo selecionado"
+                    >
+                        🔍 Duplicados
+                    </button>
 
                     <button
                         onClick={() => setShowForm(true)}
@@ -335,6 +427,18 @@ export function HomePage() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Global duplicates analysis modal */}
+            {showDuplicates && (
+                <DuplicateAnalysisModal
+                    collectionIds={scope}
+                    scopeLabel={scope === null ? 'todas as coleções' : `${scope.length} coleção(ões)`}
+                    onClose={() => setShowDuplicates(false)}
+                    onChanged={() => {
+                        loadCollections();
+                    }}
+                />
             )}
         </div>
     );

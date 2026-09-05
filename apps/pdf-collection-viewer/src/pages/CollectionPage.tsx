@@ -9,6 +9,7 @@ import { CollectionStatsModal } from '@/components/collection/CollectionStatsMod
 import { useAppStore } from '@/store/useAppStore';
 import { getCollection } from '@/services/collections';
 import {
+    listFavorites,
     listItems,
     updateCollectionScan,
     openFile,
@@ -21,6 +22,8 @@ import {
 } from '@/services/items';
 import { clearThumbnailUrlCache } from '@/services/thumbnails';
 import {
+    FAVORITES_COLLECTION_ID,
+    type Collection,
     SORT_OPTIONS,
     ITEMS_PER_PAGE_OPTIONS,
     SIZE_FILTER_OPTIONS,
@@ -63,7 +66,21 @@ export function CollectionPage() {
         setGridDensity,
         viewMode,
         setViewMode,
+        favoritesScope,
+        collections,
+        openCollection,
     } = useAppStore();
+
+    // Favorites virtual collection (id = -1): favorite items across the scoped collections
+    const isFavoritesView = currentCollectionId === FAVORITES_COLLECTION_ID;
+
+    const collectionById = useMemo(() => {
+        const map = new Map<number, Collection>();
+        for (const collection of collections) {
+            map.set(collection.id, collection);
+        }
+        return map;
+    }, [collections]);
 
     const [collectionDetail, setCollectionDetail] = useState<CollectionDetail | null>(null);
     const [search, setSearch] = useState('');
@@ -90,7 +107,7 @@ export function CollectionPage() {
     const loadItems = async () => {
         if (currentCollectionId === null) return;
         try {
-            const data = await listItems(currentCollectionId);
+            const data = isFavoritesView ? await listFavorites(favoritesScope) : await listItems(currentCollectionId);
             setItems(data);
         } catch (reason) {
             setError(reason instanceof Error ? reason.message : 'Não foi possível carregar os arquivos.');
@@ -140,9 +157,13 @@ export function CollectionPage() {
         setQuickLookIndex(null);
         setPage(1);
 
-        getCollection(currentCollectionId)
-            .then((detail) => setCollectionDetail(detail))
-            .catch(() => setCollectionDetail(null));
+        if (isFavoritesView) {
+            setCollectionDetail(null);
+        } else {
+            getCollection(currentCollectionId)
+                .then((detail) => setCollectionDetail(detail))
+                .catch(() => setCollectionDetail(null));
+        }
 
         loadItems();
     }, [currentCollectionId]);
@@ -416,11 +437,18 @@ export function CollectionPage() {
                     >
                         ← Voltar
                     </button>
-                    {collectionDetail?.name && (
+                    {isFavoritesView ? (
                         <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                            <span>{collectionDetail.name}</span>
+                            <span>★ Favoritos</span>
                             <span className="text-xs font-normal text-slate-400">({items.length} itens)</span>
                         </h1>
+                    ) : (
+                        collectionDetail?.name && (
+                            <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                <span>{collectionDetail.name}</span>
+                                <span className="text-xs font-normal text-slate-400">({items.length} itens)</span>
+                            </h1>
+                        )
                     )}
                 </div>
 
@@ -436,6 +464,7 @@ export function CollectionPage() {
                         </span>
                     )}
 
+                    {!isFavoritesView && (
                     <button
                         type="button"
                         onClick={() => setShowStats(true)}
@@ -445,8 +474,18 @@ export function CollectionPage() {
                     >
                         📊 Estatísticas
                     </button>
+                    )}
 
-                    {isUpdating ? (
+                    {isFavoritesView ? (
+                        <button
+                            onClick={() => setShowDuplicates(true)}
+                            disabled={items.length === 0}
+                            className="px-3.5 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40 font-medium shadow-sm"
+                            title="Analisar duplicados entre os favoritos"
+                        >
+                            🔍 Duplicados
+                        </button>
+                    ) : isUpdating ? (
                         <button
                             onClick={handleCancel}
                             className="px-4 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium shadow-sm"
@@ -524,7 +563,7 @@ export function CollectionPage() {
                 )}
 
                 {/* Favorites button */}
-                <button
+                {!isFavoritesView && <button
                     onClick={() => setShowFavoritesOnly((prev) => !prev)}
                     className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
                         showFavoritesOnly
@@ -534,7 +573,7 @@ export function CollectionPage() {
                     title={showFavoritesOnly ? 'Mostrar todos os arquivos' : 'Mostrar apenas favoritos'}
                 >
                     ★ {showFavoritesOnly ? 'Favoritos' : 'Todos'}
-                </button>
+                </button>}
 
                 {/* Sort selector */}
                 <select
@@ -660,6 +699,7 @@ export function CollectionPage() {
                     </button>
                 )}
 
+                {!isFavoritesView && (
                 <button
                     onClick={handleRegenerateThumbnails}
                     disabled={selectedIds.length === 0 || isRegenerating}
@@ -670,6 +710,7 @@ export function CollectionPage() {
                         ? 'Gerando...'
                         : `🔄 Regenerar miniaturas${selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}`}
                 </button>
+                )}
             </div>
 
             {error && <div className="mb-6 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
@@ -731,6 +772,9 @@ export function CollectionPage() {
                                         }}
                                         onRevealInFolder={() => handleRevealInFolder(item.path)}
                                         onToggleFavorite={() => handleToggleFavorite(item.id)}
+                                        collectionName={isFavoritesView ? collectionById.get(item.collection_id)?.name : undefined}
+                                        collectionIcon={isFavoritesView ? collectionById.get(item.collection_id)?.icon : undefined}
+                                        onGoToCollection={isFavoritesView ? () => openCollection(item.collection_id) : undefined}
                                     />
                                 ))}
                             </div>
@@ -751,6 +795,9 @@ export function CollectionPage() {
                             onQuickLook={() => setQuickLookIndex(index)}
                             onRevealInFolder={() => handleRevealInFolder(item.path)}
                             onToggleFavorite={() => handleToggleFavorite(item.id)}
+                            collectionName={isFavoritesView ? collectionById.get(item.collection_id)?.name : undefined}
+                            collectionIcon={isFavoritesView ? collectionById.get(item.collection_id)?.icon : undefined}
+                            onGoToCollection={isFavoritesView ? () => openCollection(item.collection_id) : undefined}
                         />
                     ))}
                 </div>
@@ -792,7 +839,7 @@ export function CollectionPage() {
             {/* Duplicates Modal */}
             {showDuplicates && currentCollectionId !== null && (
                 <DuplicateAnalysisModal
-                    collectionId={currentCollectionId}
+                    collectionIds={isFavoritesView ? favoritesScope : [currentCollectionId]}
                     onClose={() => setShowDuplicates(false)}
                     onChanged={() => {
                         clearThumbnailUrlCache();

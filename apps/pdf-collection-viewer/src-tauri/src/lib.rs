@@ -76,6 +76,7 @@ pub fn run() {
             commands::cancel_scan,
             commands::open_file,
             commands::pick_folder,
+            commands::list_favorites,
             commands::analyze_duplicates,
             commands::remove_duplicate,
             commands::toggle_favorite,
