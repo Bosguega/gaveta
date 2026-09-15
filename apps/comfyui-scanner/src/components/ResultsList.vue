@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue';
+import { computed, ref } from 'vue';
 import type { ScannedItem, SafetensorsMetadata } from '@/types';
 import {
     scanResult,
@@ -21,9 +21,7 @@ import {
     startScan,
     showToast,
     duplicateGroups,
-    isSearchingDuplicates,
-    loadSafetensorsMetadata,
-    safetensorsMetadataCache
+    loadSafetensorsMetadata
 } from '@/composables/useComfyUIScan';
 
 const expandedCategories = ref<Set<string>>(new Set());

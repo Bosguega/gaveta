@@ -32,6 +32,16 @@ function createStore(): ConfigStore {
     }
 }
 
+/**
+ * Testes que passam apiKey/model/provider explícitos ainda dependem do cache
+ * (getAiModeCached/getAiProviderCached exigem _initialized).
+ */
+async function initializeDefaults(): Promise<void> {
+    setConfigStore(createStore())
+    await setApiKey('sk-test')
+    await initializeAiConfig()
+}
+
 afterEach(() => {
     setConfigStore(createStore())
     invalidateAiConfigCache()
@@ -51,7 +61,8 @@ describe('createAiClient', () => {
         }))
     })
 
-    it('creates an OpenAI client from an OpenAI key without calling it during construction', () => {
+    it('creates an OpenAI client from an OpenAI key without calling it during construction', async () => {
+        await initializeDefaults()
         const client = createAiClient({ apiKey: 'sk-test', model: 'gpt-test', retry: false })
         expect(client).toEqual(expect.objectContaining({
             generateText: expect.any(Function),
@@ -59,7 +70,8 @@ describe('createAiClient', () => {
         }))
     })
 
-    it('creates an Ollama client without requiring an API key', () => {
+    it('creates an Ollama client without requiring an API key', async () => {
+        await initializeDefaults()
         const client = createAiClient({
             provider: 'ollama',
             model: 'llama3.2',
@@ -73,7 +85,8 @@ describe('createAiClient', () => {
         }))
     })
 
-    it('rejects unknown providers', () => {
+    it('rejects unknown providers', async () => {
+        await initializeDefaults()
         expect(() => createAiClient({ apiKey: 'abc', model: 'model', retry: false }))
             .toThrow('Provider de IA nao suportado')
     })
