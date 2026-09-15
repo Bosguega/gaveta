@@ -6,9 +6,10 @@
     "types": "src/index.ts",
     "scripts": {
         "build": "tsc --noEmit",
-        "test": "node ../../apps/my_mercado/node_modules/vitest/vitest.mjs run"
+        "test": "vitest run"
     },
     "devDependencies": {
-        "typescript": "^5.7.0"
+        "typescript": "^5.7.0",
+        "vitest": "^4.1.11"
     }
 }
