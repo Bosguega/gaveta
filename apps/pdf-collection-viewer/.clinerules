@@ -38,9 +38,11 @@ Representa um arquivo individual dentro de uma coleção.
 
 ## Backend Rust — Commands (snake_case)
 - list_collections, create_collection, update_collection, delete_collection, get_collection
-- list_items, update_collection_scan, cancel_scan
-- open_file, pick_folder, reveal_in_folder, get_cache_dir
-- analyze_duplicates, remove_duplicate, toggle_favorite
+- list_items, list_favorites, search_all_items, update_collection_scan, cancel_scan
+- open_file, pick_folder, pick_image_file, reveal_in_folder, get_cache_dir
+- analyze_duplicates, remove_duplicate, toggle_favorite, regenerate_thumbnails
+- save_collection_cover, toggle_collection_pin
+- get_tag_settings, set_tag_settings, test_tag_connection, get_item_tags, generate_item_tags, generate_collection_tags, cancel_tagging
 
 ## File types (src-tauri/src/file_types.rs)
 - FileType — enum discriminado: Pdf, Embroidery, Image, Unknown.
@@ -56,9 +58,9 @@ Representa um arquivo individual dentro de uma coleção.
 - Cache: thumbnails armazenadas no diretório de cache do app.
 - Orphan cleanup: após varredura, remove arquivos não referenciados.
 
-## SUPPORTED_EXTENSIONS (src-tauri/src/commands.rs)
-- Lista de extensões suportadas. V1: apenas ["pdf"].
-- Para adicionar suporte: apendar extensões + adicionar handler em thumbnails.rs.
+## SUPPORTED_EXTENSIONS (src-tauri/src/file_types.rs)
+- `FileType::enabled_extensions()` é a fonte única de verdade: pdf + imagens (png/jpg/jpeg/bmp/gif/webp) + bordado (dst/exp/pes/pec/jef/vp3/xxx/vip/hus/sew).
+- Para adicionar suporte: registrar em `FileType::from_extension`, `supported_extensions` e adicionar handler em thumbnails.rs.
 
 ## Frontend — Tipos (src/types/index.ts)
 - CollectionItem — interface genérica para arquivos. Tem file_type e page_count.
@@ -107,3 +109,16 @@ Cada tipo de arquivo tem um renderer:
 - Imagem → decoder → thumbnail
 O ItemCard recebe thumbnail_key e exibe uniformemente.
 Para indicadores visuais por tipo (cor/moldura), usar file_type no frontend futuramente.
+- `thumbnails::bitmap_to_rgba_image` converte o bitmap do pdfium respeitando o stride das linhas: usar sempre esse helper em vez de recalcular a altura a partir do tamanho do buffer.
+
+## Comandos síncronos vs async
+- Comando sem `async` roda inline no handler de IPC (trava a janela enquanto executa).
+- IO pesado (hash de arquivo, HTTP, render de imagem, Lixeira) deve ser `async` + `tauri::async_runtime::spawn_blocking`, mantendo o `Mutex` do `DbState` apenas em blocos curtos (nunca através de um `await`).
+
+## Encoding de arquivos
+- Salvar **sempre** em UTF-8. Textos pt-BR (`ção`, `ã`, `é`) e emojis deste app já foram corrompidos uma vez por gravação cp1252→UTF-8 (mojibake). Conferir `git diff` antes de commitar.
+
+## Tags com IA (tagging.rs, services/tags.ts, TagSettingsModal.tsx)
+- Servidor llama.cpp (API compatível com OpenAI) com modelo multimodal; configurações persistidas em `settings` (`tag_base_url`, `tag_model`, `tag_pages`, `tag_max_tokens`).
+- `generate_item_tags` (item único) e `generate_collection_tags` (lote em thread própria) emitem `tagging-progress` / `tagging-done`.
+- `tagging-done` deve ser **sempre** emitido — inclusive quando não há itens a processar — para o frontend sair do estado "gerando tags".

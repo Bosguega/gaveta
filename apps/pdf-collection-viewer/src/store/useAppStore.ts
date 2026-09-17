@@ -44,6 +44,9 @@ function loadViewMode(): ViewMode {
 }
 
 interface AppState {
+    navigationVersion: number;
+    itemsLoaded: boolean;
+    setItemFavorite: (id: number, isFavorite: boolean) => void;
     // Navigation
     currentCollectionId: number | null;
     focusedItemId: number | null;
@@ -85,17 +88,28 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
+    navigationVersion: 0,
+    itemsLoaded: false,
+    setItemFavorite: (id, isFavorite) => set((state) => ({
+        items: state.items.map((item) => item.id === id ? { ...item, is_favorite: isFavorite } : item),
+    })),
     currentCollectionId: null,
     focusedItemId: null,
-    openCollection: (id, focusedItemId = null) => set({ currentCollectionId: id, focusedItemId }),
-    closeCollection: () => set({ currentCollectionId: null, focusedItemId: null }),
+    openCollection: (id, focusedItemId = null) => set((state) => ({
+        currentCollectionId: id, focusedItemId, items: [], itemsLoaded: false,
+        selectedItemIds: new Set<number>(), navigationVersion: state.navigationVersion + 1,
+    })),
+    closeCollection: () => set((state) => ({
+        currentCollectionId: null, focusedItemId: null, items: [], itemsLoaded: false,
+        selectedItemIds: new Set<number>(), navigationVersion: state.navigationVersion + 1,
+    })),
     setFocusedItemId: (id) => set({ focusedItemId: id }),
 
     collections: [],
     setCollections: (collections) => set({ collections }),
 
     items: [],
-    setItems: (items) => set({ items }),
+    setItems: (items) => set({ items, itemsLoaded: true }),
 
     selectedItemIds: new Set<number>(),
     toggleItemSelection: (id) =>

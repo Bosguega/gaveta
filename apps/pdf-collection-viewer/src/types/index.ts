@@ -181,3 +181,26 @@ export const COLLECTION_ICONS = [
 
 /// Virtual collection id used by the favorites view on the home page.
 export const FAVORITES_COLLECTION_ID = -1;
+
+export interface TagSettings {
+    base_url: string;
+    model: string;
+    pages: number;
+    max_tokens: number;
+}
+
+export interface ItemTags {
+    item_id: number;
+    tags: string[];
+}
+
+export interface TaggingProgress extends ScanProgress {
+    collection_id: number;
+}
+
+export interface TaggingSummary {
+    collection_id: number;
+    generated: number;
+    failed: number;
+    failed_paths: string[];
+}

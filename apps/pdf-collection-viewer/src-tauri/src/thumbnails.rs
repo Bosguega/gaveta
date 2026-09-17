@@ -113,16 +113,9 @@ fn generate_pdf_thumbnail(
         .render_with_config(&PdfRenderConfig::new().set_target_width(THUMBNAIL_WIDTH))
         .map_err(|e| format!("Falha ao renderizar página: {e}"))?;
 
-    let width = bitmap.width() as u32;
-    let _height = bitmap.height() as u32;
-    let bytes = bitmap.as_raw_bytes();
-
-    let actual_width = width;
-    let actual_height = bytes.len() as u32 / (actual_width * 4);
-
-    let img = image::RgbaImage::from_raw(actual_width, actual_height, bytes.to_vec())
-        .ok_or_else(|| "Falha ao criar imagem".to_string())?;
-
+    let img = bitmap_to_rgba_image(&bitmap)?;
+    let actual_width = img.width();
+    let actual_height = img.height();
 
     // Encode as WebP (lossless)
     let mut encoded = Vec::new();
@@ -134,6 +127,36 @@ fn generate_pdf_thumbnail(
     write_thumbnail_atomic(cache_dir, &key, &encoded)?;
 
     Ok(Some(page_count))
+}
+
+/// Converts a pdfium RGBA bitmap into an image, honouring a possible padded row
+/// stride instead of assuming tightly packed rows (which would distort the
+/// image). Used by every renderer that turns a PDF page into pixels.
+pub fn bitmap_to_rgba_image(bitmap: &PdfBitmap) -> Result<image::RgbaImage, String> {
+    let width = bitmap.width() as usize;
+    let height = bitmap.height() as usize;
+    if width == 0 || height == 0 {
+        return Err("Bitmap vazio".to_string());
+    }
+
+    let bytes = bitmap.as_raw_bytes();
+    let row_bytes = width * 4;
+    let stride = bytes.len() / height;
+    if stride < row_bytes {
+        return Err(format!(
+            "Bitmap inválido: {} bytes para {width}x{height}",
+            bytes.len()
+        ));
+    }
+
+    let mut data = Vec::with_capacity(row_bytes * height);
+    for row in 0..height {
+        let start = row * stride;
+        data.extend_from_slice(&bytes[start..start + row_bytes]);
+    }
+
+    image::RgbaImage::from_raw(width as u32, height as u32, data)
+        .ok_or_else(|| "Falha ao criar imagem".to_string())
 }
 
 /// Renders an image file (png/jpg/bmp/gif/webp/…) to a WebP thumbnail in the

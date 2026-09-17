@@ -98,9 +98,10 @@ fn resolve_icon_path(app: &AppHandle, icon_path: Option<&str>) -> Result<Option<
 }
 
 /// Generates the collection cover from a picked image: crops and resizes it
-/// into a fixed 800x450 WebP stored in the app cache directory.
+/// into a fixed 800x450 WebP stored in the app cache directory. The image work
+/// runs on the blocking pool so the UI stays smooth.
 #[tauri::command]
-pub fn save_collection_cover(
+pub async fn save_collection_cover(
     app: AppHandle,
     src_path: String,
     crop_x: f64,
@@ -108,7 +109,11 @@ pub fn save_collection_cover(
     crop_w: f64,
     crop_h: f64,
 ) -> Result<String, String> {
-    db::save_cover_to_cache(&app, &src_path, crop_x, crop_y, crop_w, crop_h)
+    tauri::async_runtime::spawn_blocking(move || {
+        db::save_cover_to_cache(&app, &src_path, crop_x, crop_y, crop_w, crop_h)
+    })
+    .await
+    .map_err(|e| format!("Falha ao gerar a capa: {e}"))?
 }
 
 #[tauri::command]
@@ -614,18 +619,22 @@ pub async fn analyze_duplicates(
     })
 }
 
+/// Removes a duplicate item. The hash revalidation and the file deletion run
+/// without holding the database lock, so the UI (and other commands) stay
+/// responsive while a large file is hashed or moved to the trash.
 #[tauri::command]
-pub fn remove_duplicate(
+pub async fn remove_duplicate(
     state: State<'_, DbState>,
     collection_id: Option<i64>,
     item_id: i64,
     delete_from_disk: bool,
     expected_hash: Option<String>,
 ) -> Result<RemoveDuplicateResult, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-
-    let item = db::get_item_by_id(&conn, item_id)?
-        .ok_or_else(|| "Item não encontrado".to_string())?;
+    let item = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::get_item_by_id(&conn, item_id)?
+            .ok_or_else(|| "Item não encontrado".to_string())?
+    };
 
     // Safety: when a collection is given, ensure the item belongs to it
     if let Some(expected_collection) = collection_id {
@@ -635,6 +644,7 @@ pub fn remove_duplicate(
     }
 
     if !delete_from_disk {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
         db::delete_item(&conn, item.id)?;
         return Ok(RemoveDuplicateResult {
             removed_from_disk: false,
@@ -649,7 +659,10 @@ pub fn remove_duplicate(
 
     if !path.exists() {
         // File already gone: clean up records across all collections
-        let affected = db::delete_item_by_path_all_collections(&conn, &item.path)?;
+        let affected = {
+            let conn = state.0.lock().map_err(|e| e.to_string())?;
+            db::delete_item_by_path_all_collections(&conn, &item.path)?
+        };
         return Ok(RemoveDuplicateResult {
             removed_from_disk: false,
             file_missing: true,
@@ -671,7 +684,10 @@ pub fn remove_duplicate(
     trash::delete(path)
         .map_err(|e| format!("Não foi possível enviar o arquivo para a Lixeira: {e}"))?;
 
-    let affected = db::delete_item_by_path_all_collections(&conn, &item.path)?;
+    let affected = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::delete_item_by_path_all_collections(&conn, &item.path)?
+    };
 
     Ok(RemoveDuplicateResult {
         removed_from_disk: true,
@@ -893,3 +909,243 @@ pub fn search_all_items(
     db::search_all_items(&conn, trimmed, limit.unwrap_or(50), collection_ids.as_deref())
 }
 
+// Tagging (LLM via llama.cpp)
+
+use crate::tagging::{self, TagSettings};
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TaggingProgress {
+    pub collection_id: i64,
+    pub stage: String,
+    pub current: usize,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TaggingSummary {
+    pub collection_id: i64,
+    pub generated: usize,
+    pub failed: usize,
+    pub failed_paths: Vec<String>,
+}
+
+#[tauri::command]
+pub fn get_tag_settings(state: State<'_, DbState>) -> Result<TagSettings, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    Ok(load_tag_settings(&conn))
+}
+
+fn load_tag_settings(conn: &rusqlite::Connection) -> TagSettings {
+    let defaults = TagSettings::default();
+    let read = |key: &str| -> Option<String> { db::get_setting(conn, key).ok().flatten() };
+    TagSettings {
+        base_url: read("tag_base_url").unwrap_or(defaults.base_url),
+        model: read("tag_model").unwrap_or(defaults.model),
+        pages: read("tag_pages").and_then(|v| v.parse().ok()).unwrap_or(defaults.pages),
+        max_tokens: read("tag_max_tokens").and_then(|v| v.parse().ok()).unwrap_or(defaults.max_tokens),
+    }
+}
+
+#[tauri::command]
+pub fn set_tag_settings(state: State<'_, DbState>, settings: TagSettings) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    db::set_setting(&conn, "tag_base_url", settings.base_url.trim())?;
+    db::set_setting(&conn, "tag_model", settings.model.trim())?;
+    db::set_setting(&conn, "tag_pages", &settings.pages.to_string())?;
+    db::set_setting(&conn, "tag_max_tokens", &settings.max_tokens.to_string())?;
+    Ok(())
+}
+
+/// Runs on the async runtime (blocking pool) so the HTTP timeout never freezes
+/// the window.
+#[tauri::command]
+pub async fn test_tag_connection(settings: TagSettings) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || tagging::test_connection(&settings.base_url))
+        .await
+        .map_err(|e| format!("Falha ao testar a conexão: {e}"))?
+}
+
+#[tauri::command]
+pub fn get_item_tags(state: State<'_, DbState>, item_ids: Vec<i64>) -> Result<Vec<db::ItemTags>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    db::get_item_tags(&conn, &item_ids)
+}
+
+/// Runs the vision model on a single item. The page rendering and the HTTP
+/// round trip run on the blocking pool so the UI thread is never held.
+#[tauri::command]
+pub async fn generate_item_tags(
+    app: AppHandle,
+    state: State<'_, DbState>,
+    item_id: i64,
+) -> Result<Vec<String>, String> {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Falha ao localizar resource_dir: {e}"))?;
+
+    let (item, settings) = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let item = db::get_item_by_id(&conn, item_id)?
+            .ok_or_else(|| "Item não encontrado".to_string())?;
+        (item, load_tag_settings(&conn))
+    };
+
+    let tags = tauri::async_runtime::spawn_blocking(move || {
+        tagging::generate_tags(
+            &settings.base_url,
+            &settings.model,
+            settings.max_tokens,
+            settings.pages,
+            &item.path,
+            &item.filename,
+            &resource_dir,
+        )
+    })
+    .await
+    .map_err(|e| format!("Falha ao executar a geração de tags: {e}"))??;
+
+    {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::replace_ai_tags(&conn, item_id, &tags)?;
+    }
+    Ok(tags)
+}
+
+/// Batch tagging job: runs on a background thread, emits `tagging-progress`
+/// and `tagging-done` events, and can be cancelled via `cancel_tagging`.
+#[tauri::command]
+pub fn generate_collection_tags(
+    app: AppHandle,
+    collection_id: i64,
+    only_missing: bool,
+) -> Result<(), String> {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Falha ao localizar resource_dir: {e}"))?;
+
+    let item_ids = {
+        let state = app.state::<DbState>();
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::list_pdf_item_ids(&conn, collection_id, only_missing)?
+    };
+
+    if item_ids.is_empty() {
+        // Nothing to tag: still emit the completion event, otherwise the
+        // frontend would stay stuck in its "tagging in progress" state.
+        let _ = app.emit(
+            "tagging-done",
+            TaggingSummary {
+                collection_id,
+                generated: 0,
+                failed: 0,
+                failed_paths: Vec::new(),
+            },
+        );
+        return Ok(());
+    }
+
+    // Mark as active before spawning so an immediate cancel is honored.
+    if let Some(cancels) = app.try_state::<crate::TagCancels>() {
+        cancels.mark_active(collection_id);
+    }
+
+    let total = item_ids.len();
+    std::thread::spawn(move || {
+        let state = app.state::<DbState>();
+        let mut generated = 0usize;
+        let mut failed = 0usize;
+        let mut failed_paths: Vec<String> = Vec::new();
+
+        for (index, item_id) in item_ids.iter().enumerate() {
+            let cancelled = app
+                .try_state::<crate::TagCancels>()
+                .map(|s| s.is_cancelled(collection_id))
+                .unwrap_or(false);
+            if cancelled {
+                break;
+            }
+
+            let _ = app.emit(
+                "tagging-progress",
+                TaggingProgress {
+                    collection_id,
+                    stage: "Gerando tags".to_string(),
+                    current: index + 1,
+                    total,
+                },
+            );
+
+            // The closure carries the item path on failure so the summary can
+            // report which files could not be tagged.
+            let result = (|| -> Result<(), (String, String)> {
+                let (item, item_settings) = {
+                    let conn = state.0.lock().map_err(|e| (String::new(), e.to_string()))?;
+                    let item = db::get_item_by_id(&conn, *item_id)
+                        .map_err(|e| (String::new(), e))?
+                        .ok_or_else(|| (String::new(), "Item não encontrado".to_string()))?;
+                    (item, load_tag_settings(&conn))
+                };
+                let item_path = item.path.clone();
+                let tags = tagging::generate_tags(
+                    &item_settings.base_url,
+                    &item_settings.model,
+                    item_settings.max_tokens,
+                    item_settings.pages,
+                    &item.path,
+                    &item.filename,
+                    &resource_dir,
+                )
+                .map_err(|e| (item_path.clone(), e))?;
+                let conn = state
+                    .0
+                    .lock()
+                    .map_err(|e| (item_path.clone(), e.to_string()))?;
+                db::replace_ai_tags(&conn, item.id, &tags).map_err(|e| (item_path, e))
+            })();
+
+            match result {
+                Ok(()) => generated += 1,
+                Err((path, message)) => {
+                    eprintln!("[tagging] Erro no item {item_id}: {message}");
+                    failed += 1;
+                    if !path.is_empty() {
+                        failed_paths.push(path);
+                    }
+                }
+            }
+        }
+
+        let _ = app.emit(
+            "tagging-progress",
+            TaggingProgress {
+                collection_id,
+                stage: "Concluído".to_string(),
+                current: total,
+                total,
+            },
+        );
+        let _ = app.emit(
+            "tagging-done",
+            TaggingSummary {
+                collection_id,
+                generated,
+                failed,
+                failed_paths,
+            },
+        );
+        if let Some(cancels) = app.try_state::<crate::TagCancels>() {
+            cancels.clear(collection_id);
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn cancel_tagging(app: AppHandle, collection_id: i64) -> bool {
+    app.try_state::<crate::TagCancels>()
+        .map(|s| s.cancel(collection_id))
+        .unwrap_or(false)
+}

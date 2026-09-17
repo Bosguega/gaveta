@@ -14,6 +14,9 @@ interface Props {
     onRevealInFolder: () => void;
     onToggleFavorite: () => void;
 
+    /** AI tags shown as small badges on the card. */
+    tags?: string[];
+
     /** Collection badge shown on the card (favorites virtual view only). */
     collectionName?: string;
     collectionIcon?: string;
@@ -21,7 +24,7 @@ interface Props {
     onGoToCollection?: () => void;
 }
 
-export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onQuickLook, onRevealInFolder, onToggleFavorite, collectionName, collectionIcon, onGoToCollection }: Props) {
+export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onQuickLook, onRevealInFolder, onToggleFavorite, tags, collectionName, collectionIcon, onGoToCollection }: Props) {
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
     const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -142,6 +145,23 @@ export function ItemCard({ item, selected, refreshKey, onSelect, onOpen, onQuick
                             ? <> · {formatStitchCount(item.stitch_count)}</>
                             : <> · {formatPageCount(item.page_count, item.file_type)}</>}
                     </div>
+                    {tags && tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1" title={tags.join(', ')}>
+                            {tags.slice(0, 3).map((tag) => (
+                                <span
+                                    key={tag}
+                                    className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100/80 text-purple-800"
+                                >
+                                    #{tag}
+                                </span>
+                            ))}
+                            {tags.length > 3 && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500">
+                                    +{tags.length - 3}
+                                </span>
+                            )}
+                        </div>
+                    )}
                     {collectionName && (
                         <div className="mt-1">
                             <span

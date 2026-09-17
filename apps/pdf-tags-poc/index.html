@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>POC — Tags automáticas (PDFs · llama.cpp)</title>
+<!--
+  POC descartável: gera tags semânticas para PDFs usando um llama-server
+  local (API OpenAI-compatible) com modelo multimodal.
+
+  Uso:
+    1. Suba o llama-server (127.0.0.1:8080) com o modelo + mmproj.
+    2. Abra este arquivo no navegador (pode ser file://).
+    3. Selecione PDFs e clique em "Gerar tags".
+
+  Sem build, sem dependências locais. pdf.js é carregado via CDN.
+-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+    :root { color-scheme: dark; }
+    body {
+        font-family: system-ui, sans-serif;
+        background: #14161a;
+        color: #e2e6ea;
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 24px 16px 64px;
+    }
+    h1 { font-size: 1.2rem; margin: 0 0 4px; }
+    .hint { color: #8a939c; font-size: 0.85rem; margin-bottom: 20px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
+    button {
+        background: #2d6cdf; color: #fff; border: 0; border-radius: 6px;
+        padding: 8px 16px; font-size: 0.9rem; cursor: pointer;
+    }
+    button:disabled { background: #3a3f46; color: #79808a; cursor: not-allowed; }
+    button.secondary { background: #3a3f46; }
+    input[type="text"], input[type="number"] {
+        background: #1d2126; color: #e2e6ea; border: 1px solid #3a3f46;
+        border-radius: 6px; padding: 6px 10px; font-size: 0.85rem;
+    }
+    label { font-size: 0.85rem; color: #a7b0b8; }
+    #progress-wrap { display: none; margin: 12px 0; }
+    #progress-bar-outer {
+        background: #262b31; border-radius: 4px; height: 10px; overflow: hidden; width: 320px;
+    }
+    #progress-bar-inner { background: #2d6cdf; height: 100%; width: 0; transition: width .2s; }
+    #progress-text { font-size: 0.85rem; color: #a7b0b8; margin-top: 6px; }
+    ul#items { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 14px; }
+    li.item {
+        display: flex; gap: 14px; background: #1d2126;
+        border: 1px solid #2b3138; border-radius: 8px; padding: 12px;
+    }
+    li.item img {
+        width: 120px; height: 160px; object-fit: contain; background: #14161a;
+        border: 1px solid #2b3138; border-radius: 4px; flex-shrink: 0;
+    }
+    .item-info { flex: 1; min-width: 0; }
+    .item-name { font-size: 0.9rem; font-weight: 600; word-break: break-all; }
+    .item-status { font-size: 0.8rem; color: #8a939c; margin: 4px 0; }
+    .item-status.done { color: #63c17a; }
+    .item-status.error { color: #e0636d; }
+    pre.result {
+        background: #14161a; border: 1px solid #2b3138; border-radius: 6px;
+        padding: 10px; font-size: 0.78rem; white-space: pre-wrap;
+        word-break: break-all; margin: 6px 0 0; max-height: 320px; overflow: auto;
+    }
+    #summary { margin-top: 20px; font-size: 0.85rem; color: #a7b0b8; }
+</style>
+</head>
+<body>
+<h1>POC — Tags automáticas de PDFs (llama.cpp)</h1>
+<p class="hint">
+    Processamento local: cada PDF tem a primeira página renderizada no navegador (pdf.js) e enviada
+    em base64 para o llama-server em <code>http://127.0.0.1:8080/v1/chat/completions</code>.
+    Nada é persistido. Bordados ficarão para uma etapa futura.
+</p>
+
+<div class="controls">
+    <button id="pick" type="button">Selecionar PDFs</button>
+    <button id="generate" type="button" disabled>Gerar tags</button>
+    <button id="copy-all" type="button" class="secondary" disabled>Copiar JSON completo</button>
+    <label for="base-url">Servidor:</label>
+    <input id="base-url" type="text" value="http://127.0.0.1:8080" size="26" />
+    <label for="model">Modelo:</label>
+    <input id="model" type="text" value="ternary-bonsai-27b" size="22" />
+    <label for="max-side">Largura máx. da imagem:</label>
+    <input id="max-side" type="number" value="512" min="256" max="1280" step="64" />
+    <label for="page-count">Páginas analisadas:</label>
+    <input id="page-count" type="number" value="4" min="1" max="8" />
+</div>
+<div id="progress-wrap">
+    <div id="progress-bar-outer"><div id="progress-bar-inner"></div></div>
+    <div id="progress-text"></div>
+</div>
+
+<input id="file-input" type="file" accept="application/pdf,.pdf" multiple hidden />
+
+<ul id="items"></ul>
+<p id="summary"></p>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const TAG_SYSTEM_PROMPT = [
+    'You are an assistant that generates search tags for documents (PDFs) based on the image of the first page.',
+    '',
+    'MANDATORY RULES:',
+    '- Reply ONLY with valid JSON in the format {"tags": ["tag1", "tag2"]}, with no text before or after.',
+    '- ALL tags must be in English, lowercase, short (1 to 3 words), no full sentences.',
+    '- Use consistent, natural English terms that people would actually type when searching.',
+    '- Maximum 10 tags, but do NOT pad the list to reach 10. Use only as many tags as the image',
+    '  genuinely justifies. 4 or 5 strong tags are better than 10 weak ones.',
+    '- No duplicate tags (check for both exact and near-duplicate meanings).',
+    '- The attached images show different pages of the SAME document. Generate ONE unified',
+    '  set of tags describing the document as a whole; never create tags per page.',
+    '',
+    'WHAT A TAG MUST BE (in approximate priority order — stop when the image does not justify more):',
+    '1. The main object or character of the image.',
+    '2. The technique depicted (if clearly identifiable).',
+    '3. The type of item or garment, when identifiable.',
+    '4. Theme, character, or animal depicted.',
+    '5. Brand or author name, only if genuinely legible in the image.',
+    '6. Other characteristics ONLY if they carry real search value.',
+    '',
+    'WHAT TO AVOID:',
+    '- Do NOT turn incidental visual details into tags just because they are visible',
+    '  (e.g. a color like "blue", or a generic object like "hat" that is not the main subject).',
+    '- Do NOT infer audience, purpose or context that is not clearly identified',
+    '  (e.g. "baby", "children", "gift" just because of how the subject looks).',
+    '- Do NOT invent that the document is a "pattern", "tutorial" or "instructions" merely because',
+    '  it looks like a craft work. Only use such tags when explicitly evident from the page.',
+    '- Do NOT use generic category tags like "craft", "art", "design", "image", "document", "pdf"',
+    '  when more specific tags already represent the object or technique.',
+    '- Do NOT include the file name as a tag.',
+    '- Do NOT create tags for the file format or page layout.',
+].join('\n');
+
+const userPromptFor = (filename) =>
+    'Generate the search tags for this document (file: "' + filename + '"). ' +
+    'The attached images are sample pages of the document (the first is page 1). ' +
+    'All tags must be in English. ' +
+    'Reply only with the JSON {"tags": [...]}';
+
+const $ = (id) => document.getElementById(id);
+
+let files = []; // { file, status: 'pending'|'processing'|'done'|'error', result, error, thumbUrls }
+
+$('pick').addEventListener('click', () => $('file-input').click());
+$('file-input').addEventListener('change', onFilesPicked);
+$('generate').addEventListener('click', generateAll);
+$('copy-all').addEventListener('click', copyAll);
+
+function baseUrl() {
+    return $('base-url').value.trim().replace(/\/+$/, '');
+}
+
+function onFilesPicked(ev) {
+    const picked = [...ev.target.files].filter(isPdf);
+    files = picked.map((file) => ({ file, status: 'pending', result: null, error: null, thumbUrls: null }));
+    $('generate').disabled = files.length === 0;
+    $('copy-all').disabled = true;
+    $('summary').textContent = '';
+    renderList();
+    void preloadThumbnails();
+}
+
+function isPdf(file) {
+    return file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+}
+
+async function preloadThumbnails() {
+    for (const entry of files) {
+        if (entry.thumbUrls) continue;
+        try {
+            entry.thumbUrls = await renderPages(entry.file);
+        } catch (e) {
+            entry.thumbUrls = null;
+            entry.error = 'Falha ao renderizar thumbnail: ' + (e?.message || e);
+            entry.status = 'error';
+        }
+        renderList();
+    }
+}
+/** Renders a sample of pages (evenly spaced) of a PDF to JPEG data URLs. */
+async function renderPages(file) {
+    const wanted = Math.max(1, Math.min(8, Number($('page-count').value) || 4));
+    const buffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    const total = pdf.numPages;
+    const use = Math.min(wanted, total);
+    const indices = [];
+    for (let i = 0; i < use; i++) {
+        indices.push(use === 1 ? 0 : Math.round((i * (total - 1)) / (use - 1)));
+    }
+    const urls = [];
+    for (const idx of indices) {
+        urls.push(await renderPage(pdf, idx));
+    }
+    void pdf.destroy();
+    return urls;
+}
+
+/** Renders one page (0-based) of an open pdf.js document to a JPEG data URL. */
+async function renderPage(pdf, pageIndex) {
+    const page = await pdf.getPage(pageIndex + 1);
+    const maxSide = Number($('max-side').value) || 512;
+
+    const baseViewport = page.getViewport({ scale: 1 });
+    const scale = Math.min(1.5, maxSide / baseViewport.width);
+    const viewport = page.getViewport({ scale });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.floor(viewport.width);
+    canvas.height = Math.floor(viewport.height);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    canvas.remove();
+    return dataUrl;
+}
+
+async function generateAll() {
+    $('generate').disabled = true;
+    $('pick').disabled = true;
+    $('progress-wrap').style.display = 'block';
+
+    // Sequential processing: llama-server runs with -np 1, so one request at
+    // a time avoids GPU contention and timeouts.
+    const pending = files.filter((f) => f.status === 'pending' || f.status === 'error');
+    const total = pending.length;
+    let done = 0;
+    updateProgress(0, total);
+
+    for (const entry of pending) {
+        entry.status = 'processing';
+        entry.error = null;
+        renderList();
+
+        const startedAt = performance.now();
+        try {
+            if (!entry.thumbUrls) entry.thumbUrls = await renderPages(entry.file);
+            entry.result = await requestTags(entry);
+            entry.result.total_ms = Math.round(performance.now() - startedAt);
+            entry.status = 'done';
+        } catch (e) {
+            entry.status = 'error';
+            entry.error = e?.message || String(e);
+        }
+
+        done += 1;
+        updateProgress(done, total);
+        renderList();
+    }
+    $('progress-wrap').style.display = 'none';
+    $('pick').disabled = false;
+    $('generate').disabled = files.some((f) => f.status === 'pending' || f.status === 'error');
+    $('copy-all').disabled = false;
+
+    const ok = files.filter((f) => f.status === 'done').length;
+    const fail = files.filter((f) => f.status === 'error').length;
+    $('summary').textContent = 'Concluído: ' + ok + ' com tags, ' + fail + ' com erro.';
+}
+
+/** Calls llama-server (OpenAI-compatible) with the page image. */
+async function requestTags(entry) {
+    const images = entry.thumbUrls ?? [];
+    const body = {
+        model: $('model').value.trim() || 'local-model',
+        temperature: 0.2,
+        // Temporary diagnostic value: verify the model reaches message.content
+        // quickly when thinking is disabled.
+        max_tokens: 512,
+        // Bonsai/Qwen3-style templates: disables the reasoning/thinking phase,
+        // making the model emit the final answer directly in message.content.
+        chat_template_kwargs: { enable_thinking: false },
+        messages: [
+            { role: 'system', content: TAG_SYSTEM_PROMPT },
+            {
+                role: 'user',
+                content: [
+                    { type: 'text', text: userPromptFor(entry.file.name) },
+                    ...images.map((url) => ({ type: 'image_url', image_url: { url } })),
+                ],
+            },
+        ],
+    };
+
+    let response;
+    try {
+        const url = baseUrl() + '/v1/chat/completions';
+        const approxImageKb = images.length
+            ? Math.round((images.reduce((s, u) => s + u.length, 0) * 3) / 4 / 1024)
+            : 0;
+        console.log('[POC] >>> Request', {
+            url,
+            model: body.model,
+            max_tokens: body.max_tokens,
+            temperature: body.temperature,
+            image_approx_kb: approxImageKb,
+            messages: body.messages.map((m) =>
+                typeof m.content === 'string'
+                    ? { role: m.role, content: truncate(m.content, 200) }
+                    : {
+                          role: m.role,
+                          content: m.content.map((part) =>
+                              part.type === 'image_url'
+                                  ? { type: 'image_url', url: '<base64 data url, ' + approxImageKb + ' KB>' }
+                                  : part
+                          ),
+                      }
+            ),
+        });
+
+        response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+    } catch {
+        throw new Error('Falha de rede — o llama-server está rodando em ' + baseUrl() + '?');
+    }
+
+    console.log('[POC] <<< HTTP status:', response.status, response.statusText);
+
+    if (!response.ok) {
+        const text = await response.text();
+        console.log('[POC] <<< error body:', truncate(text, 1000));
+        throw new Error('HTTP ' + response.status + ': ' + truncate(text, 500));
+    }
+
+    const data = await response.json();
+
+    // Full dump of what llama-server returned — do not discard before logging.
+    console.log('[POC] <<< response JSON:', data);
+
+    const choice = data?.choices?.[0];
+    console.log('[POC] <<< choice:', choice);
+    console.log('[POC] <<< choice.finish_reason:', choice?.finish_reason);
+    const message = choice?.message;
+    console.log('[POC] <<< message:', message);
+    console.log('[POC] <<< message.content:', JSON.stringify(message?.content));
+    console.log('[POC] <<< message.reasoning_content:', JSON.stringify(message?.reasoning_content));
+    console.log('[POC] <<< usage:', data?.usage);
+
+    // Dump every other text-looking field on message/choice, in case the model
+    // output landed somewhere unexpected (e.g. reasoning_content, tool_calls).
+    if (message) {
+        for (const [key, value] of Object.entries(message)) {
+            if (!['content', 'reasoning_content', 'role'].includes(key) && value != null) {
+                console.log('[POC] <<< message.' + key + ':', value);
+            }
+        }
+    }
+
+    // Temporary tolerant extraction (DIAGNOSTIC ONLY): message.content is the
+    // only field used as the answer. reasoning_content is shown solely to
+    // inspect the thinking trace — its JSON must never be treated as output,
+    // as it contains prompt examples like {"tags":["tag1","tag2"]}.
+    const contentText = message?.content;
+    const content = typeof contentText === 'string' ? contentText : '';
+    const reasoningContent = typeof message?.reasoning_content === 'string'
+        ? message.reasoning_content
+        : '';
+    console.log('[POC] content usado como resposta?', content.trim() !== '',
+        '| reasoning_content presente?', reasoningContent.trim() !== '');
+
+    // Returns both the parsed tags and the raw model output, so the quality
+    // of the answer can be inspected empirically (goal of this POC).
+    let parsed = null;
+    let parseError = null;
+    try {
+        parsed = extractJson(content);
+    } catch (e) {
+        parseError = e?.message || String(e);
+    }
+
+    return {
+        tags: parsed?.tags ?? null,
+        parse_error: parseError,
+        raw_output: content,
+        usage: data?.usage ?? null,
+        total_ms: null,
+    };
+}
+
+/** Extracts a {"tags": [...]} object from a model output, tolerating fences,
+ * prose and reasoning before/around the JSON. */
+function extractJson(text) {
+    const withoutFences = text.replace(/```(?:json)?/gi, '');
+
+    // Preferred: any {"tags": ...} object anywhere in the text (balanced braces).
+    const tagsIdx = withoutFences.indexOf('"tags"');
+    if (tagsIdx !== -1) {
+        let braceStart = withoutFences.lastIndexOf('{', tagsIdx);
+        if (braceStart !== -1) {
+            const candidate = balancedObject(withoutFences, braceStart);
+            if (candidate) {
+                const parsed = JSON.parse(candidate);
+                if (Array.isArray(parsed?.tags)) return parsed;
+            }
+        }
+    }
+
+    // Fallback: first balanced object in the text.
+    const start = withoutFences.indexOf('{');
+    if (start !== -1) {
+        const candidate = balancedObject(withoutFences, start);
+        if (candidate) {
+            const parsed = JSON.parse(candidate);
+            if (Array.isArray(parsed?.tags)) return parsed;
+        }
+    }
+
+    throw new Error('Nenhum objeto JSON com "tags" encontrado na resposta.');
+}
+
+/** Returns the balanced {...} substring starting at `start`, or null. */
+function balancedObject(text, start) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < text.length; i++) {
+        const ch = text[i];
+        if (inString) {
+            if (escaped) escaped = false;
+            else if (ch === '\\') escaped = true;
+            else if (ch === '"') inString = false;
+            continue;
+        }
+        if (ch === '"') inString = true;
+        else if (ch === '{') depth++;
+        else if (ch === '}') {
+            depth--;
+            if (depth === 0) return text.slice(start, i + 1);
+        }
+    }
+    return null; // unbalanced (truncated output)
+}
+function updateProgress(done, total) {
+    $('progress-bar-inner').style.width = total ? (done / total) * 100 + '%' : '0';
+    $('progress-text').textContent = 'Processando: ' + done + '/' + total;
+}
+
+function renderList() {
+    const ul = $('items');
+    ul.innerHTML = '';
+
+    files.forEach((entry) => {
+        const li = document.createElement('li');
+        li.className = 'item';
+
+        if (entry.thumbUrls?.length) {
+            const img = document.createElement('img');
+            img.src = entry.thumbUrls[0];
+            img.alt = 'Primeira página';
+            li.appendChild(img);
+        }
+
+        const info = document.createElement('div');
+        info.className = 'item-info';
+
+        const name = document.createElement('div');
+        name.className = 'item-name';
+        name.textContent = entry.file.name;
+        info.appendChild(name);
+
+        const status = document.createElement('div');
+        status.className = 'item-status ' + entry.status;
+        status.textContent = {
+            pending: 'Aguardando',
+            processing: 'Gerando tags…',
+            done: 'Concluído',
+            error: 'Erro',
+        }[entry.status];
+        info.appendChild(status);
+
+        if (entry.status === 'done' && entry.result) {
+            const pre = document.createElement('pre');
+            pre.className = 'result';
+            const toShow = {
+                file: entry.file.name,
+                tags: entry.result.tags,
+            };
+            if (entry.result.parse_error) {
+                toShow.parse_error = entry.result.parse_error;
+                toShow.raw_output = entry.result.raw_output; // inspect what the model did
+            } else {
+                toShow.usage = entry.result.usage;
+                toShow.total_ms = entry.result.total_ms;
+            }
+            pre.textContent = JSON.stringify(toShow, null, 2);
+            info.appendChild(pre);
+        }
+
+        if (entry.error) {
+            const pre = document.createElement('pre');
+            pre.className = 'result';
+            pre.textContent = entry.error;
+            info.appendChild(pre);
+        }
+
+        li.appendChild(info);
+        ul.appendChild(li);
+    });
+}
+
+async function copyAll() {
+    const output = files.map((entry) => ({
+        file: entry.file.name,
+        status: entry.status,
+        tags: entry.result?.tags ?? null,
+        parse_error: entry.result?.parse_error ?? null,
+        raw_output: entry.result?.raw_output ?? null,
+        usage: entry.result?.usage ?? null,
+        error: entry.error ?? null,
+    }));
+    const json = JSON.stringify(output, null, 2);
+    const okMessage = 'JSON completo copiado para a área de transferência.';
+    try {
+        await navigator.clipboard.writeText(json);
+        $('summary').textContent = okMessage;
+    } catch {
+        // Fallback p/ contextos onde a Clipboard API não está disponível.
+        const ta = document.createElement('textarea');
+        ta.value = json;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        $('summary').textContent = okMessage;
+    }
+}
+
+function truncate(text, n) {
+    return text.length > n ? text.slice(0, n) + '…' : text;
+}
+</script>
+</body>
+</html>

@@ -217,6 +217,25 @@ pub fn open_and_migrate(app: &tauri::AppHandle) -> Result<Connection, String> {
 
         CREATE INDEX IF NOT EXISTS idx_files_collection ON files(collection_id);
         CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);
+
+        CREATE TABLE IF NOT EXISTS tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE COLLATE NOCASE
+        );
+
+        CREATE TABLE IF NOT EXISTS file_tags (
+            file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+            tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+            source TEXT NOT NULL DEFAULT 'ai',
+            PRIMARY KEY (file_id, tag_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_file_tags_tag ON file_tags(tag_id);
+
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
         ",
     )
     .map_err(|e| format!("Não foi possível inicializar o banco: {e}"))?;
@@ -409,10 +428,11 @@ pub fn stage_image_in_cache(app: &tauri::AppHandle, src_path: &str) -> Result<St
         return Err("Formato de imagem não suportado".to_string());
     }
 
-    // Hash of the file contents so re-picking the same image reuses the copy.
+    // Hash of the file contents so re-picking the same image reuses the copy
+    // while a different image saved at the same path gets a fresh copy.
     let bytes = fs::read(src_path)
         .map_err(|e| format!("Não foi possível ler a imagem: {e}"))?;
-    let key = format!("cover_src_{}.{ext}", sha256_hex(&format!("{}:{}", bytes.len(), src_path)));
+    let key = format!("cover_src_{}.{ext}", sha256_hex_bytes(&bytes));
     let dest = cache.join(key);
 
     fs::write(&dest, &bytes)
@@ -454,7 +474,13 @@ pub fn save_cover_to_cache(
         image::imageops::FilterType::Lanczos3,
     );
 
-    let key = format!("collection_cover_{}.webp", sha256_hex(src_path));
+    // The crop rect is part of the file name: re-cropping the same image writes
+    // a new file (and therefore a new URL for the webview) instead of silently
+    // reusing a cover that is already cached by the asset protocol.
+    let key = format!(
+        "collection_cover_{}.webp",
+        sha256_hex(&format!("{src_path}:{crop_x}:{crop_y}:{crop_w}:{crop_h}"))
+    );
     let dest = cache.join(&key);
     resized
         .save_with_format(&dest, image::ImageFormat::WebP)
@@ -497,6 +523,13 @@ fn sha256_hex(input: &str) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(input.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+fn sha256_hex_bytes(input: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(input);
     format!("{:x}", hasher.finalize())
 }
 
@@ -644,7 +677,13 @@ pub fn search_all_items(
     limit: usize,
     collection_ids: Option<&[i64]>,
 ) -> Result<Vec<GlobalSearchResultItem>, String> {
-    let pattern = format!("%{query}%");
+    // Escape the LIKE wildcards so a query containing % or _ is matched
+    // literally instead of turning into a match-everything pattern.
+    let escaped = query
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    let pattern = format!("%{escaped}%");
     let mut sql = String::from(
         "SELECT f.id, f.collection_id, c.name, f.path, f.filename, f.size, f.modified_at, f.page_count, f.file_type, f.thumbnail_key, f.thumbnail_status, f.is_favorite
          FROM files f
@@ -669,6 +708,10 @@ pub fn search_all_items(
             ));
         }
     }
+
+    sql.push_str(
+        " AND (f.filename LIKE ?1 ESCAPE '\\' OR f.path LIKE ?1 ESCAPE '\\' OR EXISTS (\n            SELECT 1 FROM file_tags ft\n            JOIN tags t ON t.id = ft.tag_id\n            WHERE ft.file_id = f.id AND t.name LIKE ?1 ESCAPE '\\'))",
+    );
 
     let limit_index = bind_values.len() + 1;
     bind_values.push(rusqlite::types::Value::from(limit as i64));
@@ -1090,4 +1133,127 @@ pub fn toggle_item_favorite(conn: &Connection, id: i64) -> Result<bool, String> 
     .map_err(|e| format!("Falha ao atualizar favorito do item: {e}"))?;
 
     Ok(new_value != 0)
+}
+
+// ── Tags & settings (LLM tagging) ──
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ItemTags {
+    pub item_id: i64,
+    pub tags: Vec<String>,
+}
+
+pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = ?1",
+        params![key],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| format!("Falha ao ler configuração '{key}': {e}"))
+}
+
+pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, value],
+    )
+    .map_err(|e| format!("Falha ao salvar configuração '{key}': {e}"))?;
+    Ok(())
+}
+
+/// Replaces the AI-generated tags of an item. Manual tags (source = 'manual')
+/// are preserved. Names are normalized (trim + lowercase) and deduplicated.
+pub fn replace_ai_tags(conn: &Connection, file_id: i64, tags: &[String]) -> Result<(), String> {
+    let mut clean: Vec<String> = Vec::new();
+    for tag in tags {
+        let name = tag.trim().to_lowercase();
+        if name.is_empty() || name.len() > 64 || clean.contains(&name) {
+            continue;
+        }
+        clean.push(name);
+    }
+
+    conn.execute(
+        "DELETE FROM file_tags WHERE file_id = ?1 AND source = 'ai'",
+        params![file_id],
+    )
+    .map_err(|e| format!("Falha ao remover tags anteriores: {e}"))?;
+
+    for name in clean {
+        conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?1)", params![name])
+            .map_err(|e| format!("Falha ao inserir tag '{name}': {e}"))?;
+        conn.execute(
+            "INSERT OR IGNORE INTO file_tags (file_id, tag_id, source)
+             SELECT ?1, id, 'ai' FROM tags WHERE name = ?2",
+            params![file_id, name],
+        )
+        .map_err(|e| format!("Falha ao vincular tag '{name}': {e}"))?;
+    }
+
+    // Remove tags that no longer reference any file.
+    conn.execute(
+        "DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM file_tags)",
+        [],
+    )
+    .map_err(|e| format!("Falha ao limpar tags órfãs: {e}"))?;
+
+    Ok(())
+}
+
+/// Returns the tags of the given items (empty vec entries when the item has none).
+pub fn get_item_tags(conn: &Connection, file_ids: &[i64]) -> Result<Vec<ItemTags>, String> {
+    let mut result: Vec<ItemTags> = file_ids
+        .iter()
+        .map(|id| ItemTags { item_id: *id, tags: Vec::new() })
+        .collect();
+    if file_ids.is_empty() {
+        return Ok(result);
+    }
+
+    let placeholders = file_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT ft.file_id, t.name FROM file_tags ft
+         JOIN tags t ON t.id = ft.tag_id
+         WHERE ft.file_id IN ({placeholders})
+         ORDER BY t.name"
+    );
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| format!("Falha ao preparar consulta de tags: {e}"))?;
+    let bind: Vec<&dyn rusqlite::ToSql> = file_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+    let rows = stmt
+        .query_map(bind.as_slice(), |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| format!("Falha ao consultar tags: {e}"))?;
+
+    for row in rows {
+        let (item_id, name) = row.map_err(|e| format!("Falha ao ler tag: {e}"))?;
+        if let Some(entry) = result.iter_mut().find(|e| e.item_id == item_id) {
+            entry.tags.push(name);
+        }
+    }
+    Ok(result)
+}
+
+/// Ids of the pdf items of a collection, optionally only those without AI tags.
+pub fn list_pdf_item_ids(conn: &Connection, collection_id: i64, only_missing: bool) -> Result<Vec<i64>, String> {
+    let sql = if only_missing {
+        "SELECT id FROM files
+         WHERE collection_id = ?1 AND file_type = 'pdf'
+           AND id NOT IN (SELECT file_id FROM file_tags WHERE source = 'ai')
+         ORDER BY id"
+    } else {
+        "SELECT id FROM files WHERE collection_id = ?1 AND file_type = 'pdf' ORDER BY id"
+    };
+    let mut stmt = conn
+        .prepare(sql)
+        .map_err(|e| format!("Falha ao preparar consulta de itens: {e}"))?;
+    let rows = stmt
+        .query_map(params![collection_id], |row| row.get(0))
+        .map_err(|e| format!("Falha ao listar itens: {e}"))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Falha ao ler itens: {e}"))
 }

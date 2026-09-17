@@ -1,6 +1,7 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import type { CollectionItem } from '@/types';
 import { ItemThumbnail } from '@/components/common/ItemThumbnail';
+import { generateItemTags, getItemTags } from '@/services/tags';
 import {
     formatBytes,
     formatColorChanges,
@@ -34,6 +35,44 @@ export function QuickLookModal({
     refreshKey,
 }: QuickLookModalProps) {
     const item = items[currentIndex];
+
+    const [tags, setTags] = useState<string[]>([]);
+    const [tagsLoading, setTagsLoading] = useState(false);
+    const [tagsError, setTagsError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const itemId = item?.id;
+        if (itemId === undefined) {
+            return undefined;
+        }
+
+        let cancelled = false;
+        setTags([]);
+        setTagsError(null);
+        getItemTags([itemId])
+            .then((rows) => {
+                if (!cancelled && rows && rows.length > 0) {
+                    setTags(rows[0].tags || []);
+                }
+            })
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+    }, [item?.id]);
+
+    const handleGenerateTags = async () => {
+        setTagsLoading(true);
+        setTagsError(null);
+        try {
+            const next = await generateItemTags(item.id);
+            setTags(next);
+        } catch (reason) {
+            setTagsError(reason instanceof Error ? reason.message : String(reason));
+        } finally {
+            setTagsLoading(false);
+        }
+    };
 
     const handlePrev = useCallback(() => {
         if (currentIndex > 0) {
@@ -131,7 +170,7 @@ export function QuickLookModal({
 
                     {/* Image / Thumbnail */}
                     <div className="max-w-full max-h-[55vh] aspect-[3/4] flex items-center justify-center rounded-xl overflow-hidden shadow-2xl bg-slate-900 border border-slate-800">
-                        <ItemThumbnail item={item} refreshKey={refreshKey} size="full" className="w-full h-full object-contain" />
+                        <ItemThumbnail item={item} refreshKey={refreshKey} size="full" fit="contain" />
                     </div>
 
                     {/* Next button */}
@@ -162,6 +201,28 @@ export function QuickLookModal({
                         )}
                     </div>
 
+                    {tags.length > 0 && (
+                        <div className="w-full flex flex-wrap gap-1.5">
+                            {tags.map((tag) => (
+                                <span
+                                    key={tag}
+                                    className="px-2 py-0.5 text-[11px] bg-slate-800 text-blue-300 rounded border border-slate-700"
+                                >
+                                    #{tag}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                    <button
+                        type="button"
+                        onClick={handleGenerateTags}
+                        disabled={tagsLoading || isEmbroidery}
+                        className="px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white rounded-lg font-medium transition-colors"
+                        title={isEmbroidery ? 'Tags de bordado serão suportadas em uma fase futura' : 'Gerar tags com IA (llama.cpp)'}
+                    >
+                        {tagsLoading ? '⏳ Gerando…' : '🏷️ Gerar tags'}
+                    </button>
+                    {tagsError && <span className="text-red-400 text-xs w-full">{tagsError}</span>}
                     <div className="flex items-center gap-2">
                         <button
                             type="button"

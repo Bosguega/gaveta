@@ -14,10 +14,12 @@ interface ItemThumbnailProps {
     item: ThumbnailItemSource;
     refreshKey?: number;
     size?: 'sm' | 'full';
+    /** object-fit of the full size image. Defaults to cover (grid cards). */
+    fit?: 'cover' | 'contain';
     className?: string;
 }
 
-export function ItemThumbnail({ item, refreshKey, size = 'full', className = '' }: ItemThumbnailProps) {
+export function ItemThumbnail({ item, refreshKey, size = 'full', fit = 'cover', className = '' }: ItemThumbnailProps) {
     const [imgSrc, setImgSrc] = useState<string>('');
 
     useEffect(() => {
@@ -69,13 +71,14 @@ export function ItemThumbnail({ item, refreshKey, size = 'full', className = '' 
     }
 
     // Default 'full' size for grid cards
+    const fitClass = fit === 'contain' ? 'object-contain' : 'object-cover';
     return (
         <div className={`w-full h-full flex items-center justify-center ${className}`}>
             {!showPlaceholder ? (
                 <img
                     src={imgSrc}
                     alt={item.filename}
-                    className="w-full h-full object-cover"
+                    className={`w-full h-full ${fitClass}`}
                     loading="lazy"
                     onError={() => setImgSrc('')}
                 />

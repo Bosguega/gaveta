@@ -4,6 +4,7 @@ pub mod embroidery;
 pub mod file_types;
 pub mod scanner;
 pub mod thumbnails;
+pub mod tagging;
 
 use db::DbState;
 use std::collections::HashMap;
@@ -52,6 +53,45 @@ impl ScanCancels {
     }
 }
 
+/// Cancel flags for the batch LLM tagging job (same pattern as ScanCancels).
+#[derive(Default)]
+pub struct TagCancels(Mutex<HashMap<i64, AtomicBool>>);
+
+impl TagCancels {
+    pub fn mark_active(&self, collection_id: i64) {
+        if let Ok(mut map) = self.0.lock() {
+            map.insert(collection_id, AtomicBool::new(false));
+        }
+    }
+
+    pub fn is_cancelled(&self, collection_id: i64) -> bool {
+        self.0
+            .lock()
+            .ok()
+            .and_then(|map| map.get(&collection_id).map(|b| b.load(Ordering::Relaxed)))
+            .unwrap_or(false)
+    }
+
+    pub fn cancel(&self, collection_id: i64) -> bool {
+        self.0
+            .lock()
+            .ok()
+            .and_then(|map| {
+                map.get(&collection_id).map(|b| {
+                    b.store(true, Ordering::Relaxed);
+                    true
+                })
+            })
+            .unwrap_or(false)
+    }
+
+    pub fn clear(&self, collection_id: i64) {
+        if let Ok(mut map) = self.0.lock() {
+            map.remove(&collection_id);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -62,6 +102,7 @@ pub fn run() {
                 .expect("Falha ao abrir e migrar SQLite");
             app.manage(DbState(Mutex::new(conn)));
             app.manage(ScanCancels::new());
+            app.manage(TagCancels::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -86,6 +127,13 @@ pub fn run() {
             commands::regenerate_thumbnails,
             commands::toggle_collection_pin,
             commands::search_all_items,
+            commands::get_tag_settings,
+            commands::set_tag_settings,
+            commands::test_tag_connection,
+            commands::get_item_tags,
+            commands::generate_item_tags,
+            commands::generate_collection_tags,
+            commands::cancel_tagging,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao executar o aplicativo Tauri");

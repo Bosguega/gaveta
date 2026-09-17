@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createLatestRequest } from '@/utils/latestRequest';
+import { useTagJobStore } from '@/store/useTagJobStore';
 import { ItemCard } from '@/components/ItemCard';
 import { DuplicateAnalysisModal } from '@/components/DuplicateAnalysisModal';
 import { ProgressBar } from '@/components/common/ProgressBar';
@@ -22,8 +24,15 @@ import {
 } from '@/services/items';
 import { clearThumbnailUrlCache } from '@/services/thumbnails';
 import {
+    generateCollectionTags,
+    cancelTagging,
+    getItemTags,
+} from '@/services/tags';
+import { TagSettingsModal } from '@/components/TagSettingsModal';
+import {
     FAVORITES_COLLECTION_ID,
     type Collection,
+    type CollectionItem,
     SORT_OPTIONS,
     ITEMS_PER_PAGE_OPTIONS,
     SIZE_FILTER_OPTIONS,
@@ -103,17 +112,56 @@ export function CollectionPage() {
     const [thumbEpoch, setThumbEpoch] = useState(0);
     const [page, setPage] = useState(1);
 
+    // LLM tagging state
+    const tagJob = useTagJobStore((state) => currentCollectionId === null ? undefined : state.jobs[currentCollectionId]);
+    const tagsRevision = useTagJobStore((state) => state.revision);
+    const isTagging = tagJob?.running ?? false;
+    const tagProgress = tagJob?.progress ?? null;
+    const tagSummary = tagJob?.summary ?? null;
+    const [showTagSettings, setShowTagSettings] = useState(false);
+    const [tagsByItem, setTagsByItem] = useState<Record<number, string[]>>({});
+    const [tagFilter, setTagFilter] = useState<string>('all');
+
     // QuickLook State
     const [quickLookIndex, setQuickLookIndex] = useState<number | null>(null);
 
+    const navigationVersion = useAppStore((state) => state.navigationVersion);
+    const itemRequests = useRef(createLatestRequest());
+    const tagRequests = useRef(createLatestRequest());
+    const isCurrentView = () => {
+        const state = useAppStore.getState();
+        return state.navigationVersion === navigationVersion && state.favoritesScope === favoritesScope;
+    };
+
     const loadItems = async () => {
-        if (currentCollectionId === null) return;
+        if (currentCollectionId === null || !isCurrentView()) return;
+        const isCurrent = itemRequests.current.begin(isCurrentView);
         try {
             const data = isFavoritesView ? await listFavorites(favoritesScope) : await listItems(currentCollectionId);
-            setItems(data);
+            if (isCurrent()) {
+                setItems(data);
+                refreshTags(data);
+            }
         } catch (reason) {
-            setError(reason instanceof Error ? reason.message : 'Não foi possível carregar os arquivos.');
+            if (isCurrent()) setError(reason instanceof Error ? reason.message : String(reason));
         }
+    };
+
+    const refreshTags = (list: CollectionItem[]) => {
+        if (!isCurrentView()) return;
+        const isCurrent = tagRequests.current.begin(isCurrentView);
+        setTagsByItem({});
+        if (list.length === 0) return;
+        getItemTags(list.map((item) => item.id))
+            .then((rows) => {
+                if (!isCurrent()) return;
+                const map: Record<number, string[]> = {};
+                for (const row of rows) map[row.item_id] = row.tags;
+                setTagsByItem(map);
+            })
+            .catch((reason) => {
+                if (isCurrent()) setError(reason instanceof Error ? reason.message : String(reason));
+            });
     };
 
     const selectedIds = useMemo(() => Array.from(selectedItemIds), [selectedItemIds]);
@@ -138,6 +186,28 @@ export function CollectionPage() {
         }
     };
 
+    const handleGenerateTags = async () => {
+        if (currentCollectionId === null || isTagging || isFavoritesView) return;
+        setError(null);
+        try {
+            await generateCollectionTags(currentCollectionId, true);
+        } catch (reason) {
+            setError(reason instanceof Error ? reason.message : 'Não foi possível iniciar a geração de tags.');
+        }
+    };
+
+    const handleCancelTagging = async () => {
+        if (currentCollectionId === null) return;
+        await cancelTagging(currentCollectionId);
+    };
+
+    // Atualiza as tags exibidas quando o job de IA conclui ou tags são geradas
+    useEffect(() => {
+        if (items.length > 0) {
+            refreshTags(items);
+        }
+    }, [tagsRevision]);
+
     useEffect(() => {
         if (currentCollectionId === null) return;
 
@@ -146,6 +216,7 @@ export function CollectionPage() {
         setSelectedFileType('all');
         setSizeFilter('all');
         setStitchFilter('all');
+        setTagFilter('all');
         setSelectedItems([]);
         setUnavailableCount(0);
         setErroredCount(0);
@@ -200,12 +271,12 @@ export function CollectionPage() {
     // Drop selection when any filter changes to prevent hidden items from staying selected
     useEffect(() => {
         clearSelection();
-    }, [search, selectedFileType, sizeFilter, stitchFilter, showFavoritesOnly, showErrorsOnly, clearSelection]);
+    }, [search, selectedFileType, sizeFilter, stitchFilter, tagFilter, showFavoritesOnly, showErrorsOnly, clearSelection]);
 
     // Filter, sort or pagination changes return to page 1
     useEffect(() => {
         setPage(1);
-    }, [search, selectedFileType, sizeFilter, stitchFilter, showFavoritesOnly, showErrorsOnly, sort, itemsPerPage]);
+    }, [search, selectedFileType, sizeFilter, stitchFilter, tagFilter, showFavoritesOnly, showErrorsOnly, sort, itemsPerPage]);
 
     const handleUpdate = async () => {
         if (currentCollectionId === null || isUpdating) return;
@@ -279,6 +350,14 @@ export function CollectionPage() {
         return Array.from(set).sort();
     }, [items]);
 
+    const distinctTags = useMemo(() => {
+        const set = new Set<string>();
+        for (const tags of Object.values(tagsByItem)) {
+            for (const tag of tags) set.add(tag);
+        }
+        return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    }, [tagsByItem]);
+
     const filteredAndSorted = useMemo(() => {
         const query = search.trim().toLowerCase();
         let result = items;
@@ -320,9 +399,14 @@ export function CollectionPage() {
             result = result.filter((item) => item.stitch_count !== null && item.stitch_count > 30000);
         }
 
-        // Search filter
+        // Tag filter
+        if (tagFilter !== 'all') {
+            result = result.filter((item) => (tagsByItem[item.id] ?? []).includes(tagFilter));
+        }
+
+        // Search filter (nome, caminho e tags)
         if (query) {
-            result = result.filter((item) => item.filename.toLowerCase().includes(query) || item.path.toLowerCase().includes(query));
+            result = result.filter((item) => item.filename.toLowerCase().includes(query) || item.path.toLowerCase().includes(query) || (tagsByItem[item.id] ?? []).some((tag) => tag.includes(query)));
         }
 
         const sorted = [...result];
@@ -375,7 +459,7 @@ export function CollectionPage() {
                 break;
         }
         return sorted;
-    }, [items, search, sort, showFavoritesOnly, showErrorsOnly, selectedFileType, sizeFilter, stitchFilter]);
+    }, [items, search, sort, showFavoritesOnly, showErrorsOnly, selectedFileType, sizeFilter, stitchFilter, tagFilter, tagsByItem]);
 
     const totalItems = filteredAndSorted.length;
     const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
@@ -504,6 +588,21 @@ export function CollectionPage() {
                     ) : (
                         <>
                             <button
+                                onClick={handleGenerateTags}
+                                disabled={items.length === 0}
+                                className="px-3.5 py-1.5 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-40 font-medium shadow-sm"
+                                title="Gerar tags com IA para os PDFs da coleção (itens sem tags)"
+                            >
+                                🏷️ Tags IA
+                            </button>
+                            <button
+                                onClick={() => setShowTagSettings(true)}
+                                className="px-3 py-1.5 text-sm bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 font-medium shadow-sm"
+                                title="Configurações do servidor de tags"
+                            >
+                                ⚙️
+                            </button>
+                            <button
                                 onClick={() => setShowDuplicates(true)}
                                 disabled={items.length === 0}
                                 className="px-3.5 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40 font-medium shadow-sm"
@@ -566,6 +665,24 @@ export function CollectionPage() {
                         {STITCH_FILTER_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>
                                 {option.label}
+                            </option>
+                        ))}
+                    </select>
+                )}
+
+
+                {/* Tag filter */}
+                {distinctTags.length > 0 && (
+                    <select
+                        value={tagFilter}
+                        onChange={(e) => setTagFilter(e.target.value)}
+                        className="px-3 py-1.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-700"
+                        title="Filtrar por tag"
+                    >
+                        <option value="all">🏷️ Todas as tags</option>
+                        {distinctTags.map((tag) => (
+                            <option key={tag} value={tag}>
+                                #{tag}
                             </option>
                         ))}
                     </select>
@@ -745,6 +862,28 @@ export function CollectionPage() {
                 <ProgressBar progress={regenProgress} className="mb-6" />
             )}
 
+            {isTagging && tagProgress && (
+                <div className="mb-6">
+                    <ProgressBar progress={tagProgress} />
+                    <div className="flex justify-end mt-2">
+                        <button
+                            type="button"
+                            onClick={handleCancelTagging}
+                            className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium"
+                        >
+                            Cancelar tags
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {tagSummary && (
+                <div className="mb-6 rounded-lg bg-purple-50 p-3 text-sm text-purple-800">
+                    Tags geradas: {tagSummary.generated} arquivo(s)
+                    {tagSummary.failed > 0 ? `, ${tagSummary.failed} com erro` : ''}.
+                </div>
+            )}
+
             {regenSummary && (
                 <div className="mb-6 rounded-lg bg-green-50 p-3 text-sm text-green-800">
                     Miniaturas regeneradas: {regenSummary.regenerated} concluída(s)
@@ -821,7 +960,8 @@ export function CollectionPage() {
                                         }}
                                         onRevealInFolder={() => handleRevealInFolder(item.path)}
                                         onToggleFavorite={() => handleToggleFavorite(item.id)}
-                                        collectionName={isFavoritesView ? collectionById.get(item.collection_id)?.name : undefined}
+                                        tags={tagsByItem[item.id]}
+                            collectionName={isFavoritesView ? collectionById.get(item.collection_id)?.name : undefined}
                                         collectionIcon={isFavoritesView ? collectionById.get(item.collection_id)?.icon : undefined}
                                         onGoToCollection={isFavoritesView ? () => openCollection(item.collection_id) : undefined}
                                     />
@@ -844,6 +984,7 @@ export function CollectionPage() {
                             onQuickLook={() => setQuickLookIndex(index)}
                             onRevealInFolder={() => handleRevealInFolder(item.path)}
                             onToggleFavorite={() => handleToggleFavorite(item.id)}
+                            tags={tagsByItem[item.id]}
                             collectionName={isFavoritesView ? collectionById.get(item.collection_id)?.name : undefined}
                             collectionIcon={isFavoritesView ? collectionById.get(item.collection_id)?.icon : undefined}
                             onGoToCollection={isFavoritesView ? () => openCollection(item.collection_id) : undefined}
@@ -865,7 +1006,7 @@ export function CollectionPage() {
             {quickLookIndex !== null && pageItems.length > 0 && (
                 <QuickLookModal
                     items={pageItems}
-                    currentIndex={quickLookIndex}
+                    currentIndex={Math.min(quickLookIndex, pageItems.length - 1)}
                     onClose={() => setQuickLookIndex(null)}
                     onNavigate={(index) => setQuickLookIndex(index)}
                     onOpenFile={handleOpenFile}
@@ -874,6 +1015,9 @@ export function CollectionPage() {
                     refreshKey={thumbEpoch}
                 />
             )}
+
+            {/* Tag Settings Modal */}
+            {showTagSettings && <TagSettingsModal onClose={() => setShowTagSettings(false)} />}
 
             {/* Collection Stats Modal */}
             {showStats && collectionDetail && (
