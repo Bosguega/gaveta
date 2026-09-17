@@ -187,6 +187,8 @@ export interface TagSettings {
     model: string;
     pages: number;
     max_tokens: number;
+    system_prompt: string;
+    user_prompt: string;
 }
 
 export interface ItemTags {

@@ -28,6 +28,10 @@ export async function getTagSettings(): Promise<TagSettings> {
     return invoke<TagSettings>('get_tag_settings');
 }
 
+export async function getDefaultTagSettings(): Promise<TagSettings> {
+    return invoke<TagSettings>('get_default_tag_settings');
+}
+
 export async function setTagSettings(settings: TagSettings): Promise<void> {
     return invoke<void>('set_tag_settings', { settings });
 }

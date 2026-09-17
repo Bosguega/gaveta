@@ -128,6 +128,7 @@ pub fn run() {
             commands::toggle_collection_pin,
             commands::search_all_items,
             commands::get_tag_settings,
+            commands::get_default_tag_settings,
             commands::set_tag_settings,
             commands::test_tag_connection,
             commands::get_item_tags,

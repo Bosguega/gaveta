@@ -930,6 +930,11 @@ pub struct TaggingSummary {
 }
 
 #[tauri::command]
+pub fn get_default_tag_settings() -> TagSettings {
+    TagSettings::default()
+}
+
+#[tauri::command]
 pub fn get_tag_settings(state: State<'_, DbState>) -> Result<TagSettings, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     Ok(load_tag_settings(&conn))
@@ -943,6 +948,8 @@ fn load_tag_settings(conn: &rusqlite::Connection) -> TagSettings {
         model: read("tag_model").unwrap_or(defaults.model),
         pages: read("tag_pages").and_then(|v| v.parse().ok()).unwrap_or(defaults.pages),
         max_tokens: read("tag_max_tokens").and_then(|v| v.parse().ok()).unwrap_or(defaults.max_tokens),
+        system_prompt: read("tag_system_prompt").unwrap_or(defaults.system_prompt),
+        user_prompt: read("tag_user_prompt").unwrap_or(defaults.user_prompt),
     }
 }
 
@@ -953,6 +960,8 @@ pub fn set_tag_settings(state: State<'_, DbState>, settings: TagSettings) -> Res
     db::set_setting(&conn, "tag_model", settings.model.trim())?;
     db::set_setting(&conn, "tag_pages", &settings.pages.to_string())?;
     db::set_setting(&conn, "tag_max_tokens", &settings.max_tokens.to_string())?;
+    db::set_setting(&conn, "tag_system_prompt", settings.system_prompt.trim())?;
+    db::set_setting(&conn, "tag_user_prompt", settings.user_prompt.trim())?;
     Ok(())
 }
 
@@ -993,10 +1002,7 @@ pub async fn generate_item_tags(
 
     let tags = tauri::async_runtime::spawn_blocking(move || {
         tagging::generate_tags(
-            &settings.base_url,
-            &settings.model,
-            settings.max_tokens,
-            settings.pages,
+            &settings,
             &item.path,
             &item.filename,
             &resource_dir,
@@ -1089,10 +1095,7 @@ pub fn generate_collection_tags(
                 };
                 let item_path = item.path.clone();
                 let tags = tagging::generate_tags(
-                    &item_settings.base_url,
-                    &item_settings.model,
-                    item_settings.max_tokens,
-                    item_settings.pages,
+                    &item_settings,
                     &item.path,
                     &item.filename,
                     &resource_dir,

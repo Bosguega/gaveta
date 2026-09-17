@@ -15,6 +15,34 @@ pub const DEFAULT_MODEL: &str = "ternary-bonsai-27b";
 pub const DEFAULT_PAGES: i64 = 4;
 pub const DEFAULT_MAX_TOKENS: i64 = 512;
 
+pub const DEFAULT_SYSTEM_PROMPT: &str = concat!(
+    "You are an assistant that generates search tags for documents (PDFs) based on the image of the first page.\n\n",
+    "MANDATORY RULES:\n",
+    "- Reply ONLY with valid JSON in the format {\"tags\": [\"tag1\", \"tag2\"]}, with no text before or after.\n",
+    "- ALL tags must be in English, lowercase, short (1 to 3 words), no full sentences.\n",
+    "- Use consistent, natural English terms that people would actually type when searching.\n",
+    "- Maximum 10 tags, but do NOT pad the list to reach 10. Use only as many tags as the images genuinely justify. 4 or 5 strong tags are better than 10 weak ones.\n",
+    "- No duplicate tags (check for both exact and near-duplicate meanings).\n",
+    "- The attached images show different pages of the SAME document. Generate ONE unified set of tags describing the document as a whole; never create tags per page.\n\n",
+    "WHAT A TAG MUST BE (in approximate priority order - stop when the image does not justify more):\n",
+    "1. The main object or character of the image.\n",
+    "2. The technique depicted (if clearly identifiable).\n",
+    "3. The type of item or garment, when identifiable.\n",
+    "4. Theme, character, or animal depicted.\n",
+    "5. Brand or author name, only if genuinely legible in the image.\n",
+    "6. Other characteristics ONLY if they carry real search value.\n\n",
+    "WHAT TO AVOID:\n",
+    "- Do NOT turn incidental visual details into tags just because they are visible (e.g. a color like \"blue\", or a generic object like \"hat\" that is not the main subject).\n",
+    "- Do NOT infer audience, purpose or context that is not clearly identified (e.g. \"baby\", \"children\", \"gift\" just because of how the subject looks).\n",
+    "- Do NOT invent that the document is a \"pattern\", \"tutorial\" or \"instructions\" merely because it looks like a craft work. Only use such tags when explicitly evident from the page.\n",
+    "- Do NOT use generic category tags like \"craft\", \"art\", \"design\", \"image\", \"document\", \"pdf\" when more specific tags already represent the object or technique.\n",
+    "- Do NOT include the file name as a tag.\n",
+    "- Do NOT create tags for the file format or page layout."
+);
+
+pub const DEFAULT_USER_PROMPT: &str =
+    "Generate the search tags for this document (file: \"{filename}\"). The attached images are sample pages of the document (the first is page 1). All tags must be in English. Reply only with the JSON {\"tags\": [...]}";
+
 /// Longest side of each rendered page image sent to the vision model.
 const MAX_SIDE: u32 = 512;
 
@@ -24,6 +52,8 @@ pub struct TagSettings {
     pub model: String,
     pub pages: i64,
     pub max_tokens: i64,
+    pub system_prompt: String,
+    pub user_prompt: String,
 }
 
 impl Default for TagSettings {
@@ -33,41 +63,10 @@ impl Default for TagSettings {
             model: DEFAULT_MODEL.to_string(),
             pages: DEFAULT_PAGES,
             max_tokens: DEFAULT_MAX_TOKENS,
+            system_prompt: DEFAULT_SYSTEM_PROMPT.to_string(),
+            user_prompt: DEFAULT_USER_PROMPT.to_string(),
         }
     }
-}
-
-// Prompt validated empirically in the pdf-tags-poc prototype. Written in
-// English (the model follows English instructions better).
-pub const TAG_SYSTEM_PROMPT: &str = concat!(
-    "You are an assistant that generates search tags for documents (PDFs) based on the image of the first page. ",
-    "MANDATORY RULES: ",
-    "- Reply ONLY with valid JSON in the format {\"tags\": [\"tag1\", \"tag2\"]}, with no text before or after. ",
-    "- ALL tags must be in English, lowercase, short (1 to 3 words), no full sentences. ",
-    "- Use consistent, natural English terms that people would actually type when searching. ",
-    "- Maximum 10 tags, but do NOT pad the list to reach 10. Use only as many tags as the images genuinely justify. 4 or 5 strong tags are better than 10 weak ones. ",
-    "- No duplicate tags (check for both exact and near-duplicate meanings). ",
-    "- The attached images show different pages of the SAME document. Generate ONE unified set of tags describing the document as a whole; never create tags per page. ",
-    "WHAT A TAG MUST BE (in approximate priority order - stop when the image does not justify more): ",
-    "1. The main object or character of the image. ",
-    "2. The technique depicted (if clearly identifiable). ",
-    "3. The type of item or garment, when identifiable. ",
-    "4. Theme, character, or animal depicted. ",
-    "5. Brand or author name, only if genuinely legible in the image. ",
-    "6. Other characteristics ONLY if they carry real search value. ",
-    "WHAT TO AVOID: ",
-    "- Do NOT turn incidental visual details into tags just because they are visible (e.g. a color like \"blue\", or a generic object like \"hat\" that is not the main subject). ",
-    "- Do NOT infer audience, purpose or context that is not clearly identified (e.g. \"baby\", \"children\", \"gift\" just because of how the subject looks). ",
-    "- Do NOT invent that the document is a \"pattern\", \"tutorial\" or \"instructions\" merely because it looks like a craft work. Only use such tags when explicitly evident from the page. ",
-    "- Do NOT use generic category tags like \"craft\", \"art\", \"design\", \"image\", \"document\", \"pdf\" when more specific tags already represent the object or technique. ",
-    "- Do NOT include the file name as a tag. ",
-    "- Do NOT create tags for the file format or page layout.",
-);
-
-fn user_prompt(filename: &str) -> String {
-    format!(
-        "Generate the search tags for this document (file: \"{filename}\"). The attached images are sample pages of the document (the first is page 1). All tags must be in English. Reply only with the JSON {{\"tags\": [...]}}"
-    )
 }
 
 /// Renders an evenly spaced sample of pages of a PDF as JPEG bytes.
@@ -134,15 +133,12 @@ pub fn render_pdf_pages_jpeg(
 
 /// Calls the llama.cpp server and returns the tags parsed from the answer.
 pub fn generate_tags(
-    base_url: &str,
-    model: &str,
-    max_tokens: i64,
-    pages: i64,
+    settings: &TagSettings,
     path: &str,
     filename: &str,
     resource_dir: &Path,
 ) -> Result<Vec<String>, String> {
-    let jpeg_pages = render_pdf_pages_jpeg(path, pages, resource_dir)?;
+    let jpeg_pages = render_pdf_pages_jpeg(path, settings.pages, resource_dir)?;
     let image_parts: Vec<serde_json::Value> = jpeg_pages
         .iter()
         .map(|bytes| {
@@ -153,21 +149,27 @@ pub fn generate_tags(
         })
         .collect();
 
-    let mut content = vec![json!({ "type": "text", "text": user_prompt(filename) })];
+    let user_text = if settings.user_prompt.contains("{filename}") {
+        settings.user_prompt.replace("{filename}", filename)
+    } else {
+        format!("{} (file: \"{filename}\")", settings.user_prompt)
+    };
+
+    let mut content = vec![json!({ "type": "text", "text": user_text })];
     content.extend(image_parts);
 
     let body = json!({
-        "model": model,
+        "model": &settings.model,
         "temperature": 0.2,
-        "max_tokens": max_tokens,
+        "max_tokens": settings.max_tokens,
         "chat_template_kwargs": { "enable_thinking": false },
         "messages": [
-            { "role": "system", "content": TAG_SYSTEM_PROMPT },
+            { "role": "system", "content": &settings.system_prompt },
             { "role": "user", "content": content },
         ],
     });
 
-    let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
+    let url = format!("{}/v1/chat/completions", settings.base_url.trim_end_matches('/'));
     let response = ureq::post(&url)
         .timeout(std::time::Duration::from_secs(180))
         .send_json(body)
