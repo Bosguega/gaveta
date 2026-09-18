@@ -12,7 +12,6 @@ Workspaces atuais:
 - `@bosguega/eslint-config` (packages/eslint-config) — Config compartilhada de ESLint
 - `my_mercado` (apps/my_mercado) — App React de gerenciamento de compras
 - `memoria-auxiliar` (apps/memoria_auxiliar) — App Vue + Tauri de notas com IA
-- `app-teste` (apps/app-teste) — App de teste simples
 
 ## Comandos Essenciais
 

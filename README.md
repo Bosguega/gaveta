@@ -15,8 +15,6 @@ gaveta/
 ├── tsconfig.json                   ← config TS base
 │
 ├── *.code-workspace                ← atalhos do editor (abrir só o que precisa)
-│   ├── app-teste.code-workspace
-│   └── memoria-auxiliar.code-workspace
 │
 ├── packages/
 │   └── ai-core/                    ← @bosguega/ai-core (core)
@@ -49,12 +47,6 @@ gaveta/
 │       └── package.json
 │
 └── apps/
-    ├── app-teste/                  ← app de exemplo (Vite + vanilla TS)
-    │   ├── src/main.ts             ← testa importação do core
-    │   ├── index.html
-    │   ├── vite.config.ts
-    │   └── package.json
-    │
     └── memoria-auxiliar/           ← app Tauri + Vue (IA no backend Rust)
         ├── src/
         ├── src-tauri/
@@ -81,14 +73,12 @@ npm install -g pnpm
 pnpm install
 ```
 
-### Rodar o app de teste
+### Rodar o app
 
 ```bash
-cd apps/app-teste
-npx vite
+cd apps/memoria_auxiliar
+pnpm dev
 ```
-
-Acesse `http://localhost:XXXX` — o app testa as funções do core e mostra o resultado na tela.
 
 ---
 
@@ -296,7 +286,7 @@ const results = searchBySimilarity(items, queryEmbedding, 5, 0.5)
 
 | App | Descrição |
 |-----|-----------|
-| `app-teste` | Interface simples que testa as funções do core (input de API key, listar modelos, enviar prompt) |
+| `memoria-auxiliar` | App Tauri + Vue com IA no backend Rust (gerenciamento de notas) |
 
 ---
 
@@ -316,7 +306,6 @@ Cada workspace inclui o **core** (`packages/ai-core`) + **um app específico**.
 
 | Arquivo | Pastas incluídas |
 |---------|-----------------|
-| `app-teste.code-workspace` | core + app-teste |
 | `memoria-auxiliar.code-workspace` | core + memoria-auxiliar |
 
 Para criar um workspace novo, copie um existente e troque o nome da pasta em `folders[].path`.
@@ -351,4 +340,4 @@ pnpm --filter @bosguega/ai-core build
 ### Script principal
 
 ```bash
-pnpm dev    # build do core + start do app-teste
+pnpm dev    # build do core + start do memoria-auxiliar

@@ -16,7 +16,7 @@ pub const DEFAULT_PAGES: i64 = 4;
 pub const DEFAULT_MAX_TOKENS: i64 = 512;
 
 pub const DEFAULT_SYSTEM_PROMPT: &str = concat!(
-    "You are an assistant that generates search tags for documents (PDFs) based on the image of the first page.\n\n",
+    "You are an assistant that generates search tags for documents (PDFs) based on sample images of the document's pages.\n\n",
     "MANDATORY RULES:\n",
     "- Reply ONLY with valid JSON in the format {\"tags\": [\"tag1\", \"tag2\"]}, with no text before or after.\n",
     "- ALL tags must be in English, lowercase, short (1 to 3 words), no full sentences.\n",
