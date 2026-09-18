@@ -120,6 +120,13 @@ pub fn scan_items(
 
 /// Removes orphaned cache files that no longer correspond to any item in the database.
 pub fn cleanup_orphan_cache(cache_dir: &Path, known_keys: &[String]) {
+    // An empty index means "nothing is known about any thumbnail", not "every
+    // cached file is an orphan". Without this guard a fresh or emptied database
+    // would wipe the whole cache of every collection on the next scan.
+    if known_keys.is_empty() {
+        return;
+    }
+
     let Ok(entries) = fs::read_dir(cache_dir) else {
         return;
     };
@@ -162,6 +169,24 @@ mod tests {
         assert!(icon.exists(), "ícone não deve ser removido pelo cleanup");
         assert!(!orphan.exists(), "thumbnail órfã deve ser removida");
         assert!(known.exists(), "thumbnail conhecida deve permanecer");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn nao_apaga_cache_quando_o_indice_esta_vazio() {
+        let dir = std::env::temp_dir().join(format!("cvc_test_empty_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+
+        let thumb = dir.join("deadbeef_thumbnail.webp");
+        let cover = dir.join("collection_cover_abc.webp");
+        std::fs::write(&thumb, b"x").unwrap();
+        std::fs::write(&cover, b"x").unwrap();
+
+        cleanup_orphan_cache(&dir, &[]);
+
+        assert!(thumb.exists(), "cache nao deve ser apagado com indice vazio");
+        assert!(cover.exists(), "capa nao deve ser apagada com indice vazio");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

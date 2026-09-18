@@ -88,6 +88,8 @@ export interface UpdateResult {
     added: number;
     removed: number;
     updated: number;
+    unchanged: number;
+    cancelled: boolean;
     thumbnails_generated: number;
     unavailable_paths: string[];
     errored_paths: string[];

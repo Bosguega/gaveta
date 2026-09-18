@@ -1,7 +1,6 @@
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::fmt;
 use std::fs;
 use std::path::PathBuf;
@@ -142,6 +141,10 @@ pub struct UpdateResult {
     pub added: usize,
     pub removed: usize,
     pub updated: usize,
+    /// Items whose size and modified time are unchanged.
+    pub unchanged: usize,
+    /// True when the scan was cancelled; the other counters are then partial.
+    pub cancelled: bool,
     pub thumbnails_generated: usize,
     pub unavailable_paths: Vec<String>,
     pub errored_paths: Vec<String>,
@@ -179,6 +182,16 @@ pub fn open_and_migrate(app: &tauri::AppHandle) -> Result<Connection, String> {
     let conn = Connection::open(path)
         .map_err(|e| format!("Não foi possível abrir o SQLite: {e}"))?;
 
+    init_schema(&conn)?;
+
+    Ok(conn)
+}
+
+/// Creates the schema and applies the in-place migrations for legacy databases.
+///
+/// Split out of `open_and_migrate` so the full schema can be built on a plain
+/// connection (tests, tooling) without an `AppHandle`.
+pub fn init_schema(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
         "
         PRAGMA foreign_keys = ON;
@@ -407,7 +420,7 @@ pub fn open_and_migrate(app: &tauri::AppHandle) -> Result<Connection, String> {
         .map_err(|e| format!("Falha ao adicionar coluna is_pinned: {e}"))?;
     }
 
-    Ok(conn)
+    Ok(())
 }
 
 
@@ -833,47 +846,6 @@ pub fn list_items(conn: &Connection, collection_id: i64) -> Result<Vec<Collectio
     Ok(items)
 }
 
-pub fn get_item_by_path(
-    conn: &Connection,
-    collection_id: i64,
-    path: &str,
-) -> Result<Option<CollectionItem>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, collection_id, path, filename, size, modified_at, page_count, file_type, thumbnail_key, thumbnail_status, is_favorite, stitch_count, color_count, color_changes, design_width_mm, design_height_mm
-             FROM files WHERE collection_id = ?1 AND path = ?2",
-        )
-        .map_err(|e| format!("Falha ao preparar consulta de item: {e}"))?;
-
-    let result = stmt
-        .query_row(params![collection_id, path], |row| {
-            let status: ThumbnailStatus = row.get(9)?;
-            let favorite: i64 = row.get(10)?;
-            Ok(CollectionItem {
-                id: row.get(0)?,
-                collection_id: row.get(1)?,
-                path: row.get(2)?,
-                filename: row.get(3)?,
-                size: row.get(4)?,
-                modified_at: row.get(5)?,
-                page_count: row.get(6)?,
-                file_type: row.get(7)?,
-                thumbnail_key: row.get(8)?,
-                thumbnail_status: status.to_string(),
-                is_favorite: favorite != 0,
-                stitch_count: row.get(11)?,
-                color_count: row.get(12)?,
-                color_changes: row.get(13)?,
-                design_width_mm: row.get(14)?,
-                design_height_mm: row.get(15)?,
-            })
-        })
-        .optional()
-        .map_err(|e| format!("Falha ao consultar item: {e}"))?;
-
-    Ok(result)
-}
-
 pub fn insert_item(
     conn: &Connection,
     collection_id: i64,
@@ -947,27 +919,68 @@ pub fn delete_item(conn: &Connection, id: i64) -> Result<(), String> {
     Ok(())
 }
 
-pub fn delete_items_not_in(
+/// Lightweight snapshot of an indexed item.
+///
+/// Lets a scan reconcile itself against the index with a single query instead of
+/// one lookup per discovered file.
+#[derive(Debug, Clone)]
+pub struct IndexedItem {
+    pub id: i64,
+    pub path: String,
+    pub size: i64,
+    pub modified_at: String,
+    pub thumbnail_key: Option<String>,
+    pub thumbnail_status: String,
+}
+
+/// Loads every item of a collection as a lightweight index snapshot.
+pub fn list_collection_index(
     conn: &Connection,
     collection_id: i64,
-    keep_paths: &[String],
-    unavailable_paths: &[String],
-) -> Result<usize, String> {
+) -> Result<Vec<IndexedItem>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, path, size, modified_at, thumbnail_key, thumbnail_status
+             FROM files WHERE collection_id = ?1",
+        )
+        .map_err(|e| format!("Falha ao preparar o índice da coleção: {e}"))?;
+
+    let items = stmt
+        .query_map(params![collection_id], |row| {
+            Ok(IndexedItem {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                size: row.get(2)?,
+                modified_at: row.get(3)?,
+                thumbnail_key: row.get(4)?,
+                thumbnail_status: row.get(5)?,
+            })
+        })
+        .map_err(|e| format!("Falha ao carregar o índice da coleção: {e}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Falha ao ler o índice da coleção: {e}"))?;
+
+    Ok(items)
+}
+
+/// Deletes the given item ids in chunks and returns the number of rows removed.
+///
+/// Chunking keeps the statement inside SQLite's variable limit while replacing
+/// thousands of individual autocommit DELETEs with a handful of statements.
+pub fn delete_items_by_ids(conn: &Connection, ids: &[i64]) -> Result<usize, String> {
+    const CHUNK: usize = 500;
+
     let mut removed = 0;
-    let existing = list_items(conn, collection_id)?;
-
-    // Hash set turns the per-item membership check from O(keep_paths) into
-    // O(1) on average, removing the former O(existing × keep_paths) bottleneck.
-    let keep_set: HashSet<&str> = keep_paths.iter().map(|p| p.as_str()).collect();
-
-    for item in existing {
-        let belongs_to_unavailable_path = unavailable_paths.iter().any(|root| {
-            std::path::Path::new(&item.path).starts_with(std::path::Path::new(root))
-        });
-        if !keep_set.contains(item.path.as_str()) && !belongs_to_unavailable_path {
-            delete_item(conn, item.id)?;
-            removed += 1;
-        }
+    for chunk in ids.chunks(CHUNK) {
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!("DELETE FROM files WHERE id IN ({placeholders})");
+        let bind: Vec<&dyn rusqlite::ToSql> = chunk
+            .iter()
+            .map(|id| id as &dyn rusqlite::ToSql)
+            .collect();
+        removed += conn
+            .execute(&sql, bind.as_slice())
+            .map_err(|e| format!("Falha ao excluir itens obsoletos: {e}"))?;
     }
 
     Ok(removed)
@@ -1256,4 +1269,181 @@ pub fn list_pdf_item_ids(conn: &Connection, collection_id: i64, only_missing: bo
         .map_err(|e| format!("Falha ao listar itens: {e}"))?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("Falha ao ler itens: {e}"))
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_conn() -> Connection {
+        let conn = Connection::open_in_memory().expect("sqlite em memoria");
+        init_schema(&conn).expect("schema");
+        conn
+    }
+
+    fn seed_collection(conn: &Connection, name: &str) -> i64 {
+        let paths = vec![format!("/tmp/{name}")];
+        create_collection(conn, name, "icone", None, &paths, true)
+            .expect("colecao")
+            .id
+    }
+
+    #[test]
+    fn init_schema_covers_every_migrated_column() {
+        let conn = test_conn();
+
+        let files_columns: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('files')
+                 WHERE name IN ('file_type', 'is_favorite', 'stitch_count', 'color_count',
+                                'color_changes', 'design_width_mm', 'design_height_mm')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(files_columns, 7);
+
+        let collection_columns: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('collections')
+                 WHERE name IN ('icon_path', 'is_pinned')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(collection_columns, 2);
+
+        let tables: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'
+                 AND name IN ('collections', 'collection_paths', 'files', 'tags',
+                              'file_tags', 'settings')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(tables, 6);
+    }
+
+    #[test]
+    fn init_schema_is_idempotent() {
+        let conn = test_conn();
+        init_schema(&conn).expect("segunda execucao");
+    }
+
+    #[test]
+    fn index_lists_only_the_requested_collection() {
+        let conn = test_conn();
+        let first = seed_collection(&conn, "a");
+        let second = seed_collection(&conn, "b");
+
+        insert_item(&conn, first, "/x/one.pdf", "one.pdf", 10, "100", "pdf").unwrap();
+        insert_item(&conn, first, "/x/two.pes", "two.pes", 20, "200", "embroidery").unwrap();
+        insert_item(&conn, second, "/y/three.pdf", "three.pdf", 30, "300", "pdf").unwrap();
+
+        let index = list_collection_index(&conn, first).unwrap();
+        assert_eq!(index.len(), 2);
+        assert!(index.iter().all(|entry| entry.path.starts_with("/x/")));
+
+        let two = index.iter().find(|e| e.path == "/x/two.pes").unwrap();
+        assert_eq!(two.size, 20);
+        assert_eq!(two.modified_at, "200");
+        assert_eq!(two.thumbnail_status, "pending");
+        assert!(two.thumbnail_key.is_none());
+    }
+
+    #[test]
+    fn index_reports_thumbnail_metadata() {
+        let conn = test_conn();
+        let collection = seed_collection(&conn, "c");
+        let item = insert_item(&conn, collection, "/c/a.pdf", "a.pdf", 5, "5", "pdf").unwrap();
+
+        set_item_thumbnail(&conn, item, Some(7), Some("abc.webp"), ThumbnailStatus::Ready)
+            .unwrap();
+
+        let index = list_collection_index(&conn, collection).unwrap();
+        assert_eq!(index.len(), 1);
+        assert_eq!(index[0].thumbnail_key.as_deref(), Some("abc.webp"));
+        assert_eq!(index[0].thumbnail_status, "ready");
+    }
+
+    #[test]
+    fn delete_items_by_ids_removes_only_requested_rows() {
+        let conn = test_conn();
+        let collection = seed_collection(&conn, "d");
+        let keep = insert_item(&conn, collection, "/keep.pdf", "keep.pdf", 1, "1", "pdf").unwrap();
+        let doomed: Vec<i64> = (0..3)
+            .map(|i| {
+                insert_item(&conn, collection, &format!("/doomed{i}.pdf"), "d.pdf", 1, "1", "pdf")
+                    .unwrap()
+            })
+            .collect();
+
+        assert_eq!(delete_items_by_ids(&conn, &doomed).unwrap(), 3);
+
+        let remaining = list_items(&conn, collection).unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id, keep);
+    }
+
+    #[test]
+    fn delete_items_by_ids_accepts_empty_and_multi_chunk_input() {
+        let conn = test_conn();
+        let collection = seed_collection(&conn, "e");
+        assert_eq!(delete_items_by_ids(&conn, &[]).unwrap(), 0);
+
+        let ids: Vec<i64> = (0..1200)
+            .map(|i| {
+                insert_item(&conn, collection, &format!("/f{i}.pdf"), "f.pdf", 1, "1", "pdf")
+                    .unwrap()
+            })
+            .collect();
+
+        assert_eq!(delete_items_by_ids(&conn, &ids).unwrap(), 1200);
+        assert!(list_items(&conn, collection).unwrap().is_empty());
+    }
+
+    #[test]
+    fn thumbnail_keys_skip_items_without_a_thumbnail() {
+        let conn = test_conn();
+        let collection = seed_collection(&conn, "f");
+        let with_key =
+            insert_item(&conn, collection, "/with.pdf", "with.pdf", 1, "1", "pdf").unwrap();
+        let _without =
+            insert_item(&conn, collection, "/without.pdf", "without.pdf", 1, "1", "pdf").unwrap();
+
+        set_item_thumbnail(&conn, with_key, Some(2), Some("key.webp"), ThumbnailStatus::Ready)
+            .unwrap();
+
+        assert_eq!(
+            list_all_thumbnail_keys(&conn).unwrap(),
+            vec!["key.webp".to_string()]
+        );
+    }
+
+    #[test]
+    fn deleting_a_collection_cascades_to_items() {
+        let conn = test_conn();
+        let collection = seed_collection(&conn, "g");
+        insert_item(&conn, collection, "/g/a.pdf", "a.pdf", 1, "1", "pdf").unwrap();
+
+        delete_collection(&conn, collection).unwrap();
+
+        assert!(list_items(&conn, collection).unwrap().is_empty());
+        assert!(list_collection_index(&conn, collection).unwrap().is_empty());
+    }
+
+    #[test]
+    fn update_item_metadata_resets_thumbnail_status() {
+        let conn = test_conn();
+        let collection = seed_collection(&conn, "h");
+        let item = insert_item(&conn, collection, "/h/a.pdf", "a.pdf", 1, "1", "pdf").unwrap();
+        set_item_thumbnail(&conn, item, Some(1), Some("h.webp"), ThumbnailStatus::Ready).unwrap();
+
+        update_item_metadata(&conn, item, 99, "99").unwrap();
+
+        let index = list_collection_index(&conn, collection).unwrap();
+        assert_eq!(index[0].size, 99);
+        assert_eq!(index[0].modified_at, "99");
+        assert_eq!(index[0].thumbnail_status, "pending");
+    }
 }

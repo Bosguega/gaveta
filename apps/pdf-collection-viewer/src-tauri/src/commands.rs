@@ -1,11 +1,12 @@
 use crate::db::{self, DbState, ThumbnailStatus, UpdateResult};
 use crate::file_types::FileType;
+use crate::scan;
 use crate::scanner;
 use crate::thumbnails;
 use crate::ScanCancels;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
@@ -168,6 +169,8 @@ pub async fn update_collection_scan(
         added: 0,
         removed: 0,
         updated: 0,
+        unchanged: 0,
+        cancelled: false,
         thumbnails_generated: 0,
         unavailable_paths: Vec::new(),
         errored_paths: Vec::new(),
@@ -176,7 +179,6 @@ pub async fn update_collection_scan(
 
     // 2. Scan all configured paths (no DB lock held during filesystem walk).
     let mut all_items: Vec<scanner::ScannedItem> = Vec::new();
-    let mut keep_paths: Vec<String> = Vec::new();
 
     for path in &collection.paths {
         if cancels.is_cancelled(collection_id) {
@@ -194,7 +196,6 @@ pub async fn update_collection_scan(
         }
 
         for item in items {
-            keep_paths.push(item.path.clone());
             all_items.push(item);
         }
     }
@@ -209,44 +210,54 @@ pub async fn update_collection_scan(
         },
     );
 
-    // 3. Compare with DB and process changes. The lock is acquired only for
-    //    the individual read/write operations, never across the whole loop, so
-    //    other commands (list, favorite, …) can interleave while scanning.
-    let mut thumbnails_to_generate: Vec<(i64, String, String)> = Vec::new(); // (item_id, path, file_type)
+    // 3. Load the collection index with a single query and reconcile it against
+    //    the discovery result in memory (pure function, unit-tested in scan.rs).
+    let indexed = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::list_collection_index(&conn, collection_id)?
+    };
 
-    for item in &all_items {
+    let mut protected_paths = result.unavailable_paths.clone();
+    protected_paths.extend(result.errored_paths.iter().cloned());
+    let reconciliation = scan::reconcile(&all_items, &indexed, &protected_paths);
+
+    // 4. Apply the changes. The lock is acquired only for the individual write
+    //    operations, never across the whole loop, so other commands (list,
+    //    favorite, …) can interleave while scanning.
+    let by_path: HashMap<&str, &db::IndexedItem> = indexed
+        .iter()
+        .map(|entry| (entry.path.as_str(), entry))
+        .collect();
+
+    let mut thumbnails_to_generate: Vec<(i64, String, String)> = Vec::new(); // (item_id, path, file_type)
+    let mut seen: HashSet<&str> = HashSet::with_capacity(all_items.len());
+
+    for (index, (item, change)) in all_items.iter().zip(&reconciliation.changes).enumerate() {
         if cancels.is_cancelled(collection_id) {
             break;
         }
 
-        let existing = {
-            let conn = state.0.lock().map_err(|e| e.to_string())?;
-            db::get_item_by_path(&conn, collection_id, &item.path)?
-        };
+        // Coarse progress for the write phase (the expensive per-file work
+        // already happened during discovery).
+        if index % 500 == 0 {
+            let _ = app.emit(
+                "update-progress",
+                db::ScanProgress {
+                    stage: "Analisando arquivos".to_string(),
+                    current: index,
+                    total: all_items.len(),
+                },
+            );
+        }
 
-        match existing {
-            Some(existing_item) => {
-                // Check if metadata changed
-                if existing_item.size != item.size || existing_item.modified_at != item.modified_at {
-                    {
-                        let conn = state.0.lock().map_err(|e| e.to_string())?;
-                        db::update_item_metadata(&conn, existing_item.id, item.size, &item.modified_at)?;
-                    }
-                    result.updated += 1;
-                    thumbnails_to_generate.push((existing_item.id, item.path.clone(), item.file_type.clone()));
-                } else if !ThumbnailStatus::from_str(&existing_item.thumbnail_status).is_ready() {
-                    // Metadata unchanged but thumbnail missing/errored -> try again
-                    thumbnails_to_generate.push((existing_item.id, item.path.clone(), item.file_type.clone()));
-                } else if let Some(key) = existing_item.thumbnail_key.clone() {
-                    // A3/A4: the status is "ready" but the cached .webp may have
-                    // been removed (cache cleared). Revalidate its existence and
-                    // regenerate when missing instead of trusting the stale status.
-                    if !thumbnails::thumbnail_exists(&cache, &key) {
-                        thumbnails_to_generate.push((existing_item.id, item.path.clone(), item.file_type.clone()));
-                    }
-                }
-            }
-            None => {
+        // Repeats of the same path were classified as Unchanged by the
+        // reconciliation; skip them so nothing is written or counted twice.
+        if !seen.insert(item.path.as_str()) {
+            continue;
+        }
+
+        match change {
+            scan::ChangeKind::New => {
                 let id = {
                     let conn = state.0.lock().map_err(|e| e.to_string())?;
                     db::insert_item(
@@ -260,20 +271,54 @@ pub async fn update_collection_scan(
                     )?
                 };
                 result.added += 1;
-                thumbnails_to_generate.push((id, item.path.clone(), item.file_type.clone()));
+
+                // A fresh database row does not mean a missing thumbnail: the
+                // cache key is a stable hash of the path, so a preexisting
+                // .webp (e.g. after a database reset) is adopted as-is instead
+                // of re-rendered. page_count and embroidery stats are unknown
+                // in this case and stay empty until a regen.
+                let key = thumbnails::thumbnail_key(&item.path);
+                if thumbnails::thumbnail_exists(&cache, &key) {
+                    let conn = state.0.lock().map_err(|e| e.to_string())?;
+                    db::set_item_thumbnail(&conn, id, None, Some(&key), ThumbnailStatus::Ready)?;
+                } else {
+                    thumbnails_to_generate.push((id, item.path.clone(), item.file_type.clone()));
+                }
+            }
+            scan::ChangeKind::Modified => {
+                let existing = by_path[item.path.as_str()];
+                {
+                    let conn = state.0.lock().map_err(|e| e.to_string())?;
+                    db::update_item_metadata(&conn, existing.id, item.size, &item.modified_at)?;
+                }
+                result.updated += 1;
+                thumbnails_to_generate.push((existing.id, item.path.clone(), item.file_type.clone()));
+            }
+            scan::ChangeKind::Unchanged => {
+                result.unchanged += 1;
+                let existing = by_path[item.path.as_str()];
+                if !ThumbnailStatus::from_str(&existing.thumbnail_status).is_ready() {
+                    // Metadata unchanged but thumbnail missing/errored -> try again
+                    thumbnails_to_generate.push((existing.id, item.path.clone(), item.file_type.clone()));
+                } else if let Some(key) = existing.thumbnail_key.as_deref() {
+                    // The status is "ready" but the cached .webp may have been
+                    // removed (cache cleared). Revalidate its existence and
+                    // regenerate when missing instead of trusting the stale status.
+                    if !thumbnails::thumbnail_exists(&cache, key) {
+                        thumbnails_to_generate.push((existing.id, item.path.clone(), item.file_type.clone()));
+                    }
+                }
             }
         }
     }
 
-    // 4. Remove items that no longer exist. Items under directories that were
-    //    unavailable (missing root) or raised an access error are preserved so a
-    //    transient failure does not delete healthy records or their favorites.
+    // 5. Remove items that no longer exist. The reconciliation already kept
+    //    items under unavailable/errored roots so a transient failure does not
+    //    delete healthy records or their favorites.
     if !cancels.is_cancelled(collection_id) {
-        let mut protected_paths = result.unavailable_paths.clone();
-        protected_paths.extend(result.errored_paths.iter().cloned());
         result.removed = {
             let conn = state.0.lock().map_err(|e| e.to_string())?;
-            db::delete_items_not_in(&conn, collection_id, &keep_paths, &protected_paths)?
+            db::delete_items_by_ids(&conn, &reconciliation.missing_ids)?
         };
     }
 
@@ -346,10 +391,12 @@ pub async fn update_collection_scan(
         }
     }
 
+    result.cancelled = cancels.is_cancelled(collection_id);
+
     let _ = app.emit(
         "update-progress",
         db::ScanProgress {
-            stage: "Concluído".to_string(),
+            stage: if result.cancelled { "Cancelado".to_string() } else { "Concluído".to_string() },
             current: total,
             total,
         },

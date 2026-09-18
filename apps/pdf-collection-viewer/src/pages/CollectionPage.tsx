@@ -100,6 +100,7 @@ export function CollectionPage() {
 
     const [unavailableCount, setUnavailableCount] = useState(0);
     const [erroredCount, setErroredCount] = useState(0);
+    const [scanSummary, setScanSummary] = useState<{ added: number; updated: number; removed: number; cancelled: boolean } | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [showDuplicates, setShowDuplicates] = useState(false);
     const [showStats, setShowStats] = useState(false);
@@ -220,6 +221,7 @@ export function CollectionPage() {
         setSelectedItems([]);
         setUnavailableCount(0);
         setErroredCount(0);
+        setScanSummary(null);
         setError(null);
         setShowFavoritesOnly(false);
         setShowErrorsOnly(false);
@@ -288,6 +290,7 @@ export function CollectionPage() {
             setUnavailableCount(result.unavailable_paths.length);
             setErroredCount(result.errored_paths.length);
             setThumbErrors(result.thumbnail_failed_paths.length > 0 ? result.thumbnail_failed_paths : null);
+            setScanSummary({ added: result.added, updated: result.updated, removed: result.removed, cancelled: result.cancelled });
             clearThumbnailUrlCache();
             await loadItems();
         } catch (reason) {
@@ -554,6 +557,19 @@ export function CollectionPage() {
                     {erroredCount > 0 && (
                         <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200" title="Pastas com erro de leitura foram preservadas para não apagar itens ou favoritos">
                             ⚠ {erroredCount} local(is) preservados
+                        </span>
+                    )}
+                    {scanSummary && (scanSummary.added > 0 || scanSummary.updated > 0 || scanSummary.removed > 0 || scanSummary.cancelled) && (
+                        <span
+                            className={`text-xs font-medium px-2.5 py-1 rounded-lg border ${
+                                scanSummary.cancelled
+                                    ? 'text-amber-600 bg-amber-50 border-amber-200'
+                                    : 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                            }`}
+                            title="Resultado da última atualização da coleção"
+                        >
+                            {scanSummary.cancelled ? 'Atualização cancelada: ' : 'Atualização: '}
+                            {scanSummary.added} novo(s), {scanSummary.updated} atualizado(s), {scanSummary.removed} removido(s)
                         </span>
                     )}
 
