@@ -7,3 +7,7 @@ dist/
 # Supabase
 supabase/.temp/
 **/supabase/.temp/
+
+# POC apps
+apps/*-poc/
+
