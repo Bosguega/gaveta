@@ -208,3 +208,34 @@ export interface TaggingSummary {
     failed: number;
     failed_paths: string[];
 }
+
+export interface ContentSearchResult {
+    file_id: number;
+    collection_id: number;
+    collection_name: string;
+    path: string;
+    filename: string;
+    page_number: number;
+    extraction_method: string;
+    snippet: string;
+}
+
+export interface FileIndexStatusItem {
+    file_id: number;
+    filename: string;
+    status: 'pending' | 'processing' | 'done' | 'no_text' | 'failed';
+    error_message: string | null;
+}
+
+export interface IndexingProgress {
+    stage: string;
+    current: number;
+    total: number;
+}
+
+export interface IndexingSummary {
+    indexed: number;
+    no_text: number;
+    failed: number;
+    failed_paths: string[];
+}

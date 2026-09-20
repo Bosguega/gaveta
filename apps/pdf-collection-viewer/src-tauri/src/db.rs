@@ -249,6 +249,55 @@ pub fn init_schema(conn: &Connection) -> Result<(), String> {
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+
+        -- ── Content search (FTS) ──
+        -- One row per indexed PDF page. `text` is empty for pages with no
+        -- extractable content (image-only pages before the visual pipeline).
+        CREATE TABLE IF NOT EXISTS page_content (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+            page_number INTEGER NOT NULL,
+            extraction_method TEXT NOT NULL DEFAULT 'native',
+            text TEXT NOT NULL DEFAULT '',
+            extractor_version INTEGER NOT NULL DEFAULT 1,
+            indexed_at TEXT NOT NULL,
+            UNIQUE(file_id, page_number)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_page_content_file ON page_content(file_id);
+
+        -- Per-file index state for content search. Pending is also implicit
+        -- whenever this row is missing or does not match the current file
+        -- size/modified_at/extractor_version.
+        CREATE TABLE IF NOT EXISTS file_index (
+            file_id INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+            status TEXT NOT NULL,
+            error_message TEXT,
+            file_size INTEGER NOT NULL,
+            file_modified_at TEXT NOT NULL,
+            extractor_version INTEGER NOT NULL,
+            indexed_at TEXT
+        );
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS page_content_fts USING fts5(
+            text,
+            content='page_content',
+            content_rowid='id',
+            tokenize='unicode61 remove_diacritics 2'
+        );
+
+        CREATE TRIGGER IF NOT EXISTS page_content_ai AFTER INSERT ON page_content BEGIN
+            INSERT INTO page_content_fts(rowid, text) VALUES (new.id, new.text);
+        END;
+        CREATE TRIGGER IF NOT EXISTS page_content_ad AFTER DELETE ON page_content BEGIN
+            INSERT INTO page_content_fts(page_content_fts, rowid, text)
+            VALUES ('delete', old.id, old.text);
+        END;
+        CREATE TRIGGER IF NOT EXISTS page_content_au AFTER UPDATE ON page_content BEGIN
+            INSERT INTO page_content_fts(page_content_fts, rowid, text)
+            VALUES ('delete', old.id, old.text);
+            INSERT INTO page_content_fts(rowid, text) VALUES (new.id, new.text);
+        END;
         ",
     )
     .map_err(|e| format!("Não foi possível inicializar o banco: {e}"))?;
@@ -876,6 +925,13 @@ pub fn update_item_metadata(
         params![size, modified_at, ThumbnailStatus::Pending, id],
     )
     .map_err(|e| format!("Falha ao atualizar item: {e}"))?;
+
+    // The file changed: its previously indexed page content is stale. Dropping
+    // the rows marks the file as implicitly pending for the content indexer.
+    conn.execute("DELETE FROM page_content WHERE file_id = ?1", params![id])
+        .map_err(|e| format!("Falha ao limpar conteúdo indexado do item: {e}"))?;
+    conn.execute("DELETE FROM file_index WHERE file_id = ?1", params![id])
+        .map_err(|e| format!("Falha ao limpar estado de indexação do item: {e}"))?;
     Ok(())
 }
 
@@ -1148,6 +1204,303 @@ pub fn toggle_item_favorite(conn: &Connection, id: i64) -> Result<bool, String> 
     Ok(new_value != 0)
 }
 
+// ── Content index (FTS) ──
+
+/// A single content-search hit: the document, the page and the matching context.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContentSearchResult {
+    pub file_id: i64,
+    pub collection_id: i64,
+    pub collection_name: String,
+    pub path: String,
+    pub filename: String,
+    pub page_number: i64,
+    pub extraction_method: String,
+    /// Snippet with `<mark>` around the matching terms.
+    pub snippet: String,
+}
+
+/// A pending PDF waiting for content indexing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingIndexItem {
+    pub id: i64,
+    pub path: String,
+    pub filename: String,
+    pub size: i64,
+    pub modified_at: String,
+}
+
+/// Index state of one file (for status surfacing in the UI).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileIndexStatusItem {
+    pub file_id: i64,
+    pub filename: String,
+    pub status: String,
+    pub error_message: Option<String>,
+}
+
+/// Lists PDFs that need (re)indexing: no `file_index` row yet, metadata no
+/// longer matching the row, or a previous run that failed / was interrupted.
+pub fn list_pending_pdf_index(
+    conn: &Connection,
+    extractor_version: i64,
+    collection_ids: Option<&[i64]>,
+) -> Result<Vec<PendingIndexItem>, String> {
+    let mut sql = String::from(
+        "SELECT f.id, f.path, f.filename, f.size, f.modified_at
+         FROM files f
+         LEFT JOIN file_index fi ON fi.file_id = f.id
+         WHERE f.file_type = 'pdf'
+         AND (fi.file_id IS NULL
+              OR fi.file_size != f.size
+              OR fi.file_modified_at != f.modified_at
+              OR fi.extractor_version != ?1
+              OR fi.status IN ('failed', 'pending', 'processing'))",
+    );
+    let mut bind_values: Vec<rusqlite::types::Value> = vec![extractor_version.into()];
+
+    if let Some(ids) = collection_ids {
+        if !ids.is_empty() {
+            let placeholders: Vec<String> = ids
+                .iter()
+                .enumerate()
+                .map(|(index, id)| {
+                    bind_values.push(rusqlite::types::Value::from(*id));
+                    format!("?{}", index + 2)
+                })
+                .collect();
+            sql.push_str(&format!(
+                " AND f.collection_id IN ({})",
+                placeholders.join(", ")
+            ));
+        }
+    }
+
+    sql.push_str(" ORDER BY f.filename COLLATE NOCASE");
+
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| format!("Falha ao preparar listagem de PDFs pendentes: {e}"))?;
+
+    let items = stmt
+        .query_map(rusqlite::params_from_iter(bind_values.iter()), |row| {
+            Ok(PendingIndexItem {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                filename: row.get(2)?,
+                size: row.get(3)?,
+                modified_at: row.get(4)?,
+            })
+        })
+        .map_err(|e| format!("Falha ao listar PDFs pendentes: {e}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Falha ao ler PDFs pendentes: {e}"))?;
+
+    Ok(items)
+}
+
+/// Persists the extracted pages of a file and marks its index state as
+/// `done` (some page yielded text) or `no_text` (nothing extractable).
+pub fn save_page_content(
+    conn: &Connection,
+    file_id: i64,
+    file_size: i64,
+    file_modified_at: &str,
+    pages: &[(i64, &str, &str)], // (page_number, method, text)
+    extractor_version: i64,
+) -> Result<(), String> {
+    let now = Utc::now().to_rfc3339();
+    let has_text = pages.iter().any(|(_, _, text)| !text.trim().is_empty());
+    let status = if has_text { "done" } else { "no_text" };
+
+    conn.execute("DELETE FROM page_content WHERE file_id = ?1", params![file_id])
+        .map_err(|e| format!("Falha ao remover conteúdo anterior: {e}"))?;
+
+    {
+        let mut stmt = conn
+            .prepare(
+                "INSERT INTO page_content (file_id, page_number, extraction_method, text, extractor_version, indexed_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )
+            .map_err(|e| format!("Falha ao preparar inserção de página: {e}"))?;
+        for (page_number, method, text) in pages {
+            stmt.execute(params![file_id, page_number, method, text, extractor_version, now])
+                .map_err(|e| format!("Falha ao inserir página {page_number}: {e}"))?;
+        }
+    }
+
+    conn.execute(
+        "INSERT INTO file_index (file_id, status, error_message, file_size, file_modified_at, extractor_version, indexed_at)
+         VALUES (?1, ?2, NULL, ?3, ?4, ?5, ?6)
+         ON CONFLICT(file_id) DO UPDATE SET
+            status = excluded.status,
+            error_message = NULL,
+            file_size = excluded.file_size,
+            file_modified_at = excluded.file_modified_at,
+            extractor_version = excluded.extractor_version,
+            indexed_at = excluded.indexed_at",
+        params![file_id, status, file_size, file_modified_at, extractor_version, now],
+    )
+    .map_err(|e| format!("Falha ao salvar estado de indexação: {e}"))?;
+
+    Ok(())
+}
+
+/// Marks a failed indexing attempt with its error message.
+pub fn set_file_index_failed(
+    conn: &Connection,
+    file_id: i64,
+    file_size: i64,
+    file_modified_at: &str,
+    extractor_version: i64,
+    error_message: &str,
+) -> Result<(), String> {
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO file_index (file_id, status, error_message, file_size, file_modified_at, extractor_version, indexed_at)
+         VALUES (?1, 'failed', ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(file_id) DO UPDATE SET
+            status = 'failed',
+            error_message = excluded.error_message,
+            file_size = excluded.file_size,
+            file_modified_at = excluded.file_modified_at,
+            extractor_version = excluded.extractor_version,
+            indexed_at = excluded.indexed_at",
+        params![file_id, error_message, file_size, file_modified_at, extractor_version, now],
+    )
+    .map_err(|e| format!("Falha ao registrar falha de indexação: {e}"))?;
+    Ok(())
+}
+
+/// Index state of every PDF in the given collections (all when `None`).
+pub fn list_index_status(
+    conn: &Connection,
+    collection_ids: Option<&[i64]>,
+) -> Result<Vec<FileIndexStatusItem>, String> {
+    let mut sql = String::from(
+        "SELECT f.id, f.filename, COALESCE(fi.status, 'pending'), fi.error_message
+         FROM files f
+         LEFT JOIN file_index fi ON fi.file_id = f.id
+         WHERE f.file_type = 'pdf'",
+    );
+    let mut bind_values: Vec<rusqlite::types::Value> = Vec::new();
+
+    if let Some(ids) = collection_ids {
+        if !ids.is_empty() {
+            let placeholders: Vec<String> = ids
+                .iter()
+                .enumerate()
+                .map(|(index, id)| {
+                    bind_values.push(rusqlite::types::Value::from(*id));
+                    format!("?{}", index + 1)
+                })
+                .collect();
+            sql.push_str(&format!(
+                " AND f.collection_id IN ({})",
+                placeholders.join(", ")
+            ));
+        }
+    }
+
+    sql.push_str(" ORDER BY f.filename COLLATE NOCASE");
+
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| format!("Falha ao preparar estado de indexação: {e}"))?;
+
+    let items = stmt
+        .query_map(rusqlite::params_from_iter(bind_values.iter()), |row| {
+            Ok(FileIndexStatusItem {
+                file_id: row.get(0)?,
+                filename: row.get(1)?,
+                status: row.get(2)?,
+                error_message: row.get(3)?,
+            })
+        })
+        .map_err(|e| format!("Falha ao listar estado de indexação: {e}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Falha ao ler estado de indexação: {e}"))?;
+
+    Ok(items)
+}
+
+/// Full-text search over indexed page content. Returns document, page and a
+/// highlighted snippet per hit. Every term is quoted so user input is treated
+/// as plain words (never as FTS query syntax).
+pub fn search_content(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+    collection_ids: Option<&[i64]>,
+) -> Result<Vec<ContentSearchResult>, String> {
+    let match_query = query
+        .split_whitespace()
+        .map(|term| format!("\"{}\"", term.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    if match_query.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut sql = String::from(
+        "SELECT f.id, f.collection_id, c.name, f.path, f.filename, pc.page_number, pc.extraction_method,
+                snippet(page_content_fts, 0, '<mark>', '</mark>', '…', 12)
+         FROM page_content_fts
+         JOIN page_content pc ON pc.id = page_content_fts.rowid
+         JOIN files f ON f.id = pc.file_id
+         JOIN collections c ON c.id = f.collection_id
+         WHERE page_content_fts MATCH ?1 AND pc.text != ''",
+    );
+    let mut bind_values: Vec<rusqlite::types::Value> = vec![match_query.into()];
+
+    if let Some(ids) = collection_ids {
+        if !ids.is_empty() {
+            let placeholders: Vec<String> = ids
+                .iter()
+                .enumerate()
+                .map(|(index, id)| {
+                    bind_values.push(rusqlite::types::Value::from(*id));
+                    format!("?{}", index + 2)
+                })
+                .collect();
+            sql.push_str(&format!(
+                " AND f.collection_id IN ({})",
+                placeholders.join(", ")
+            ));
+        }
+    }
+
+    let limit_index = bind_values.len() + 1;
+    bind_values.push(rusqlite::types::Value::from(limit as i64));
+    sql.push_str(&format!(
+        " ORDER BY bm25(page_content_fts) LIMIT ?{limit_index}"
+    ));
+
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| format!("Falha ao preparar busca de conteúdo: {e}"))?;
+
+    let results = stmt
+        .query_map(rusqlite::params_from_iter(bind_values.iter()), |row| {
+            Ok(ContentSearchResult {
+                file_id: row.get(0)?,
+                collection_id: row.get(1)?,
+                collection_name: row.get(2)?,
+                path: row.get(3)?,
+                filename: row.get(4)?,
+                page_number: row.get(5)?,
+                extraction_method: row.get(6)?,
+                snippet: row.get(7)?,
+            })
+        })
+        .map_err(|e| format!("Falha ao executar busca de conteúdo: {e}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Falha ao ler resultados de conteúdo: {e}"))?;
+
+    Ok(results)
+}
+
 // ── Tags & settings (LLM tagging) ──
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1328,6 +1681,91 @@ mod tests {
     fn init_schema_is_idempotent() {
         let conn = test_conn();
         init_schema(&conn).expect("segunda execucao");
+    }
+
+    #[test]
+    fn content_index_saves_and_searches_by_page() {
+        let conn = test_conn();
+        let collection = seed_collection(&conn, "receitas");
+        let item = insert_item(&conn, collection, "/r/receita.pdf", "receita.pdf", 10, "10", "pdf").unwrap();
+
+        let pages = vec![
+            (1i64, "native", "Receita de croche com linha número 10"),
+            (2i64, "native", "Instrucoes: execute dois pontos altos"),
+            (3i64, "native", ""),
+        ];
+        save_page_content(&conn, item, 10, "10", &pages, 1).unwrap();
+
+        let results = search_content(&conn, "croche", 10, None).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].file_id, item);
+        assert_eq!(results[0].page_number, 1);
+        assert_eq!(results[0].extraction_method, "native");
+        assert!(results[0].snippet.contains("croche"));
+
+        // Multi-term search matches the page containing both words.
+        let results = search_content(&conn, "instrucoes pontos", 10, None).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].page_number, 2);
+
+        // Empty pages never match, other terms do not hit.
+        assert!(search_content(&conn, "qualquer", 10, None).unwrap().is_empty());
+
+        // Status: two text pages -> done.
+        let status = list_index_status(&conn, None).unwrap();
+        assert_eq!(status[0].status, "done");
+
+        // Collection scope filter.
+        assert!(search_content(&conn, "croche", 10, Some(&[collection + 100])).unwrap().is_empty());
+    }
+
+    #[test]
+    fn content_index_marks_no_text_when_all_pages_are_empty() {
+        let conn = test_conn();
+        let collection = seed_collection(&conn, "visuais");
+        let item = insert_item(&conn, collection, "/v/scan.pdf", "scan.pdf", 5, "5", "pdf").unwrap();
+
+        save_page_content(&conn, item, 5, "5", &[(1i64, "native", "")], 1).unwrap();
+
+        let status = list_index_status(&conn, None).unwrap();
+        assert_eq!(status[0].status, "no_text");
+    }
+
+    #[test]
+    fn content_index_reindexes_when_file_metadata_changes() {
+        let conn = test_conn();
+        let collection = seed_collection(&conn, "mutavel");
+        let item = insert_item(&conn, collection, "/m/doc.pdf", "doc.pdf", 5, "5", "pdf").unwrap();
+
+        save_page_content(&conn, item, 5, "5", &[(1i64, "native", "texto original da pagina")], 1).unwrap();
+        assert_eq!(list_pending_pdf_index(&conn, 1, None).unwrap().len(), 0);
+
+        // Same metadata, but a new extractor version -> pending again.
+        assert_eq!(list_pending_pdf_index(&conn, 2, None).unwrap().len(), 1);
+
+        // File changed on disk -> page content is dropped and file is pending.
+        update_item_metadata(&conn, item, 99, "99").unwrap();
+        assert!(search_content(&conn, "original", 10, None).unwrap().is_empty());
+        let pending = list_pending_pdf_index(&conn, 1, None).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, item);
+    }
+
+    #[test]
+    fn content_index_failed_files_are_pending_again() {
+        let conn = test_conn();
+        let collection = seed_collection(&conn, "falha");
+        let item = insert_item(&conn, collection, "/f/err.pdf", "err.pdf", 5, "5", "pdf").unwrap();
+
+        set_file_index_failed(&conn, item, 5, "5", 1, "PDF corrompido").unwrap();
+        assert!(search_content(&conn, "qualquer", 10, None).unwrap().is_empty());
+
+        let pending = list_pending_pdf_index(&conn, 1, None).unwrap();
+        assert_eq!(pending.len(), 1);
+
+        let status = list_index_status(&conn, None).unwrap();
+        assert_eq!(status[0].status, "failed");
+        assert_eq!(status[0].error_message.as_deref(), Some("PDF corrompido"));
     }
 
     #[test]

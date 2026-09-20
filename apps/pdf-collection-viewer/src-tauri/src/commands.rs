@@ -1199,3 +1199,255 @@ pub fn cancel_tagging(app: AppHandle, collection_id: i64) -> bool {
         .map(|s| s.cancel(collection_id))
         .unwrap_or(false)
 }
+
+// ── Content indexing & search (FTS) ──
+
+use crate::indexing;
+use rusqlite::params;
+
+/// Sentinel key for the single content-indexing job (only one runs at a time).
+const INDEX_JOB_KEY: i64 = 0;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IndexingProgress {
+    pub stage: String,
+    pub current: usize,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IndexingSummary {
+    pub indexed: usize,
+    pub no_text: usize,
+    pub failed: usize,
+    pub failed_paths: Vec<String>,
+}
+
+/// Extracts the page content of one PDF. Heavy, must run outside the DB lock.
+fn extract_item(
+    path: &str,
+    resource_dir: &Path,
+) -> Result<Vec<(i64, String, String)>, String> {
+    let output = indexing::extract_pdf_text(path, resource_dir)?;
+    Ok(output
+        .pages
+        .iter()
+        .map(|p| (p.page_number, p.method.to_string(), p.text.clone()))
+        .collect())
+}
+
+/// Persists extracted pages and returns the resulting index status. Holds the
+/// DB lock only for the writes.
+fn persist_item(
+    conn: &rusqlite::Connection,
+    item: &db::CollectionItem,
+    pages: &[(i64, String, String)],
+) -> Result<String, String> {
+    let refs: Vec<(i64, &str, &str)> = pages
+        .iter()
+        .map(|(n, m, t)| (*n, m.as_str(), t.as_str()))
+        .collect();
+    db::save_page_content(
+        conn,
+        item.id,
+        item.size,
+        &item.modified_at,
+        &refs,
+        indexing::EXTRACTOR_VERSION,
+    )?;
+
+    let status: String = conn
+        .query_row(
+            "SELECT status FROM file_index WHERE file_id = ?1",
+            params![item.id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Falha ao ler estado de indexação: {e}"))?;
+    Ok(status)
+}
+
+/// Indexes a single PDF item synchronously (used for one-off runs).
+#[tauri::command]
+pub async fn index_item(
+    app: AppHandle,
+    state: State<'_, DbState>,
+    item_id: i64,
+) -> Result<String, String> {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Falha ao localizar resource_dir: {e}"))?;
+
+    let item = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::get_item_by_id(&conn, item_id)?.ok_or_else(|| "Item não encontrado".to_string())?
+    };
+
+    let item_path = item.path.clone();
+    let pages = tauri::async_runtime::spawn_blocking(move || {
+        extract_item(&item_path, &resource_dir)
+    })
+    .await
+    .map_err(|e| format!("Falha ao executar a indexação: {e}"))??;
+
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    persist_item(&conn, &item, &pages)
+}
+
+// ── Tags & settings (LLM tagging) anchor-kept ──
+
+/// Indexes every pending PDF in the given collections (`None` = all), on a
+/// background thread, emitting `indexing-progress` / `indexing-done`.
+#[tauri::command]
+pub fn index_pdfs(
+    app: AppHandle,
+    state: State<'_, DbState>,
+    collection_ids: Option<Vec<i64>>,
+) -> Result<(), String> {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Falha ao localizar resource_dir: {e}"))?;
+
+    let pending = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::list_pending_pdf_index(&conn, indexing::EXTRACTOR_VERSION, collection_ids.as_deref())?
+    };
+
+    if pending.is_empty() {
+        let _ = app.emit("indexing-done", IndexingSummary {
+            indexed: 0,
+            no_text: 0,
+            failed: 0,
+            failed_paths: Vec::new(),
+        });
+        return Ok(());
+    }
+
+    if let Some(cancels) = app.try_state::<crate::IndexCancels>() {
+        cancels.mark_active(INDEX_JOB_KEY);
+    }
+
+    let total = pending.len();
+    std::thread::spawn(move || {
+        let state = app.state::<DbState>();
+        let mut indexed = 0usize;
+        let mut no_text = 0usize;
+        let mut failed = 0usize;
+        let mut failed_paths: Vec<String> = Vec::new();
+
+        for (index, pending_item) in pending.iter().enumerate() {
+            let cancelled = app
+                .try_state::<crate::IndexCancels>()
+                .map(|s| s.is_cancelled(INDEX_JOB_KEY))
+                .unwrap_or(false);
+            if cancelled {
+                break;
+            }
+
+            let _ = app.emit(
+                "indexing-progress",
+                IndexingProgress {
+                    stage: "Indexando conteúdo".to_string(),
+                    current: index + 1,
+                    total,
+                },
+            );
+
+            let item = {
+                let conn = state.0.lock().map_err(|e| e.to_string());
+                match conn {
+                    Ok(conn) => db::get_item_by_id(&conn, pending_item.id),
+                    Err(e) => Err(e),
+                }
+            };
+
+            let result = match item {
+                Ok(Some(item)) => extract_item(&item.path, &resource_dir).and_then(|pages| {
+                    let conn = state.0.lock().map_err(|e| e.to_string())?;
+                    persist_item(&conn, &item, &pages)
+                }),
+                Ok(None) => Err("Item não encontrado".to_string()),
+                Err(e) => Err(e),
+            };
+
+            match result {
+                Ok(status) if status == "no_text" => no_text += 1,
+                Ok(_) => indexed += 1,
+                Err(message) => {
+                    eprintln!("[indexing] Erro em {}: {message}", pending_item.path);
+                    let _ = {
+                        let conn = state.0.lock();
+                        match conn {
+                            Ok(conn) => db::set_file_index_failed(
+                                &conn,
+                                pending_item.id,
+                                pending_item.size,
+                                &pending_item.modified_at,
+                                indexing::EXTRACTOR_VERSION,
+                                &message,
+                            ),
+                            Err(e) => Err(e.to_string()),
+                        }
+                    };
+                    failed += 1;
+                    failed_paths.push(pending_item.path.clone());
+                }
+            }
+        }
+
+        let _ = app.emit(
+            "indexing-progress",
+            IndexingProgress {
+                stage: "Concluído".to_string(),
+                current: total,
+                total,
+            },
+        );
+        let _ = app.emit(
+            "indexing-done",
+            IndexingSummary {
+                indexed,
+                no_text,
+                failed,
+                failed_paths,
+            },
+        );
+        if let Some(cancels) = app.try_state::<crate::IndexCancels>() {
+            cancels.clear(INDEX_JOB_KEY);
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn cancel_indexing(app: AppHandle) -> bool {
+    app.try_state::<crate::IndexCancels>()
+        .map(|s| s.cancel(INDEX_JOB_KEY))
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+pub fn search_content(
+    state: State<'_, DbState>,
+    query: String,
+    limit: Option<usize>,
+    collection_ids: Option<Vec<i64>>,
+) -> Result<Vec<db::ContentSearchResult>, String> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    db::search_content(&conn, trimmed, limit.unwrap_or(30), collection_ids.as_deref())
+}
+
+#[tauri::command]
+pub fn get_index_status(
+    state: State<'_, DbState>,
+    collection_ids: Option<Vec<i64>>,
+) -> Result<Vec<db::FileIndexStatusItem>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    db::list_index_status(&conn, collection_ids.as_deref())
+}

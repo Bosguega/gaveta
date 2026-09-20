@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { listen } from '@tauri-apps/api/event';
 import { CollectionCard } from '@/components/CollectionCard';
 import { CollectionForm } from '@/components/CollectionForm';
 import { ItemThumbnail } from '@/components/common/ItemThumbnail';
@@ -12,8 +13,15 @@ import {
     toggleCollectionPin,
 } from '@/services/collections';
 import { DuplicateAnalysisModal } from '@/components/DuplicateAnalysisModal';
-import { searchAllItems } from '@/services/items';
-import type { CollectionDetail, GlobalSearchResultItem } from '@/types';
+import { searchAllItems, openFile } from '@/services/items';
+import { searchContent, indexPdfs, cancelIndexing } from '@/services/content';
+import type {
+    CollectionDetail,
+    ContentSearchResult,
+    GlobalSearchResultItem,
+    IndexingProgress,
+    IndexingSummary,
+} from '@/types';
 import { FAVORITES_COLLECTION_ID } from '@/types';
 import { formatBytes, getFileTypeLabel } from '@/utils/format';
 
@@ -29,6 +37,13 @@ export function HomePage() {
     const [globalSearch, setGlobalSearch] = useState('');
     const [searchResults, setSearchResults] = useState<GlobalSearchResultItem[]>([]);
     const [searching, setSearching] = useState(false);
+
+    // Content (FTS) search results — pages inside PDFs matching the query
+    const [contentResults, setContentResults] = useState<ContentSearchResult[]>([]);
+
+    // Content indexing job state
+    const [indexingProgress, setIndexingProgress] = useState<IndexingProgress | null>(null);
+    const [indexingSummary, setIndexingSummary] = useState<IndexingSummary | null>(null);
 
     // Scope: collection ids filter (null = all collections) shared by global search,
     // favorites virtual collection and duplicates analysis
@@ -51,11 +66,12 @@ export function HomePage() {
         }
     }, [currentCollectionId]);
 
-    // Handle global search debounce
+    // Handle global search debounce (filenames + indexed page content)
     useEffect(() => {
         const query = globalSearch.trim();
         if (!query) {
             setSearchResults([]);
+            setContentResults([]);
             setSearching(false);
             return;
         }
@@ -72,10 +88,66 @@ export function HomePage() {
                 .finally(() => {
                     setSearching(false);
                 });
+            searchContent(query, 30, scope)
+                .then((res) => {
+                    setContentResults(res);
+                })
+                .catch(() => {
+                    setContentResults([]);
+                });
         }, 200);
 
         return () => clearTimeout(timer);
     }, [globalSearch, scope]);
+
+    // Listen to the background content-indexing job
+    useEffect(() => {
+        let unlistenProgress: (() => void) | undefined;
+        let unlistenDone: (() => void) | undefined;
+
+        listen<IndexingProgress>('indexing-progress', (event) => {
+            setIndexingProgress(event.payload);
+        }).then((unlisten) => {
+            unlistenProgress = unlisten;
+        });
+        listen<IndexingSummary>('indexing-done', (event) => {
+            setIndexingProgress(null);
+            setIndexingSummary(event.payload);
+        }).then((unlisten) => {
+            unlistenDone = unlisten;
+        });
+
+        return () => {
+            unlistenProgress?.();
+            unlistenDone?.();
+        };
+    }, []);
+
+    const handleOpenResult = async (path: string) => {
+        try {
+            await openFile(path);
+        } catch (reason) {
+            setError(reason instanceof Error ? reason.message : 'Não foi possível abrir o arquivo.');
+        }
+    };
+
+    const startIndexing = async () => {
+        setIndexingSummary(null);
+        try {
+            await indexPdfs(scope);
+        } catch (reason) {
+            setIndexingProgress(null);
+            setError(reason instanceof Error ? reason.message : 'Falha ao iniciar a indexação de conteúdo.');
+        }
+    };
+
+    const handleCancelIndexing = async () => {
+        try {
+            await cancelIndexing();
+        } catch {
+            // The job also stops on its own when the flag is already cleared.
+        }
+    };
 
     const handleCreate = async (data: {
         name: string;
@@ -149,8 +221,8 @@ export function HomePage() {
                     </p>
                 </div>
 
-                <div className="flex items-center gap-3 flex-1 max-w-lg">
-                    <div className="relative flex-1">
+                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                    <div className="relative flex-1 min-w-[280px] md:max-w-xl">
                         <input
                             type="text"
                             value={globalSearch}
@@ -256,6 +328,17 @@ export function HomePage() {
                         🔍 Duplicados
                     </button>
 
+                    {/* Content indexing trigger */}
+                    <button
+                        type="button"
+                        onClick={startIndexing}
+                        disabled={indexingProgress !== null}
+                        className="px-3 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 shrink-0 shadow-sm disabled:opacity-40"
+                        title="Indexar o conteúdo das páginas dos PDFs no escopo selecionado (texto nativo)"
+                    >
+                        🧠 Indexar conteúdo
+                    </button>
+
                     <button
                         onClick={() => setShowForm(true)}
                         className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 shrink-0 shadow-sm"
@@ -266,6 +349,44 @@ export function HomePage() {
             </div>
 
             {error && <div className="mb-6 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
+            {/* Content indexing job banner */}
+            {(indexingProgress || indexingSummary) && (
+                <div
+                    className={`mb-6 rounded-lg p-3 text-sm flex items-center justify-between gap-4 ${
+                        indexingSummary && indexingSummary.failed > 0
+                            ? 'bg-amber-50 text-amber-800'
+                            : 'bg-violet-50 text-violet-800'
+                    }`}
+                >
+                    {indexingProgress ? (
+                        <>
+                            <span>
+                                {indexingProgress.stage}: {indexingProgress.current}/{indexingProgress.total} arquivo(s)
+                            </span>
+                            <button
+                                type="button"
+                                onClick={handleCancelIndexing}
+                                className="px-3 py-1 text-xs font-medium rounded-md bg-white border border-violet-300 text-violet-700 hover:bg-violet-100"
+                            >
+                                Cancelar
+                            </button>
+                        </>
+                    ) : (
+                        <span>
+                            Indexação concluída: {indexingSummary!.indexed} com texto, {indexingSummary!.no_text} sem
+                            texto extraível, {indexingSummary!.failed} com falha
+                            <button
+                                type="button"
+                                onClick={() => setIndexingSummary(null)}
+                                className="ml-2 underline hover:text-violet-900"
+                            >
+                                fechar
+                            </button>
+                        </span>
+                    )}
+                </div>
+            )}
 
             {/* Global Search Results view */}
             {globalSearch.trim().length > 0 && (
@@ -289,9 +410,9 @@ export function HomePage() {
                             {searchResults.map((item) => (
                                 <div
                                     key={`${item.collection_id}-${item.id}`}
-                                    onClick={() => openCollection(item.collection_id, item.id)}
+                                    onClick={() => handleOpenResult(item.path)}
                                     className="flex items-center gap-3 p-3 bg-slate-50 hover:bg-blue-50/50 border border-slate-200 hover:border-blue-300 rounded-xl cursor-pointer transition-all group"
-                                    title={`Abrir na coleção "${item.collection_name}"`}
+                                    title={`Abrir "${item.filename}" no leitor padrão`}
                                 >
                                     <ItemThumbnail item={item} size="sm" />
                                     <div className="flex-1 min-w-0">
@@ -301,14 +422,77 @@ export function HomePage() {
                                         <div className="text-[11px] text-slate-500 truncate mt-0.5" title={item.path}>
                                             {formatBytes(item.size)} · {getFileTypeLabel(item.file_type)}
                                         </div>
-                                        <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded text-[10px] font-medium bg-blue-100/70 text-blue-800 truncate">
-                                            📁 {item.collection_name}
-                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                openCollection(item.collection_id, item.id);
+                                            }}
+                                            className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded text-[10px] font-medium bg-blue-100/70 hover:bg-blue-200 text-blue-800 max-w-full"
+                                            title={`Abrir na coleção "${item.collection_name}"`}
+                                        >
+                                            <span className="truncate">📁 {item.collection_name}</span>
+                                        </button>
                                     </div>
                                 </div>
                             ))}
                         </div>
                     )}
+
+                    {/* Content (FTS) results — matches inside indexed PDF pages */}
+                    <div className="mt-6 border-t border-slate-100 pt-4">
+                        <h3 className="text-sm font-semibold text-slate-700 mb-3">
+                            📄 Conteúdo dos PDFs
+                            <span className="ml-2 text-xs font-normal text-slate-400">
+                                {contentResults.length} página(s)
+                            </span>
+                        </h3>
+
+                        {contentResults.length === 0 ? (
+                            <p className="text-xs text-slate-400">
+                                Nenhuma página com esse conteúdo indexada ainda. Use "Indexar conteúdo" para extrair o
+                                texto dos PDFs (páginas compostas por imagens serão atendidas por OCR em etapa futura).
+                            </p>
+                        ) : (
+                            <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
+                                {contentResults.map((result) => (
+                                    <div
+                                        key={`${result.file_id}-${result.page_number}`}
+                                        onClick={() => handleOpenResult(result.path)}
+                                        className="p-3 bg-slate-50 hover:bg-violet-50/50 border border-slate-200 hover:border-violet-300 rounded-xl cursor-pointer transition-all"
+                                        title={`Abrir "${result.filename}" no leitor padrão`}
+                                    >
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-xs font-semibold text-slate-800 truncate" title={result.filename}>
+                                                {result.filename}
+                                            </span>
+                                            <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-medium bg-violet-100/70 text-violet-800">
+                                                página {result.page_number}
+                                            </span>
+                                            <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-medium bg-slate-200/70 text-slate-600">
+                                                {result.extraction_method === 'vision' ? 'OCR' : 'texto'}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    openCollection(result.collection_id, result.file_id);
+                                                }}
+                                                className="ml-auto shrink-0 text-[10px] font-medium bg-violet-100/70 hover:bg-violet-200 text-violet-800 px-2 py-0.5 rounded"
+                                                title={`Abrir na coleção "${result.collection_name}"`}
+                                            >
+                                                📁 {result.collection_name}
+                                            </button>
+                                        </div>
+                                        <p
+                                            className="text-xs text-slate-600 leading-relaxed line-clamp-2 [&_mark]:bg-violet-200 [&_mark]:rounded-sm [&_mark]:px-0.5"
+                                            dangerouslySetInnerHTML={{ __html: result.snippet }}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 

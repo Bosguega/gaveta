@@ -35,6 +35,9 @@ function setLoadingStep(step: LoadingStep | null) {
  * Agora APENAS faz o parse e exibe no ResultScreen.
  * O salvamento é feito posteriormente pelo ScannerTab.
  */
+const OFFLINE_MESSAGE =
+  'Você está offline. O escaneamento de notas requer conexão com a internet. Tente novamente quando estiver online.';
+
 export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
   const setLoading = useScannerStore((state) => state.setLoading);
   const setCurrentReceipt = useScannerStore((state) => state.setCurrentReceipt);
@@ -78,6 +81,13 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
   const processQRCode = useCallback(
     async (decodedText: string) => {
       logger.debug('QRProcessor', 'Processando QR Code', decodedText.substring(0, 100));
+
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        logger.warn('QRProcessor', 'Offline: bloqueando processamento de QR Code');
+        notify.error(OFFLINE_MESSAGE, 10000);
+        setError('Você está offline. Tente novamente quando estiver online.');
+        return;
+      }
 
       setLoading(true);
       setLoadingStep('fetching');
@@ -168,6 +178,14 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
   const processRawText = useCallback(
     async (text: string) => {
       logger.debug('QRProcessor', 'Processando texto manual');
+
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        logger.warn('QRProcessor', 'Offline: bloqueando processamento manual');
+        notify.error(OFFLINE_MESSAGE, 10000);
+        setError('Você está offline. Tente novamente quando estiver online.');
+        return;
+      }
+
       setLoading(true);
       setLoadingStep('parsing');
       setError(null);

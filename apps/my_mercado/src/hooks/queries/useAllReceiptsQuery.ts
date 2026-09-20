@@ -53,7 +53,8 @@ export function useAllReceiptsQuery(enabled: boolean = true) {
                 try {
                     const data = await getAllReceiptsFromDB();
                     const normalized = normalizeReceipts(data);
-                    // Persistência deve ser feita por serviço dedicado, não pelo hook
+                    // Persiste localmente para permitir visualização offline
+                    persistReceiptsToLocalStorage(normalized);
                     return normalized;
                 } catch (_error) {
                     // Erro esperado: usuário não autenticado ou Supabase indisponível

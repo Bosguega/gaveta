@@ -2,6 +2,7 @@ pub mod commands;
 pub mod db;
 pub mod embroidery;
 pub mod file_types;
+pub mod indexing;
 pub mod scan;
 pub mod scanner;
 pub mod thumbnails;
@@ -93,6 +94,46 @@ impl TagCancels {
     }
 }
 
+/// Cancel flag for the content-indexing job (single job, single key).
+/// Same pattern as `TagCancels`.
+#[derive(Default)]
+pub struct IndexCancels(Mutex<HashMap<i64, AtomicBool>>);
+
+impl IndexCancels {
+    pub fn mark_active(&self, job_key: i64) {
+        if let Ok(mut map) = self.0.lock() {
+            map.insert(job_key, AtomicBool::new(false));
+        }
+    }
+
+    pub fn is_cancelled(&self, job_key: i64) -> bool {
+        self.0
+            .lock()
+            .ok()
+            .and_then(|map| map.get(&job_key).map(|b| b.load(Ordering::Relaxed)))
+            .unwrap_or(false)
+    }
+
+    pub fn cancel(&self, job_key: i64) -> bool {
+        self.0
+            .lock()
+            .ok()
+            .and_then(|map| {
+                map.get(&job_key).map(|b| {
+                    b.store(true, Ordering::Relaxed);
+                    true
+                })
+            })
+            .unwrap_or(false)
+    }
+
+    pub fn clear(&self, job_key: i64) {
+        if let Ok(mut map) = self.0.lock() {
+            map.remove(&job_key);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -104,6 +145,7 @@ pub fn run() {
             app.manage(DbState(Mutex::new(conn)));
             app.manage(ScanCancels::new());
             app.manage(TagCancels::default());
+            app.manage(IndexCancels::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -128,6 +170,11 @@ pub fn run() {
             commands::regenerate_thumbnails,
             commands::toggle_collection_pin,
             commands::search_all_items,
+            commands::search_content,
+            commands::index_item,
+            commands::index_pdfs,
+            commands::cancel_indexing,
+            commands::get_index_status,
             commands::get_tag_settings,
             commands::get_default_tag_settings,
             commands::set_tag_settings,
