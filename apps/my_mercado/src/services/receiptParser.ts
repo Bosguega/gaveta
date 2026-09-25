@@ -49,6 +49,7 @@ export async function parseNFCeSP(url: string): Promise<Receipt> {
       date,
       items: parsedItems,
       total_discount: totalDiscount,
+      nfce_qr_url: url,
     };
   } catch (error) {
     logger.error("Parser", "Erro ao parsear NFC-e:", error);

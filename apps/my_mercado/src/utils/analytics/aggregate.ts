@@ -1,4 +1,5 @@
 import type { Receipt, ReceiptItem } from "../../types/domain";
+import { parseQuantity } from "../format";
 
 type ParseNumeric = (value: string | number | null | undefined) => number;
 
@@ -16,7 +17,7 @@ export function calculateItemTotal(
                    parseBRL(item.paid_price) !== parseBRL(item.price);
 
   if (isEdited) {
-    return parseBRL(item.paid_price) * parseBRL(item.quantity ?? 1);
+    return parseBRL(item.paid_price) * parseQuantity(item.quantity ?? 1);
   }
 
   // Senão, prioridade máxima para o total original da nota
@@ -25,10 +26,10 @@ export function calculateItemTotal(
   }
 
   if (item.paid_price !== undefined && item.paid_price !== null) {
-    return parseBRL(item.paid_price) * parseBRL(item.quantity ?? 1);
+    return parseBRL(item.paid_price) * parseQuantity(item.quantity ?? 1);
   }
 
-  return parseBRL(item.price) * parseBRL(item.quantity ?? 1);
+  return parseBRL(item.price) * parseQuantity(item.quantity ?? 1);
 }
 
 export function calculateReceiptTotal(

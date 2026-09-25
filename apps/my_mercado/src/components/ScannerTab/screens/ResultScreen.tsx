@@ -1,7 +1,7 @@
 import { CheckCircle, ChevronDown, ChevronUp, XCircle, Loader2, Tag, Pencil } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import { formatBRL, parseBRL } from "../../../utils/currency";
-import { formatQuantity } from "../../../utils/format";
+import { formatQuantity, parseQuantity } from "../../../utils/format";
 import { formatToBR } from "../../../utils/date";
 import type { ReceiptItem } from "../../../types/domain";
 import type { ReceiptResultProps } from "../../../types/scanner";
@@ -36,8 +36,10 @@ export function ResultScreen({
       item.price !== undefined && item.price !== null &&
       parseBRL(item.paid_price) !== parseBRL(item.price);
 
+    const quantity = parseQuantity(item.quantity ?? 1);
+
     if (isEdited) {
-      return formatBRL(parseBRL(item.paid_price) * parseBRL(item.quantity ?? 1));
+      return formatBRL(parseBRL(item.paid_price) * quantity);
     }
 
     if (item.total !== undefined && item.total !== null) {
@@ -45,11 +47,10 @@ export function ResultScreen({
     }
 
     if (item.paid_price !== undefined && item.paid_price !== null) {
-      return formatBRL(parseBRL(item.paid_price) * parseBRL(item.quantity ?? 1));
+      return formatBRL(parseBRL(item.paid_price) * quantity);
     }
 
     const price = parseBRL(item.price || 0);
-    const quantity = parseBRL(item.quantity || 1);
     return formatBRL(price * quantity);
   };
 

@@ -3,6 +3,7 @@ import { callAI } from "../utils/ai";
 import { normalizeKey } from "../utils/normalize";
 import { stripVariableInfo, cleanAIName } from "../utils/stringUtils";
 import { toNumber } from "../utils/shoppingList";
+import { parseQuantity } from "../utils/format";
 import { logger } from "../utils/logger";
 import { normalizeCategory } from "../utils/categoryNormalizer";
 import type { AiNormalizationResult } from "../types/ai";
@@ -18,7 +19,7 @@ const isDev = import.meta.env.DEV;
  * Converte RawReceiptItem (parser output) para ReceiptItem (DB format)
  */
 function rawToProcessed(item: RawReceiptItem): ReceiptItem {
-  const quantity = toNumber(item.qty, 1);
+  const quantity = parseQuantity(item.qty, 1);
   const unitPrice = toNumber(item.unitPrice, 0);
   const totalValue = toNumber(item.total, 0);
 

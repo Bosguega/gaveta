@@ -27,6 +27,7 @@ interface DbReceiptRow {
   date: string;
   created_at?: string | null;
   total_discount?: number | null;
+  nfce_qr_url?: string | null;
   items?: DbItemRow[] | null;
 }
 
@@ -35,6 +36,7 @@ interface SavedReceiptRow {
   establishment?: string | null;
   date: string;
   created_at?: string | null;
+  nfce_qr_url?: string | null;
 }
 
 const RESTORE_BATCH_SIZE = 25;
@@ -96,6 +98,7 @@ async function saveReceiptAtomic(
       mapReceiptItemToDb(item, scopedReceiptId)
     ),
     p_total_discount: receiptData.total_discount ?? null,
+    p_nfce_qr_url: receiptData.nfce_qr_url ?? null,
   });
 
   if (error) {
@@ -117,6 +120,7 @@ function mapDbReceiptToReceipt(row: DbReceiptRow): Receipt {
     date: formatToBR(row.date),
     items: (row.items || []).map(mapDbItemToReceiptItem),
     total_discount: row.total_discount ?? undefined,
+    nfce_qr_url: row.nfce_qr_url ?? undefined,
   };
 }
 
@@ -165,6 +169,7 @@ export async function getReceiptsPaginated(
       date,
       created_at,
       total_discount,
+      nfce_qr_url,
       items (
         id,
         name,
@@ -178,7 +183,7 @@ export async function getReceiptsPaginated(
         total
       )
     `
-    : "id, establishment, establishment_display, date, created_at, total_discount";
+    : "id, establishment, establishment_display, date, created_at, total_discount, nfce_qr_url";
 
   let query = client
     .from("receipts")

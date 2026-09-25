@@ -43,6 +43,7 @@ export interface Receipt {
   items: ReceiptItem[];
   created_at?: string;
   total_discount?: number;
+  nfce_qr_url?: string;
 }
 
 /**

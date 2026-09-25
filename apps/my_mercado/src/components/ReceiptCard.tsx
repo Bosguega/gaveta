@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback, useState } from "react";
-import { Trash2, ChevronDown, ChevronUp, Edit3, Pencil, Tag } from "lucide-react";
+import { Trash2, ChevronDown, ChevronUp, Edit3, Pencil, Tag, ExternalLink } from "lucide-react";
 import { parseBRL, formatBRL } from "../utils/currency";
 import { formatQuantity } from "../utils/format";
 import { calculateReceiptTotal } from "../utils/analytics";
@@ -171,6 +171,19 @@ export const ReceiptCard = React.memo(function ReceiptCard({
                             <span className="bg-blue-500/20 text-[var(--primary)] px-2 py-0.5 rounded-full text-xs">
                                 {receipt.items.length} itens
                             </span>
+                            {receipt.nfce_qr_url && (
+                                <a
+                                    href={receipt.nfce_qr_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 underline underline-offset-2 transition-colors"
+                                    title="Abrir nota original na SEFAZ"
+                                >
+                                    <ExternalLink size={12} />
+                                    Ver nota na SEFAZ
+                                </a>
+                            )}
                         </div>
                     </div>
                     <div className="flex items-center gap-3">

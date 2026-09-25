@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { calculateItemTotal, calculateReceiptTotal, calculateTotalSpent } from "./aggregate";
 import { parseBRL } from "../currency";
-import type { Receipt } from "../../types/domain";
+import type { Receipt, ReceiptItem } from "../../types/domain";
 
 describe("analytics aggregate", () => {
   it("uses paid_price as priority over total", () => {
@@ -21,6 +21,24 @@ describe("analytics aggregate", () => {
 
     // 19.9 * 0.47 = 9.353, mas o total original da nota (9.39) deve ser retornado
     expect(total).toBe(9.39);
+  });
+
+  it("preserva peso de 3 casas ao calcular item editado (0,434 kg)", () => {
+    // Cenário real: 0,434 kg a R$ 32,90/kg com desconto de R$ 1,29
+    // total bruto = 0,434 * 32,90 = 14,28; total pago = 12,99;
+    // preço pago/kg = 12,99 / 0,434 = 29,93
+    const item: ReceiptItem = {
+      name: "Queijo",
+      quantity: 0.434,
+      unit: "KG",
+      price: 32.9,
+      total: 14.28,
+      paid_price: 29.93,
+    };
+
+    // Editado (paid_price != price) => 29,93 * 0,434 = 12,98962
+    // Se a quantidade fosse truncada para 0,43 o resultado seria 12,8699
+    expect(calculateItemTotal(item, parseBRL)).toBeCloseTo(12.99, 2);
   });
 
   it("uses item.total when paid_price is absent", () => {
