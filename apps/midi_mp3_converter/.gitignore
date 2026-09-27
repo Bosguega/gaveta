@@ -1,0 +1,7 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/tools/
+src-tauri/soundfonts/
+.tmp/
+src-tauri/gen/

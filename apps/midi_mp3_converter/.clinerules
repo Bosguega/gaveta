@@ -1,0 +1,48 @@
+# Gaveta Monorepo — Regras do MIDI → MP3 Converter
+
+## Visao geral
+Utilitario desktop (Windows) offline que converte MIDI em MP3 em lote.
+App Tauri 2 + React 18 + TypeScript; toda a conversao roda no Rust, nunca no frontend.
+
+## Stack
+- Tauri 2 + React 18 + TypeScript + Vite (sem Tailwind: o CSS retro e escrito a mao em src/styles/retro.css)
+- Rust: tauri-plugin-shell (processos externos), tauri-plugin-dialog, tauri-plugin-opener, serde, midly, walkdir
+- Frontend: Zustand (estado da fila), Zod (validacao de payloads vindos do Rust)
+- Nenhuma biblioteca de UI, icone, player ou waveform. Player e <audio> + asset protocol.
+
+## Pipeline de conversao (validado na POC)
+- Sinteese: fluidsynth.exe -F <tmp.wav> -r 44100 -g 0.8 -o synth.limiter.active=1 -o audio.file.type=wav -n -i -q <sf3> <mid>
+  - -F e o file renderer (renderiza o mais rapido possivel, nao em tempo real) e GRAVA WAV com header RIFF (16-bit, 44100 Hz, stereo).
+  - exit code 0 = sucesso; exit != 0 = erro. --version retorna -1 (nao usar como sinal de erro).
+  - stderr pode conter avisos benignos (ex.: Ignoring unrecognized meta event type 0x21) - nao tratar como falha.
+- Codificacao: ffmpeg.exe -hide_banner -nostdin -loglevel error -nostats -progress pipe:1 -i <tmp.wav> -c:a libmp3lame -b:a <bitrate>k -id3v2_version 3 -f mp3 <saida.mp3.part>
+  - Progresso real lido de out_time_ms do -progress (stdout) dividido pela duracao do MIDI.
+  - Escrever sempre em <saida>.mp3.part e renomear no fim (escrita atomica; se o destino estiver bloqueado, o MP3 antigo permanece).
+- Progresso da sintese: tamanho atual do WAV dividido pelo tamanho esperado (duracao x 176400 bytes/s).
+
+## Ganho e qualidade (medido, nao chutado)
+- gain 0.8 + synth.limiter.active=1: pico ~ -2 dBFS, media ~ -19 dBFS em mix denso. Padrao do app.
+- gain 1.0 satura o limiter (pico 0 dB constante); gain 0.6 fica ~2 dB mais baixo.
+- Sample rate 44100, 16-bit stereo, reverb/chorus nos defaults do FluidSynth.
+
+## Executaveis e recursos (nao versionados)
+- src-tauri/tools/: fluidsynth.exe + libfluidsynth-3.dll + sndfile.dll e ffmpeg.exe (baixados por scripts/fetch-tools.mjs, com sha256 no manifest)
+- src-tauri/soundfonts/: FluidR3Mono_GM.sf3 (padrao) + MuseScore_General.sf3 (alternativa) + arquivos de licenca
+- SDL3.dll NAO e necessario para o file renderer (validado). Se algum dia usarmos saida de audio em tempo real, revisar.
+- Resolucao de caminho: mesmo padrao do pdf-collection-viewer (resource_dir + candidatos), acrescido de CARGO_MANIFEST_DIR para dev.
+
+## Fila
+- Um arquivo por vez. Status: pending | running | done | skipped | error | canceled.
+- A fila nao para por falha de um arquivo: registra o erro e segue. Ao final emitir resumo (feitos, ignorados, erros, tempo).
+- Eventos Rust -> frontend: conversion-progress, conversion-item, conversion-done (padrao ja usado no pdf-collection-viewer).
+
+## Regras de produto
+- Existindo MP3 de destino: padrao SUBSTITUIR; opcoes Pular e Criar copia (musica (1).mp3).
+- Saida padrao: mesma pasta do MIDI. Com pasta de saida escolhida, espelhar as subpastas de entrada.
+- Aceitar .mid e .midi (case-insensitive); dedup por caminho canonico.
+- Player: previa MIDI = mesma sintese da conversao para WAV temporario, tocada em <audio>; MP3 tambem em <audio>. Sem playlist, waveform, equalizador ou biblioteca de audio.
+
+## Regras gerais
+- UI e mensagens de erro em pt-BR; codigo-fonte e doc em ingles.
+- Sem barra de titulo customizada (usar a nativa do Windows).
+- Arquivos sempre em UTF-8 (sem BOM).

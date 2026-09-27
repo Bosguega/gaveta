@@ -1,0 +1,363 @@
+:root {
+    --face: #d4d0c8;
+    --face-light: #e8e6e3;
+    --hi: #ffffff;
+    --sh: #808080;
+    --dark: #404040;
+    --field: #ffffff;
+    --text: #000000;
+    --sel: #000080;
+    --sel-text: #ffffff;
+    --disabled: #a0a0a0;
+    --error: #a00000;
+    --font: Tahoma, MS Sans Serif, Segoe UI, sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    background: var(--face);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 11px;
+    cursor: default;
+    user-select: none;
+    overflow: hidden;
+}
+
+.bevel-out {
+    background: var(--face);
+    box-shadow: inset -1px -1px 0 0 var(--dark), inset 1px 1px 0 0 var(--hi), inset -2px -2px 0 0 var(--sh), inset 2px 2px 0 0 var(--face-light);
+}
+
+.bevel-in {
+    background: var(--field);
+    box-shadow: inset 1px 1px 0 0 var(--sh), inset -1px -1px 0 0 var(--hi), inset 2px 2px 0 0 var(--dark), inset -2px -2px 0 0 var(--face-light);
+}
+
+.app {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto;
+    gap: 3px;
+    height: 100%;
+    padding: 3px;
+}
+
+.toolbar {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px;
+}
+
+.toolbar-sep {
+    width: 2px;
+    align-self: stretch;
+    margin: 1px 4px;
+    box-shadow: inset -1px 0 0 var(--hi), inset 1px 0 0 var(--sh);
+}
+
+.btn {
+    min-width: 74px;
+    height: 23px;
+    padding: 0 8px;
+    border: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    font-family: var(--font);
+    font-size: 11px;
+    color: var(--text);
+    cursor: default;
+    white-space: nowrap;
+}
+
+.btn:not(:disabled):active {
+    box-shadow: inset 1px 1px 0 0 var(--sh), inset -1px -1px 0 0 var(--hi), inset 2px 2px 0 0 var(--dark), inset -2px -2px 0 0 var(--face-light);
+    padding-top: 1px;
+    padding-left: 9px;
+}
+
+.btn:disabled {
+    color: var(--disabled);
+    text-shadow: 1px 1px 0 var(--hi);
+}
+
+.btn:focus-visible {
+    outline: 1px dotted var(--text);
+    outline-offset: -4px;
+}
+
+.btn-wide {
+    min-width: 130px;
+    height: 26px;
+}
+
+.list {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--field);
+}
+
+.list-header {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr) 62px 54px 108px;
+    gap: 4px;
+    padding: 2px 4px;
+    background: var(--face);
+    box-shadow: inset 1px 1px 0 var(--hi), inset -1px -1px 0 var(--sh);
+}
+
+.list-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 1px;
+}
+
+.row {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr) 62px 54px 108px;
+    gap: 4px;
+    align-items: center;
+    height: 17px;
+    padding: 0 3px;
+    white-space: nowrap;
+}
+
+.row.selected {
+    background: var(--sel);
+    color: var(--sel-text);
+}
+
+.row.status-error:not(.selected) {
+    color: var(--error);
+}
+
+.col-right {
+    text-align: right;
+}
+
+.ellipsis {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.empty {
+    padding: 6px;
+    color: var(--sh);
+}
+
+.player {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px;
+}
+
+.player-pos {
+    margin-left: auto;
+    padding: 1px 5px;
+    box-shadow: inset 1px 1px 0 var(--sh), inset -1px -1px 0 var(--hi);
+}
+
+.slider {
+    width: 92px;
+    accent-color: var(--sel);
+}
+
+.output-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px;
+}
+
+.input {
+    flex: 1;
+    min-width: 0;
+    height: 20px;
+    padding: 0 3px;
+    border: 0;
+    font-family: var(--font);
+    font-size: 11px;
+}
+
+.group {
+    margin: 0;
+    padding: 5px 6px 6px;
+    border: 0;
+    box-shadow: inset 1px 1px 0 var(--sh), inset -1px -1px 0 var(--hi);
+    background: var(--face);
+}
+
+.group legend {
+    padding: 0 3px;
+    margin-left: 4px;
+}
+
+.progress-line {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.progress-line + .progress,
+.progress + .progress-line {
+    margin-top: 3px;
+}
+
+.progress {
+    height: 17px;
+    padding: 2px;
+}
+
+.progress-fill {
+    height: 100%;
+    background-image: repeating-linear-gradient(90deg, #000080 0 8px, #a8c4f0 8px 10px);
+}
+
+.statusbar {
+    display: flex;
+    gap: 2px;
+    height: 20px;
+}
+
+.statusbar .panel {
+    display: flex;
+    align-items: center;
+    padding: 0 5px;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.status-grow {
+    flex: 1;
+    min-width: 0;
+}
+
+::-webkit-scrollbar {
+    width: 16px;
+    height: 16px;
+}
+
+::-webkit-scrollbar-track {
+    background: repeating-conic-gradient(var(--field) 0 25%, var(--face) 0 50%) 0 0 / 2px 2px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--face);
+    box-shadow: inset -1px -1px 0 var(--dark), inset 1px 1px 0 var(--hi), inset -2px -2px 0 var(--sh), inset 2px 2px 0 var(--face-light);
+}
+
+::-webkit-scrollbar-corner {
+    background: var(--face);
+}
+.player-message {
+    max-width: 210px;
+    color: var(--sh);
+}
+
+.progress-item {
+    margin-left: auto;
+}
+
+.grow {
+    flex: 1;
+}
+
+.select {
+    height: 20px;
+    padding: 0 2px;
+    border: 0;
+    font-family: var(--font);
+    font-size: 11px;
+}
+
+.checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.option-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.option-label {
+    white-space: nowrap;
+}
+
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.modal {
+    width: 520px;
+    max-width: 94vw;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    padding: 3px;
+}
+
+.modal-title {
+    display: flex;
+    align-items: center;
+    height: 20px;
+    margin-bottom: 3px;
+    padding: 0 4px;
+    background: var(--sel);
+    color: var(--sel-text);
+    font-weight: bold;
+}
+
+.modal-body {
+    overflow: auto;
+    padding: 2px;
+}
+
+.modal-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 4px;
+    padding: 6px 2px 2px;
+}
+
+.modal-errors {
+    margin-top: 6px;
+}
+
+.errors {
+    max-height: 160px;
+    overflow: auto;
+    background: var(--field);
+    box-shadow: inset 1px 1px 0 var(--sh), inset -1px -1px 0 var(--hi);
+    padding: 3px;
+    user-select: text;
+    cursor: text;
+}
+
+.error-line {
+    color: var(--error);
+    margin-bottom: 2px;
+}

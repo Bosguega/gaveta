@@ -1,0 +1,108 @@
+{
+    "cache": "midi-mp3-tools-cache",
+    "files": [
+        {
+            "id": "fluidsynth",
+            "kind": "zip",
+            "component": "FluidSynth 2.6.1 (win10-x64 cpp11)",
+            "license": "LGPL-2.1-or-later",
+            "source": "https://github.com/FluidSynth/fluidsynth/tree/v2.6.1",
+            "url": "https://github.com/FluidSynth/fluidsynth/releases/download/v2.6.1/fluidsynth-v2.6.1-win10-x64-cpp11.zip",
+            "sha256": "fab7a2e4b85675b66970f97a39bbc239729c5e0f237198b5922a6a73cbc8677c",
+            "size": 2727529,
+            "extract": [
+                {
+                    "match": "bin/fluidsynth.exe",
+                    "to": "src-tauri/tools/fluidsynth.exe"
+                },
+                {
+                    "match": "bin/libfluidsynth-3.dll",
+                    "to": "src-tauri/tools/libfluidsynth-3.dll"
+                },
+                {
+                    "match": "bin/sndfile.dll",
+                    "to": "src-tauri/tools/sndfile.dll"
+                }
+            ]
+        },
+        {
+            "id": "licenses-fluidsynth",
+            "kind": "file",
+            "component": "FluidSynth license text",
+            "license": "LGPL-2.1-or-later",
+            "url": "https://raw.githubusercontent.com/FluidSynth/fluidsynth/v2.6.1/LICENSE",
+            "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+            "size": 26419,
+            "to": "src-tauri/licenses/FluidSynth-LGPL-2.1.txt"
+        },
+        {
+            "id": "ffmpeg",
+            "kind": "zip",
+            "floating": true,
+            "component": "FFmpeg (build LGPL do BtbN)",
+            "license": "LGPL-3.0-or-later",
+            "source": "https://github.com/BtbN/FFmpeg-Builds",
+            "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip",
+            "sha256": "d3105cd83e6901fcdcfe86c08a725864ff9f1b98e125bfbd1111c13cf266b3b6",
+            "size": 173534000,
+            "extract": [
+                {
+                    "match": "bin/ffmpeg.exe",
+                    "to": "src-tauri/tools/ffmpeg.exe"
+                }
+            ]
+        },
+        {
+            "id": "licenses-ffmpeg",
+            "kind": "file",
+            "component": "FFmpeg license text",
+            "license": "LGPL-3.0-or-later",
+            "url": "https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/COPYING.LGPLv3",
+            "sha256": "da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768",
+            "size": 7651,
+            "to": "src-tauri/licenses/FFmpeg-LGPL-3.0.txt"
+        },
+        {
+            "id": "soundfont-fluidr3mono",
+            "kind": "file",
+            "component": "FluidR3Mono_GM SoundFont",
+            "license": "MIT",
+            "source": "https://github.com/musescore/MuseScore/tree/main/share/sound",
+            "url": "https://raw.githubusercontent.com/musescore/MuseScore/main/share/sound/FluidR3Mono_GM.sf3",
+            "sha256": "2aacd036d7058d40a371846ef2f5dc5f130d648ab3837fe2626591ba49a71254",
+            "size": 23712790,
+            "to": "src-tauri/soundfonts/FluidR3Mono_GM.sf3"
+        },
+        {
+            "id": "soundfont-fluidr3mono-license",
+            "kind": "file",
+            "component": "FluidR3Mono license/attribution",
+            "license": "MIT",
+            "url": "https://raw.githubusercontent.com/musescore/MuseScore/main/share/sound/FluidR3Mono_License.md",
+            "sha256": "0fa7d85b3114adb91cebd42fe955e22df6b19917e9c8e19c401080c075975636",
+            "size": 3263,
+            "to": "src-tauri/licenses/FluidR3Mono-License.md"
+        },
+        {
+            "id": "soundfont-msgeneral",
+            "kind": "file",
+            "component": "MuseScore_General SoundFont",
+            "license": "MIT",
+            "source": "https://musescore.org",
+            "url": "https://ftp.osuosl.org/pub/musescore/soundfont/MuseScore_General/MuseScore_General.sf3",
+            "sha256": "5b85b6c2c61d10b2b91cddd41efcce7b25cd31c8271d511c73afafbef20b6fa3",
+            "size": 39900972,
+            "to": "src-tauri/soundfonts/MuseScore_General.sf3"
+        },
+        {
+            "id": "soundfont-msgeneral-license",
+            "kind": "file",
+            "component": "MuseScore_General license/attribution",
+            "license": "MIT",
+            "url": "https://ftp.osuosl.org/pub/musescore/soundfont/MuseScore_General/MuseScore_General_License.md",
+            "sha256": "5ad8d737e13c7f01f5b9674872a82a92b4ba253603e8ed14b9db12293550b4b9",
+            "size": 3419,
+            "to": "src-tauri/licenses/MuseScore_General-License.md"
+        }
+    ]
+}
