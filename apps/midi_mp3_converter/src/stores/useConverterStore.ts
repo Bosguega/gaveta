@@ -4,7 +4,7 @@ import type { ProgressEvent, QueueItem, Settings, SoundFontOption, Summary } fro
 
 interface ConverterState {
     items: QueueItem[];
-    selectedId: number | null;
+    selectedIds: number[];
     settings: Settings | null;
     soundfonts: SoundFontOption[];
     progress: ProgressEvent | null;
@@ -14,8 +14,12 @@ interface ConverterState {
     load: () => Promise<void>;
     addPaths: (paths: string[]) => Promise<void>;
     removeSelected: () => Promise<void>;
+    clearCompleted: () => Promise<void>;
     clearList: () => Promise<void>;
-    select: (id: number | null) => void;
+    selectSingle: (id: number | null) => void;
+    toggleSelect: (id: number) => void;
+    selectRange: (id: number) => void;
+    selectAll: () => void;
     applyProgress: (event: ProgressEvent) => void;
     finish: (summary: Summary) => void;
     convert: () => Promise<void>;
@@ -54,7 +58,7 @@ function describeError(error: unknown): string {
 
 export const useConverterStore = create<ConverterState>((set, get) => ({
     items: [],
-    selectedId: null,
+    selectedIds: [],
     settings: null,
     soundfonts: [],
     progress: null,
@@ -67,7 +71,12 @@ export const useConverterStore = create<ConverterState>((set, get) => ({
             api.getSettings(),
             api.listSoundFonts(),
         ]);
-        set({ items, settings, soundfonts, selectedId: items.length > 0 ? items[0].id : null });
+        set({
+            items,
+            settings,
+            soundfonts,
+            selectedIds: items.length > 0 ? [items[0].id] : [],
+        });
     },
     addPaths: async (paths) => {
         if (paths.length === 0) return;
@@ -78,18 +87,34 @@ export const useConverterStore = create<ConverterState>((set, get) => ({
             set((state) => ({
                 items,
                 status: added.length > 0 ? added.length + ' arquivo(s) adicionado(s)' : 'Nada novo para adicionar',
-                selectedId: state.selectedId ?? (items[0]?.id ?? null),
+                selectedIds: state.selectedIds.length > 0 ? state.selectedIds : items[0] ? [items[0].id] : [],
             }));
         } catch (error) {
             set({ status: describeError(error) });
         }
     },
     removeSelected: async () => {
-        const id = get().selectedId;
-        if (id === null) return;
+        const ids = get().selectedIds;
+        if (ids.length === 0) return;
         try {
-            const items = await api.removeItems([id]);
-            set({ items, selectedId: items.length > 0 ? items[0].id : null });
+            const items = await api.removeItems(ids);
+            set({
+                items,
+                selectedIds: items.length > 0 ? [items[0].id] : [],
+                status: ids.length + ' item(ns) removido(s)',
+            });
+        } catch (error) {
+            set({ status: describeError(error) });
+        }
+    },
+    clearCompleted: async () => {
+        try {
+            const items = await api.clearCompleted();
+            set({
+                items,
+                selectedIds: items.length > 0 ? [items[0].id] : [],
+                status: 'Concluídos removidos da lista',
+            });
         } catch (error) {
             set({ status: describeError(error) });
         }
@@ -97,12 +122,37 @@ export const useConverterStore = create<ConverterState>((set, get) => ({
     clearList: async () => {
         try {
             await api.clearQueue();
-            set({ items: [], selectedId: null, progress: null, summary: null, status: 'Lista limpa' });
+            set({ items: [], selectedIds: [], progress: null, summary: null, status: 'Lista limpa' });
         } catch (error) {
             set({ status: describeError(error) });
         }
     },
-    select: (id) => set({ selectedId: id }),
+    selectSingle: (id) => set({ selectedIds: id !== null ? [id] : [] }),
+    toggleSelect: (id) =>
+        set((state) => {
+            const exists = state.selectedIds.includes(id);
+            if (exists) {
+                return { selectedIds: state.selectedIds.filter((item) => item !== id) };
+            }
+            return { selectedIds: [...state.selectedIds, id] };
+        }),
+    selectRange: (id) =>
+        set((state) => {
+            const last = state.selectedIds[state.selectedIds.length - 1];
+            if (last === undefined) {
+                return { selectedIds: [id] };
+            }
+            const i1 = state.items.findIndex((item) => item.id === last);
+            const i2 = state.items.findIndex((item) => item.id === id);
+            if (i1 === -1 || i2 === -1) {
+                return { selectedIds: [id] };
+            }
+            const [start, end] = i1 < i2 ? [i1, i2] : [i2, i1];
+            const rangeIds = state.items.slice(start, end + 1).map((item) => item.id);
+            const merged = Array.from(new Set([...state.selectedIds, ...rangeIds]));
+            return { selectedIds: merged };
+        }),
+    selectAll: () => set((state) => ({ selectedIds: state.items.map((item) => item.id) })),
     applyProgress: (event) =>
         set((state) => ({
             items: state.items.map((item) =>

@@ -1,77 +1,80 @@
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { z } from 'zod';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import type { ProgressEvent, QueueItem, Settings, SoundFontOption, Summary } from '@/types';
 
-const progressSchema = z.object({
-    id: z.number(),
-    index: z.number(),
-    total: z.number(),
-    name: z.string(),
-    phase: z.string(),
-    itemPercent: z.number(),
-    batchPercent: z.number(),
-    outputPath: z.string().nullable(),
-    status: z.enum(['pending', 'running', 'done', 'skipped', 'error', 'canceled']),
-    error: z.string().nullable(),
-    durationMs: z.number().nullable(),
-});
-
-const summarySchema = z.object({
-    done: z.number(),
-    skipped: z.number(),
-    failed: z.number(),
-    canceled: z.boolean(),
-    elapsedMs: z.number(),
-    errors: z.array(z.object({ name: z.string(), message: z.string() })),
-});
-
-export const listQueue = (): Promise<QueueItem[]> => invoke('list_queue');
-
-export const addPaths = (paths: string[]): Promise<QueueItem[]> =>
-    invoke('add_paths', { paths, includeSubfolders: null });
-
-export const removeItems = (ids: number[]): Promise<QueueItem[]> => invoke('remove_items', { ids });
-
-export const clearQueue = (): Promise<QueueItem[]> => invoke('clear_queue');
-
-export const getSettings = (): Promise<Settings> => invoke('get_settings');
-
-export const saveSettings = (settings: Settings): Promise<Settings> =>
-    invoke('set_settings', { settings });
-
-export const listSoundFonts = (): Promise<SoundFontOption[]> => invoke('soundfonts');
-
-export const startConversion = (): Promise<void> => invoke('start_conversion');
-
-export const cancelConversion = (): Promise<void> => invoke('cancel_conversion');
-
-export const renderPreview = (id: number): Promise<string> => invoke('render_preview', { id });
-
-export const clearPreview = (): Promise<void> => invoke('clear_preview');
-
-export const revealInFolder = (path: string): Promise<void> => invoke('reveal_in_folder', { path });
-
-export const audioSource = (path: string): string => convertFileSrc(path);
-
-export function onProgress(handler: (event: ProgressEvent) => void): Promise<UnlistenFn> {
-    return listen('conversion-progress', (event) => {
-        const parsed = progressSchema.safeParse(event.payload);
-        if (!parsed.success) {
-            console.warn('payload inesperado em conversion-progress', parsed.error.issues);
-            return;
-        }
-        handler(parsed.data);
-    });
+export function listQueue(): Promise<QueueItem[]> {
+    return invoke('list_queue');
 }
 
-export function onDone(handler: (summary: Summary) => void): Promise<UnlistenFn> {
-    return listen('conversion-done', (event) => {
-        const parsed = summarySchema.safeParse(event.payload);
-        if (!parsed.success) {
-            console.warn('payload inesperado em conversion-done', parsed.error.issues);
-            return;
-        }
-        handler(parsed.data);
-    });
+export function addFiles(paths: string[]): Promise<QueueItem[]> {
+    return invoke('add_files', { paths });
+}
+
+export function addFolder(path: string, includeSubfolders?: boolean): Promise<QueueItem[]> {
+    return invoke('add_folder', { path, includeSubfolders });
+}
+
+export function addPaths(paths: string[], includeSubfolders?: boolean): Promise<QueueItem[]> {
+    return invoke('add_paths', { paths, includeSubfolders });
+}
+
+export function removeItems(ids: number[]): Promise<QueueItem[]> {
+    return invoke('remove_items', { ids });
+}
+
+export function clearCompleted(): Promise<QueueItem[]> {
+    return invoke('clear_completed');
+}
+
+export function clearQueue(): Promise<QueueItem[]> {
+    return invoke('clear_queue');
+}
+
+export function getSettings(): Promise<Settings> {
+    return invoke('get_settings');
+}
+
+export function saveSettings(settings: Settings): Promise<Settings> {
+    return invoke('set_settings', { settings });
+}
+
+export function listSoundFonts(): Promise<SoundFontOption[]> {
+    return invoke('soundfonts');
+}
+
+export function startConversion(): Promise<void> {
+    return invoke('start_conversion');
+}
+
+export function cancelConversion(): Promise<void> {
+    return invoke('cancel_conversion');
+}
+
+export function renderPreview(id: number): Promise<string> {
+    return invoke('render_preview', { id });
+}
+
+export function clearPreview(): Promise<void> {
+    return invoke('clear_preview');
+}
+
+export function revealInFolder(path: string): Promise<void> {
+    return invoke('reveal_in_folder', { path });
+}
+
+export function openFolder(path: string): Promise<void> {
+    return invoke('open_folder', { path });
+}
+
+export function audioSource(filePath: string): string {
+    return convertFileSrc(filePath);
+}
+
+export function onProgress(callback: (event: ProgressEvent) => void): Promise<UnlistenFn> {
+    return listen<ProgressEvent>('conversion-progress', (event) => callback(event.payload));
+}
+
+export function onDone(callback: (summary: Summary) => void): Promise<UnlistenFn> {
+    return listen<Summary>('conversion-done', (event) => callback(event.payload));
 }

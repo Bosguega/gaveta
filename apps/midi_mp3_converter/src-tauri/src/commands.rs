@@ -110,39 +110,36 @@ pub fn add_paths(
     paths: Vec<String>,
     include_subfolders: Option<bool>,
 ) -> Result<Vec<QueueItem>, String> {
-    let include = include_subfolders.unwrap_or_else(|| {
-        state
-            .settings
-            .lock()
-            .map(|settings| settings.include_subfolders)
-            .unwrap_or(true)
-    });
-    let mut incoming: Vec<(PathBuf, Option<String>)> = Vec::new();
-    for raw in paths {
-        let path = PathBuf::from(&raw);
+    let mut combined: Vec<QueueItem> = Vec::new();
+    for entry in paths {
+        let path = PathBuf::from(&entry);
         if path.is_dir() {
-            for file in scan::midi_files(&path, include)? {
-                let relative = file
-                    .parent()
-                    .and_then(|parent| parent.strip_prefix(&path).ok())
-                    .map(|dir| dir.to_string_lossy().into_owned())
-                    .filter(|value| !value.is_empty());
-                incoming.push((file, relative));
-            }
+            let from_dir = add_folder(state.clone(), entry, include_subfolders)?;
+            combined.extend(from_dir);
         } else if scan::is_midi(&path) {
-            incoming.push((path, None));
+            let from_files = add_files(state.clone(), vec![entry]);
+            combined.extend(from_files);
         }
     }
-    Ok(push_items(&state, incoming))
+    Ok(combined)
 }
 
 #[tauri::command]
 pub fn remove_items(state: State<'_, AppState>, ids: Vec<u64>) -> Vec<QueueItem> {
-    if let Ok(mut queue) = state.queue.lock() {
-        queue.retain(|item| !ids.contains(&item.id));
-        return queue.clone();
-    }
-    Vec::new()
+    let Ok(mut queue) = state.queue.lock() else {
+        return Vec::new();
+    };
+    queue.retain(|item| !ids.contains(&item.id));
+    queue.clone()
+}
+
+#[tauri::command]
+pub fn clear_completed(state: State<'_, AppState>) -> Vec<QueueItem> {
+    let Ok(mut queue) = state.queue.lock() else {
+        return Vec::new();
+    };
+    queue.retain(|item| !matches!(item.status, QueueStatus::Done | QueueStatus::Skipped));
+    queue.clone()
 }
 
 #[tauri::command]
@@ -255,5 +252,18 @@ pub fn reveal_in_folder(path: String) -> Result<(), String> {
         .arg(format!("/select,{}", target.display()))
         .spawn()
         .map_err(|err| format!("não foi possível abrir o Explorer: {err}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_folder(path: String) -> Result<(), String> {
+    let target = PathBuf::from(&path);
+    if !target.exists() {
+        return Err(format!("pasta não encontrada: {path}"));
+    }
+    std::process::Command::new("explorer")
+        .arg(target)
+        .spawn()
+        .map_err(|err| format!("não foi possível abrir a pasta: {err}"))?;
     Ok(())
 }

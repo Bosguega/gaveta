@@ -25,7 +25,7 @@ pub async fn render_to_wav(
     }
     let _ = std::fs::remove_file(wav);
 
-    let args: Vec<String> = vec![
+    let mut args: Vec<String> = vec![
         "-F".into(),
         wav.to_string_lossy().into_owned(),
         "-r".into(),
@@ -36,12 +36,24 @@ pub async fn render_to_wav(
         "synth.limiter.active=1".into(),
         "-o".into(),
         "audio.file.type=wav".into(),
+    ];
+
+    if !settings.reverb {
+        args.push("-R".into());
+        args.push("0".into());
+    }
+    if !settings.chorus {
+        args.push("-C".into());
+        args.push("0".into());
+    }
+
+    args.extend([
         "-n".into(),
         "-i".into(),
         "-q".into(),
         soundfont.to_string_lossy().into_owned(),
         midi.to_string_lossy().into_owned(),
-    ];
+    ]);
 
     let (mut rx, child) = app
         .shell()

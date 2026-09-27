@@ -48,6 +48,9 @@ export function OptionsDialog({ onClose }: OptionsDialogProps) {
                                 placeholder='(mesma pasta do MIDI)'
                             />
                             <Button onClick={() => void pickOutput()}>...</Button>
+                            {settings.outputDir ? (
+                                <Button onClick={() => void updateSettings({ outputDir: null })}>Limpar</Button>
+                            ) : null}
                         </div>
                         <div className='option-row'>
                             <span className='option-label'>Se o MP3 já existir:</span>
@@ -75,7 +78,7 @@ export function OptionsDialog({ onClose }: OptionsDialogProps) {
                         </div>
                     </fieldset>
                     <fieldset className='group'>
-                        <legend>Qualidade</legend>
+                        <legend>Áudio e MP3</legend>
                         <div className='option-row'>
                             <span className='option-label'>Bitrate MP3:</span>
                             <select
@@ -89,7 +92,7 @@ export function OptionsDialog({ onClose }: OptionsDialogProps) {
                                     </option>
                                 ))}
                             </select>
-                            <span className='option-label'>Sample rate:</span>
+                            <span className='option-label'>Taxa de amostragem:</span>
                             <select
                                 className='select bevel-in'
                                 value={settings.sampleRate}
@@ -121,7 +124,38 @@ export function OptionsDialog({ onClose }: OptionsDialogProps) {
                                     checked={settings.writeId3}
                                     onChange={(event) => void updateSettings({ writeId3: event.target.checked })}
                                 />
-                                Gravar tags ID3
+                                Gravar tags ID3 (Título)
+                            </label>
+                        </div>
+                        <div className='option-row'>
+                            <label className='checkbox'>
+                                <input
+                                    type='checkbox'
+                                    checked={settings.normalize}
+                                    onChange={(event) => void updateSettings({ normalize: event.target.checked })}
+                                />
+                                Normalizar volume do lote (loudnorm)
+                            </label>
+                        </div>
+                    </fieldset>
+                    <fieldset className='group'>
+                        <legend>Efeitos do FluidSynth</legend>
+                        <div className='option-row'>
+                            <label className='checkbox'>
+                                <input
+                                    type='checkbox'
+                                    checked={settings.reverb}
+                                    onChange={(event) => void updateSettings({ reverb: event.target.checked })}
+                                />
+                                Habilitar Reverb
+                            </label>
+                            <label className='checkbox' style={{ marginLeft: 12 }}>
+                                <input
+                                    type='checkbox'
+                                    checked={settings.chorus}
+                                    onChange={(event) => void updateSettings({ chorus: event.target.checked })}
+                                />
+                                Habilitar Chorus
                             </label>
                         </div>
                     </fieldset>
@@ -156,7 +190,7 @@ export function OptionsDialog({ onClose }: OptionsDialogProps) {
                                 checked={settings.completionBeep}
                                 onChange={(event) => void updateSettings({ completionBeep: event.target.checked })}
                             />
-                            Tocar um bipe ao concluir
+                            Tocar um bipe clássico ao concluir
                         </label>
                     </fieldset>
                 </div>

@@ -24,6 +24,9 @@ export interface Settings {
     soundfont: string | null;
     writeId3: boolean;
     completionBeep: boolean;
+    reverb: boolean;
+    chorus: boolean;
+    normalize: boolean;
 }
 
 export interface SoundFontOption {
@@ -87,4 +90,4 @@ export const EXISTING_LABEL: Record<ExistingPolicy, string> = {
 
 export const BITRATES = [128, 160, 192, 256, 320];
 export const SAMPLE_RATES = [22050, 44100, 48000];
-export const GAINS = [0.4, 0.6, 0.8, 1];
+export const GAINS = [0.4, 0.6, 0.8, 1.0];

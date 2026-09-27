@@ -16,6 +16,7 @@ pub async fn encode_mp3(
     duration_s: f64,
     title: &str,
     write_id3: bool,
+    normalize: bool,
     on_progress: Arc<dyn Fn(f32) + Send + Sync>,
 ) -> Result<(), String> {
     let tool = paths::tool(app, "ffmpeg.exe")?;
@@ -29,11 +30,20 @@ pub async fn encode_mp3(
         "pipe:1".into(),
         "-i".into(),
         wav.to_string_lossy().into_owned(),
+    ];
+
+    if normalize {
+        args.push("-af".into());
+        args.push("loudnorm=I=-16:TP=-1.5:LRA=11".into());
+    }
+
+    args.extend([
         "-c:a".into(),
         "libmp3lame".into(),
         "-b:a".into(),
         format!("{bitrate_kbps}k"),
-    ];
+    ]);
+
     if write_id3 {
         args.push("-id3v2_version".into());
         args.push("3".into());

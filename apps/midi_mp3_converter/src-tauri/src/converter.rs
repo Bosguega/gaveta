@@ -122,19 +122,30 @@ async fn convert_one(
     total: usize,
 ) -> Result<Outcome, String> {
     let midi_path = PathBuf::from(&item.path);
+    if !midi_path.exists() {
+        return Err(format!("arquivo não encontrado: {}", item.path));
+    }
+
     let info = midi::analyze(&midi_path)?;
-    let duration_ms = info.duration_ms.max(0);
-    let output_dir = settings.output_dir.as_ref().map(PathBuf::from);
+    mark(state, item.id, |entry| {
+        entry.duration_ms = Some(info.duration_ms);
+    });
+
+    let out_dir = settings.output_dir.as_ref().map(PathBuf::from);
     let target = queue::target_path(
         &midi_path,
-        output_dir.as_deref(),
+        out_dir.as_deref(),
         item.relative_dir.as_deref(),
         settings.existing,
     );
-    let output = target.to_string_lossy().into_owned();
 
     if settings.existing == ExistingPolicy::Skip && target.exists() {
-        return Ok(Outcome::Skipped(output));
+        return Ok(Outcome::Skipped(target.to_string_lossy().into_owned()));
+    }
+
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("não foi possível criar a pasta de destino: {err}"))?;
     }
 
     let cache_dir = app
@@ -143,62 +154,65 @@ async fn convert_one(
         .map_err(|err| format!("não foi possível localizar a pasta de cache: {err}"))?;
     std::fs::create_dir_all(&cache_dir)
         .map_err(|err| format!("não foi possível criar a pasta de cache: {err}"))?;
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent).map_err(|err| format!("não foi possível criar a pasta de saída: {err}"))?;
-    }
 
-    let wav = cache_dir.join(format!("render-{}.wav", item.id));
+    let wav = cache_dir.join(format!("{}.wav", item.id));
     let part = target.with_extension("mp3.part");
-    let emitter = EmitterContext {
+    let output = target.to_string_lossy().into_owned();
+
+    let ctx = EmitterContext {
         app: app.clone(),
         id: item.id,
         index,
         total,
         name: item.name.clone(),
         output: output.clone(),
-        duration_ms,
+        duration_ms: info.duration_ms,
     };
-    let title = midi_path
-        .file_stem()
-        .map(|stem| stem.to_string_lossy().into_owned())
-        .unwrap_or_else(|| item.name.clone());
 
-    let result = async {
-        synth::render_to_wav(
-            app,
-            state,
-            &midi_path,
-            &wav,
-            settings,
-            duration_ms,
-            emitter.progress("sintetizando"),
-        )
-        .await?;
-        encoder::encode_mp3(
-            app,
-            state,
-            &wav,
-            &part,
-            settings.bitrate_kbps,
-            duration_ms as f64 / 1000.0,
-            &title,
-            settings.write_id3,
-            emitter.progress("codificando"),
-        )
-        .await?;
-        if target.exists() && settings.existing == ExistingPolicy::Overwrite {
-            let _ = std::fs::remove_file(&target);
-        }
-        std::fs::rename(&part, &target).map_err(|err| format!("não foi possível gravar o MP3: {err}"))?;
-        Ok::<(), String>(())
-    }
+    synth::render_to_wav(
+        app,
+        state,
+        &midi_path,
+        &wav,
+        settings,
+        info.duration_ms,
+        ctx.progress("sintetizando"),
+    )
+    .await?;
+
+    let title = info.title.as_deref().unwrap_or_else(|| {
+        midi_path
+            .file_stem()
+            .map(|s| s.to_str().unwrap_or(""))
+            .unwrap_or("")
+    });
+
+    let encode_result = encoder::encode_mp3(
+        app,
+        state,
+        &wav,
+        &part,
+        settings.bitrate_kbps,
+        info.duration_ms.max(0) as f64 / 1000.0,
+        title,
+        settings.write_id3,
+        settings.normalize,
+        ctx.progress("codificando"),
+    )
     .await;
 
     let _ = std::fs::remove_file(&wav);
-    if result.is_err() {
-        let _ = std::fs::remove_file(&part);
+    encode_result?;
+
+    if target.exists() && settings.existing == ExistingPolicy::Overwrite {
+        let _ = std::fs::remove_file(&target);
     }
-    result?;
+
+    std::fs::rename(&part, &target).map_err(|err| {
+        let _ = std::fs::remove_file(&part);
+        format!("não foi possível gravar o arquivo final: {err}")
+    })?;
+
     Ok(Outcome::Done(output))
 }
 

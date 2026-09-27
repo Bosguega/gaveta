@@ -4,6 +4,7 @@ use std::path::Path;
 pub struct MidiInfo {
     pub duration_ms: i64,
     pub note_count: usize,
+    pub title: Option<String>,
 }
 
 pub fn analyze(path: &Path) -> Result<MidiInfo, String> {
@@ -18,12 +19,19 @@ pub fn analyze(path: &Path) -> Result<MidiInfo, String> {
     let mut tempos: Vec<(u64, u32)> = Vec::new();
     let mut note_count = 0usize;
     let mut last_tick = 0u64;
+    let mut title: Option<String> = None;
 
     for track in &smf.tracks {
         let mut tick = 0u64;
         for event in track {
             tick += event.delta.as_int() as u64;
             match event.kind {
+                TrackEventKind::Meta(MetaMessage::TrackName(bytes)) if title.is_none() => {
+                    let text = String::from_utf8_lossy(bytes).trim().to_string();
+                    if !text.is_empty() {
+                        title = Some(text);
+                    }
+                }
                 TrackEventKind::Meta(MetaMessage::Tempo(tempo)) => tempos.push((tick, tempo.as_int())),
                 TrackEventKind::Midi {
                     message: MidiMessage::NoteOn { vel, .. },
@@ -76,5 +84,6 @@ pub fn analyze(path: &Path) -> Result<MidiInfo, String> {
     Ok(MidiInfo {
         duration_ms: (seconds * 1000.0).round() as i64,
         note_count,
+        title,
     })
 }

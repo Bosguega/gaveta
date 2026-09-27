@@ -11,7 +11,7 @@ export function Toolbar({ onOptions }: ToolbarProps) {
     const removeSelected = useConverterStore((state) => state.removeSelected);
     const clearList = useConverterStore((state) => state.clearList);
     const busy = useConverterStore((state) => state.busy);
-    const hasSelection = useConverterStore((state) => state.selectedId !== null);
+    const hasSelection = useConverterStore((state) => state.selectedIds.length > 0);
 
     const pickFiles = async () => {
         const picked = await open({

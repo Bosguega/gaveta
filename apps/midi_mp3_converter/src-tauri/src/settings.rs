@@ -22,6 +22,9 @@ pub struct Settings {
     pub soundfont: Option<String>,
     pub write_id3: bool,
     pub completion_beep: bool,
+    pub reverb: bool,
+    pub chorus: bool,
+    pub normalize: bool,
 }
 
 impl Default for Settings {
@@ -36,6 +39,9 @@ impl Default for Settings {
             soundfont: None,
             write_id3: true,
             completion_beep: true,
+            reverb: true,
+            chorus: true,
+            normalize: false,
         }
     }
 }

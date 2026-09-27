@@ -28,6 +28,7 @@ pub fn run() {
             commands::add_folder,
             commands::add_paths,
             commands::remove_items,
+            commands::clear_completed,
             commands::clear_queue,
             commands::get_settings,
             commands::set_settings,
@@ -37,6 +38,7 @@ pub fn run() {
             commands::render_preview,
             commands::clear_preview,
             commands::reveal_in_folder,
+            commands::open_folder,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao executar o aplicativo Tauri");
