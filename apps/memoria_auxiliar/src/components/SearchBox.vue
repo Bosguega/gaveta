@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { ref, watch, computed, onMounted } from 'vue';
 import { notesStore } from '../store/notesStore';
 
@@ -56,7 +56,7 @@ defineExpose({ focus, setQuery: (val: string) => { query.value = val; } });
   <section class="panel search-panel">
     <div class="search-header">
       <h2>Buscar memória</h2>
-      <div v-if="notesStore.searchFallbackMode" class="fallback-badge" title="Buscando por texto direto (Ollama offline ou sem embeddings)">
+      <div v-if="notesStore.searchFallbackMode" class="fallback-badge" title="Buscando por texto direto (embeddings indisponíveis ou sem embeddings)">
         Modo texto (fallback)
       </div>
     </div>

@@ -1,10 +1,23 @@
-import { getAiBaseUrl, sha256 } from '@bosguega/ai-core';
+/**
+ * Geração de embeddings
+ *
+ * Usa o segundo processo llama-server (bge-m3) via @bosguega/llama-cpp.
+ * O endpoint de embeddings é independente do endpoint de chat.
+ */
+import { createLlamaClient, normalizeBaseUrl } from '@bosguega/llama-cpp';
 import { getCachedEmbedding, saveCachedEmbedding } from './databaseService';
+import {
+  buildEmbeddingCacheKey,
+  buildEmbeddingProfile,
+  l2Normalize,
+  matchesProfile,
+  type EmbeddingProfile,
+} from './embeddingProfile';
+import { getEmbeddingConfig } from './tauriStore';
+import { sha256 } from '../utils/sha256';
 import { logger } from '../utils/logger';
 
-const OLLAMA_EMBED_MODEL = 'bge-m3';
-const OLLAMA_EMBED_DIMENSION = 1024;
-const OLLAMA_TIMEOUT_MS = 30000;
+export { testEmbeddingConnection } from './embeddingConnection';
 
 export async function getEmbedding(text: string): Promise<number[]> {
   const normalized = text.trim();
@@ -12,108 +25,72 @@ export async function getEmbedding(text: string): Promise<number[]> {
     throw new Error('Texto vazio nao pode gerar embedding.');
   }
 
-  const hash = await sha256(normalized);
-  const cached = await getCachedEmbedding(hash);
+  const { baseUrl, model } = await getEmbeddingConfig();
+  const profile = buildEmbeddingProfile(model);
+  const contentHash = await sha256(normalized);
+  const cacheKey = buildEmbeddingCacheKey(profile, contentHash);
+
+  const cached = await getCachedEmbedding(cacheKey);
   if (cached) {
-    logger.log('Embedding', 'Cache hit');
-    return cached;
+    if (matchesProfile(cached, profile)) {
+      logger.log('Embedding', 'Cache hit');
+      return cached;
+    }
+    logger.warn('Embedding', 'Cache ignorado: vetor com dimensão incompatível com o perfil ativo');
   }
 
-  const embedding = await getOllamaEmbedding(normalized);
-  await saveCachedEmbedding(hash, embedding);
+  const embedding = await requestEmbedding(baseUrl, model, normalized, profile);
+  await saveCachedEmbedding(cacheKey, embedding, profile);
   return embedding;
 }
 
-async function getOllamaEmbedding(text: string): Promise<number[]> {
-  const baseUrl = (await getAiBaseUrl()).replace(/\/+$/, '');
-  const url = `${baseUrl}/api/embeddings`;
+async function requestEmbedding(
+  baseUrl: string,
+  model: string,
+  text: string,
+  profile: EmbeddingProfile,
+): Promise<number[]> {
+  const client = createLlamaClient({ baseUrl, defaultModel: model });
+  const endpoint = client.baseUrl;
 
-  logger.log('Embedding', `Gerando embedding bge-m3...`);
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS);
+  logger.log('Embedding', `Gerando embedding ${model} em ${endpoint}...`);
 
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: OLLAMA_EMBED_MODEL,
-        prompt: text,
-      }),
-      signal: controller.signal,
-    });
+    const { embeddings } = await client.embed({ input: text });
+    const embedding = embeddings[0];
 
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => '');
+    if (!embedding || embedding.length === 0) {
+      throw new Error('O llama-server retornou um embedding vazio ou inválido.');
+    }
+
+    if (!matchesProfile(embedding, profile)) {
       throw new Error(
-        `Ollama embedding falhou (HTTP ${response.status}): ${errorBody || response.statusText}`
+        `O modelo "${model}" retornou um embedding com ${embedding.length} dimensões, ` +
+          `mas o perfil ativo exige ${profile.dimensions}. ` +
+          `Verifique se o llama-server de embeddings está carregando o modelo correto.`
       );
     }
 
-    const data = await response.json();
-    const embedding: number[] = data.embedding;
-
-    if (!Array.isArray(embedding) || embedding.length === 0) {
-      throw new Error('Ollama retornou um embedding vazio ou inválido.');
-    }
-
-    if (embedding.length !== OLLAMA_EMBED_DIMENSION) {
-      logger.warn('Embedding', `Dimensão inesperada: ${embedding.length} (esperado ${OLLAMA_EMBED_DIMENSION})`);
-    }
-
-    logger.log('Embedding', `Embedding bge-m3 gerado (${embedding.length} dimensões)`);
-    return embedding;
+    const normalized = l2Normalize(embedding);
+    logger.log('Embedding', `Embedding gerado (${normalized.length} dimensões, normalizado l2)`);
+    return normalized;
   } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new Error(`Timeout ao conectar com Ollama em ${url}. Verifique se o servidor está rodando.`);
+    // Erros de dimensionality já são autoexplicativos e não devem ser reembalados.
+    if (err instanceof Error && err.message.startsWith('O modelo')) {
+      throw err;
     }
+
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(
-      `Falha ao conectar com o serviço de embeddings no Ollama (${baseUrl}).\n` +
-      `1. Verifique se o Ollama está rodando no endereço informado.\n` +
-      `2. Certifique-se de ter baixado o modelo bge-m3 executando 'ollama pull bge-m3' no seu terminal.\n` +
-      `Detalhes do erro: ${message}`
+      `Falha ao conectar com o serviço de embeddings em ${endpoint}.\n` +
+        `1. Verifique se o llama-server de embeddings está rodando em ${endpoint}.\n` +
+        `2. Confirme que ele foi iniciado com o modelo de embeddings (ex.: ${model}) e a flag --embedding.\n` +
+        `Detalhes do erro: ${message}`
     );
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
-export async function testOllamaEmbedding(customBaseUrl?: string): Promise<{ success: boolean; error?: string }> {
-  const baseUrl = (customBaseUrl || await getAiBaseUrl()).replace(/\/+$/, '');
-  const url = `${baseUrl}/api/embeddings`;
-  
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000); // 15s para teste de conexão
-  
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: OLLAMA_EMBED_MODEL,
-        prompt: 'ping',
-      }),
-      signal: controller.signal,
-    });
-    
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      return { success: false, error: `HTTP ${response.status}: ${errText || response.statusText}` };
-    }
-    
-    const data = await response.json();
-    if (Array.isArray(data.embedding) && data.embedding.length > 0) {
-      return { success: true };
-    }
-    return { success: false, error: 'O Ollama não retornou um vetor válido.' };
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      return { success: false, error: `Timeout ao conectar com Ollama em ${url}` };
-    }
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
-  } finally {
-    clearTimeout(timeout);
-  }
+/** Usado pelo modal de configuração para validar a URL antes de salvar. */
+export function normalizeEmbeddingBaseUrl(baseUrl?: string): string {
+  return normalizeBaseUrl(baseUrl);
 }

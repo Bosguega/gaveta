@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { ChatSession, Note } from '../types';
+import type { ChatSession, EmbeddingProfile, Note } from '../types';
 
 export async function saveNote(
   content: string,
@@ -97,10 +97,18 @@ export async function getCachedEmbedding(hash: string): Promise<number[] | null>
   return null;
 }
 
-export async function saveCachedEmbedding(hash: string, embedding: number[]): Promise<void> {
+export async function saveCachedEmbedding(
+  hash: string,
+  embedding: number[],
+  profile: EmbeddingProfile,
+): Promise<void> {
   await invoke('save_cached_embedding', {
     hash,
     embedding: JSON.stringify(embedding),
+    modelName: profile.modelName,
+    dimensions: profile.dimensions,
+    normalization: profile.normalization,
+    version: profile.version,
   });
 }
 

@@ -88,4 +88,104 @@ Escolha a paleta visual que combina com seu estilo nas Configurações:
    ```
 
 3. **Configure sua IA:**
-   Abra a aba **⚙️ Config** no aplicativo e insira sua chave da API ou conecte ao seu provedor local (Ollama).
+   Abra a aba **⚙️ Config** no aplicativo. O app usa **dois processos `llama-server` independentes**:
+
+   ```bash
+   # Chat (geração de texto) — porta 8080
+   llama-server -m Ternary-Bonsai-2-27B-PQ2_0.gguf --port 8080 -ngl 99
+
+   # Embeddings — porta 8081
+   llama-server -m bge-m3.gguf --embedding --pooling cls --port 8081 -ngl 99
+   ```
+
+   Em seguida, no app, informe a URL e o modelo de cada servidor e use
+   **Testar conexão** para validar.
+
+   As configurações são persistidas em `memoria_auxiliar_config.json`, na pasta
+   de dados do app, e podem ser alteradas a qualquer momento pela tela de Config.
+
+---
+
+## 🖥️ Servidores locais
+
+Na tela de configuração, a seção **Servidores locais** permite iniciar os dois
+`llama-server` direto pela interface, sem precisar abrir terminais.
+
+Cada servidor tem:
+
+* **comando de inicialização** — string editável, com o caminho do executável,
+  do modelo e dos argumentos. É salva nas mesmas configurações do app;
+* **URL configurada** e **status** atual;
+* botões individuais de **Iniciar/Verificar** e **Parar**.
+
+O botão **🚀 Iniciar servidores** verifica os dois e inicia apenas o que estiver
+parado. Servidores que já respondem não são duplicados nem reiniciados.
+
+**Status** — sempre determinado pela comunicação real com a URL, nunca apenas
+pelo fato de o processo ter sido criado:
+
+| Estado | Significado |
+| :--- | :--- |
+| Parado | Nenhum processo atendendo a URL |
+| Iniciando... | Processo criado, aguardando o servidor carregar o modelo |
+| Em execução | O servidor respondeu ao health check |
+| Erro | Processo criado mas o servidor não respondeu, ou a configuração é incompatível |
+
+**Processos e janelas** — cada servidor roda em processo e janela de console
+próprios, com os logs visíveis. Isso é intencional: erros de modelo, VRAM ou
+argumentos inválidos são muito mais fáceis de diagnosticar na janela do que em
+uma área de logs dentro do app. O app não captura nem faz streaming dos logs.
+
+**Propriedade do processo** — o botão **Parar** só aparece para servidores que o
+próprio app iniciou. Um `llama-server` que já estava rodando é detectado e
+aparece como *Em execução*, mas nunca é encerrado pelo app.
+
+**Validação do BGE-M3** — para o servidor de embeddings, o health check não
+basta: o app também gera um embedding e confere a dimensão. Se o modelo
+configurado não tiver 1024 dimensões, o servidor é rejeitado com erro claro e
+**nenhum dado existente é apagado ou alterado**.
+
+---
+
+## 🧠 Pipeline de embeddings
+
+O app não usa provedores online (Gemini/OpenAI) nem Ollama. Toda a IA é local,
+via `llama-server`:
+
+| Papel | Servidor | Modelo | Dimensões |
+| :--- | :--- | :--- | :--- |
+| Chat / RAG | `http://127.0.0.1:8080` | `ternary-bonsai-2-27b` | — |
+| Embeddings | `http://127.0.0.1:8081` | `bge-m3` | 1024 |
+
+Os embeddings são **normalizados em L2** e identificados por um perfil lógico
+(`bge-m3` / `1024` / `l2` / `v1`) gravado na tabela `embedding_profile`.
+
+A chave do cache segue o formato:
+
+```text
+bge-m3:1024:l2:v1:<sha256 do texto>
+```
+
+Se o perfil mudar, o app limpa o cache e invalida os vetores das notas, para que
+espaços vetoriais diferentes nunca sejam comparados entre si.
+
+> ⚠️ Ao trocar de modelo de embeddings, as notas existentes precisam ser
+> reindexadas (reeditadas ou recriadas) para voltarem a aparecer na busca semântica.
+
+---
+
+## 🧱 Estrutura
+
+- `src/services/tauriStore.ts`: persistência de configuração e perfil dos dois servidores.
+- `src/services/llmService.ts`: chat, RAG, sanitização de prompt e parsing de `USED_IDS`.
+- `src/services/embeddingService.ts`: geração de embeddings e cache por hash.
+- `src/services/embeddingProfile.ts`: perfil, chave de cache, normalização L2.
+- `src/services/similarityService.ts`: similaridade de cosseno e busca semântica.
+- `src/services/embeddingConnection.ts`: teste de conexão do servidor de embeddings.
+- `src/services/llamaServerControl.ts`: inicialização e verificação dos servidores locais.
+- `src/services/llamaServerStatus.ts`: estados e validação dos comandos.
+- `src/components/AiConfigModal.vue`: modal de configuração dos servidores locais.
+
+O cliente HTTP de `llama-server` vem do package compartilhado
+[`@bosguega/llama-cpp`](../../packages/llama-cpp), que expõe `health()`,
+`chat()`, `embed()` e `listModels()`.

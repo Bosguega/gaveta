@@ -1,5 +1,5 @@
 import { reactive } from 'vue';
-import type { ApiErrorLike } from '@bosguega/ai-core';
+import type { ApiErrorLike } from '../types';
 import type { AppTheme, ChatMessage, ChatSession, ClipboardAnalysis, Note, SearchResult, Stats, ToastNotification } from '../types';
 import { tauriStore } from '../services/tauriStore';
 
@@ -15,7 +15,7 @@ function getYesterdayString() {
 
 async function loadStats(): Promise<Stats> {
   try {
-    const tauriVal = await tauriStore.preferences.get('memoria_auxiliar_stats');
+    const tauriVal = await tauriStore.get('memoria_auxiliar_stats');
     if (tauriVal) {
       const parsed = JSON.parse(tauriVal);
       return { streak: parsed.streak ?? 0, lastUse: parsed.lastUse ?? null };
@@ -40,7 +40,7 @@ async function saveStats(stats: Stats) {
   const json = JSON.stringify(stats);
   localStorage.setItem('memoria_auxiliar_stats', json);
   try {
-    await tauriStore.preferences.set('memoria_auxiliar_stats', json);
+    await tauriStore.set('memoria_auxiliar_stats', json);
   } catch {
     // Silently ignore if not in Tauri
   }
@@ -90,7 +90,7 @@ export function navigateTo(targetView: typeof notesStore.activeView) {
 export async function initTheme() {
   let theme: AppTheme = 'dark';
   try {
-    const saved = (await tauriStore.preferences.get('memoria_auxiliar_theme')) as AppTheme | null;
+    const saved = (await tauriStore.get('memoria_auxiliar_theme')) as AppTheme | null;
     if (saved) theme = saved;
   } catch {
     const local = localStorage.getItem('memoria_auxiliar_theme') as AppTheme | null;
@@ -108,7 +108,7 @@ export async function setTheme(theme: AppTheme) {
   }
   localStorage.setItem('memoria_auxiliar_theme', theme);
   try {
-    await tauriStore.preferences.set('memoria_auxiliar_theme', theme);
+    await tauriStore.set('memoria_auxiliar_theme', theme);
   } catch {
     // Silently ignore
   }

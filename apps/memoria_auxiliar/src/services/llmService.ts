@@ -1,4 +1,5 @@
-import { createAiClient, getApiKey, getApiModel, getAiMode, getAiBaseUrl } from '@bosguega/ai-core';
+import { createLlamaClient } from '@bosguega/llama-cpp';
+import { getChatConfig } from './tauriStore';
 import type { SearchResult } from '../types';
 import { logger } from '../utils/logger';
 
@@ -17,24 +18,19 @@ const DANGEROUS_TOKENS = [
   'override',
 ];
 
-async function createConfiguredClient() {
-  const mode = await getAiMode();
+async function generateText(prompt: string): Promise<string> {
+  const { baseUrl, model } = await getChatConfig();
+  const client = createLlamaClient({ baseUrl, defaultModel: model });
 
-  if (mode === 'local') {
-    logger.log('LLM', 'Modo local: usando Ollama');
-    return createAiClient();
-  }
+  logger.log('LLM', `Gerando texto via llama-server em ${client.baseUrl} (${model})`);
 
-  const apiKey = await getApiKey();
-  if (!apiKey) {
-    throw new Error('Configure a chave da API nas Configurações.');
-  }
-
-  logger.log('LLM', 'Modo online: usando ' + (apiKey.startsWith('AIza') ? 'Gemini' : 'OpenAI'));
-  return createAiClient({
-    apiKey,
-    model: await getApiModel(),
+  const { content } = await client.chat({
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.7,
+    maxTokens: 2048,
   });
+
+  return content;
 }
 
 function sanitizePromptInput(text: string, maxLength: number): string {
@@ -68,16 +64,11 @@ export async function summarizeResults(results: SearchResult[]): Promise<string>
     .map((note, index) => `${index + 1}. ${note}`)
     .join('\n');
 
-  const ai = await createConfiguredClient();
-  const response = await ai.generateText({
-    userPrompt: `Resuma ou organize as informacoes abaixo de forma clara. Use apenas os dados fornecidos.\n\n${notes}`,
-    temperature: 0.7,
-    maxTokens: 2048,
-  });
-
-  const summary = response.text.trim();
+  const summary = (await generateText(
+    `Resuma ou organize as informacoes abaixo de forma clara. Use apenas os dados fornecidos.\n\n${notes}`
+  )).trim();
   if (!summary) {
-    throw new Error('A API nao retornou resumo.');
+    throw new Error('O llama-server nao retornou resumo.');
   }
 
   return summary;
@@ -121,14 +112,7 @@ Agora, responda a pergunta. Depois de responder, na linha final, informe SOMENTE
 USED_IDS: [id1, id2, id3]
 `;
 
-  const ai = await createConfiguredClient();
-  const response = await ai.generateText({
-    userPrompt: prompt,
-    temperature: 0.7,
-    maxTokens: 2048,
-  });
-
-  return parseAnswerResponse(response.text);
+  return parseAnswerResponse(await generateText(prompt));
 }
 
 function parseAnswerResponse(rawResponse: string): { answer: string; usedIds: number[] } {

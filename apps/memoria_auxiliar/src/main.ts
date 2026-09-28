@@ -1,15 +1,15 @@
 import { createApp } from 'vue';
-import { setConfigStore, initializeAiConfig } from '@bosguega/ai-core';
-import { tauriStore } from './services/tauriStore';
+import { buildEmbeddingProfile } from './services/embeddingProfile';
+import { syncEmbeddingProfile } from './services/embeddingProfileSync';
+import { getEmbeddingConfig } from './services/tauriStore';
 import App from './App.vue';
 import './styles.css';
 
-// Injeta o store Tauri para persistir chave/modelo em config.json no sistema
-setConfigStore(tauriStore);
-
-// Inicializa o cache síncrono e monta o app
-initializeAiConfig()
-  .catch((err) => console.error('Falha ao inicializar o cache do ai-core:', err))
+// Garante que o banco e o pipeline de embeddings usam o mesmo perfil.
+// Se o perfil mudou, o backend invalida cache e vetores antigos.
+getEmbeddingConfig()
+  .then((config) => syncEmbeddingProfile(buildEmbeddingProfile(config.model)))
+  .catch((err) => console.error('Falha ao sincronizar o perfil de embeddings:', err))
   .finally(() => {
     createApp(App).mount('#app');
   });

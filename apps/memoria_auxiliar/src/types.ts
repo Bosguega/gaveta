@@ -61,3 +61,42 @@ export interface InteractiveSegment {
   type: InteractiveSegmentType;
   value: string;
 }
+
+/** Configuração do llama-server responsável pelo chat (geração de texto). */
+export interface ChatLlamaConfig {
+  baseUrl: string;
+  model: string;
+}
+
+/** Configuração do llama-server responsável pelos embeddings. */
+export interface EmbeddingLlamaConfig {
+  baseUrl: string;
+  model: string;
+}
+
+/** Perfil lógico do pipeline de embeddings gravado no banco. */
+export interface EmbeddingProfile {
+  modelName: string;
+  dimensions: number;
+  normalization: 'l2';
+  version: string;
+}
+
+/** Códigos de erro canonicos conhecidos. */
+export type ApiErrorCode =
+  | 'INVALID_API_KEY'
+  | 'RATE_LIMIT_EXCEEDED'
+  | 'NETWORK_ERROR'
+  | 'SERVICE_UNAVAILABLE'
+  | 'SERVER_ERROR'
+  | 'TIMEOUT'
+  | 'INVALID_RESPONSE'
+  | 'INVALID_RESPONSE_FORMAT'
+  | 'UNKNOWN_ERROR';
+
+/** Estrutura padronizada de erro retornada por APIs de IA. */
+export interface ApiErrorLike {
+  code: ApiErrorCode;
+  message: string;
+  status_code?: number;
+}

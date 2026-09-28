@@ -52,10 +52,7 @@ function closeAiConfig() {
   showAiConfig.value = false;
 }
 
-function onAiConfigSaved() {
-  closeAiConfig();
-  emit('saved');
-}
+
 
 async function handleExport() {
   isExporting.value = true;
@@ -116,7 +113,7 @@ async function handleFileChange(event: Event) {
         <div class="card-icon">🤖</div>
         <div class="card-body">
           <strong>Inteligência Artificial</strong>
-          <p>Configurar API key, modelo, provedor online ou local (Ollama)</p>
+          <p>Configurar os servidores llama-server de chat e de embeddings</p>
         </div>
         <span class="card-arrow">→</span>
       </div>
@@ -230,7 +227,6 @@ async function handleFileChange(event: Event) {
     <AiConfigModal
       v-if="showAiConfig"
       @close="closeAiConfig"
-      @saved="onAiConfigSaved"
     />
   </section>
 </template>

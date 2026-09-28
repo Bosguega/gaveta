@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useDeviceUI } from './composables/useDeviceUI'
 import { notesStore, updateStreak, resetStats, initStats, initTheme, showToast, navigateTo } from './store/notesStore'
@@ -6,7 +6,7 @@ import { listNotes, saveNote, updateNote, deleteNote, deleteAllNotes, togglePinN
 import { getEmbedding } from './services/embeddingService'
 import { generateAnswer, summarizeResults } from './services/llmService'
 import { searchBySimilarity } from './services/similarityService'
-import type { ApiErrorLike } from '@bosguega/ai-core'
+import type { ApiErrorLike } from './types'
 import type { Note } from './types'
 import ChatPanel from './components/ChatPanel.vue'
 import NoteForm from './components/NoteForm.vue'
@@ -53,7 +53,7 @@ async function createNote(content: string, tags = '', pinned = false, reminder_a
         try {
             embedding = await getEmbedding(content)
         } catch (e) {
-            console.warn('Não foi possível gerar embedding (Ollama offline). Nota será salva sem embedding semântico:', e)
+            console.warn('Não foi possível gerar embedding (llama-server de embeddings indisponível). Nota será salva sem embedding semântico:', e)
         }
 
         if (notesStore.editingNote) {
@@ -124,7 +124,7 @@ async function searchNotes(query: string) {
             const textMatches = await searchNotesText(query, 20)
             notesStore.results = textMatches.map(note => ({ note, score: 0 }))
             notesStore.summary = ''
-            showToast('Buscando por texto direto (Ollama offline)', 'info')
+            showToast('Buscando por texto direto (embeddings indisponíveis)', 'info')
         }
     }, 'Buscando notas...')
 }

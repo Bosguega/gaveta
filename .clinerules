@@ -1,72 +1,242 @@
 # Gaveta Monorepo — Regras Globais
 
-## Estrutura do Repositório
+## Estrutura
 
-pnpm workspaces com dois diretórios principais:
-- `packages/*` — Bibliotecas compartilhadas
-- `apps/*` — Aplicações
+O repositório utiliza pnpm workspaces:
 
-Workspaces atuais:
-- `@bosguega/ai-core` (packages/ai-core) — Core de IA
-- `@bosguega/supabase` (packages/supabase) — Cliente Supabase utilitário
-- `@bosguega/eslint-config` (packages/eslint-config) — Config compartilhada de ESLint
-- `my_mercado` (apps/my_mercado) — App React de gerenciamento de compras
-- `memoria-auxiliar` (apps/memoria_auxiliar) — App Vue + Tauri de notas com IA
+* `packages/*` — bibliotecas compartilhadas
+* `apps/*` — aplicações
 
-## Comandos Essenciais
+Não manter neste arquivo uma lista fixa de workspaces. A estrutura atual deve ser obtida do próprio repositório.
 
-```bash
-# Instalar dependências (sempre na raiz)
-pnpm install
+---
 
-# Build de um package específico
-pnpm --filter @bosguega/ai-core build
+## Princípio fundamental: decisões ≠ implementações
 
-# Rodar um app
-pnpm --filter my_mercado dev
-pnpm --filter memoria-auxiliar dev
+O monorepo deve buscar **consistência nas decisões arquiteturais**, não necessariamente uniformidade nas implementações.
 
-# Testes
-pnpm --filter my_mercado test
-pnpm --filter memoria-auxiliar test
-```
+Uma mesma decisão pode ser implementada de maneiras diferentes em aplicações diferentes quando isso for tecnicamente adequado ao contexto de cada uma.
+
+Por exemplo:
+
+* dois apps podem decidir utilizar `llama-server` como infraestrutura local de IA;
+* um pode acessá-lo pelo Rust;
+* outro pode acessá-lo pelo TypeScript;
+* isso não constitui uma inconsistência arquitetural se ambas as implementações respeitam a mesma decisão.
+
+### Prioridade
+
+Ao analisar dois projetos, separar sempre:
+
+1. **Decisão arquitetural** — o que o projeto decidiu fazer.
+2. **Contrato/integração** — como essa decisão é exposta ou compartilhada.
+3. **Implementação** — como cada aplicação concretiza a decisão.
+
+O objetivo do monorepo é principalmente padronizar o item 1 e, quando houver benefício real, o item 2.
+
+O item 3 pode permanecer diferente entre aplicações.
+
+---
+
+## Não padronizar por estética
+
+Não alterar uma implementação apenas para que dois projetos "pareçam iguais".
+
+Diferenças como:
+
+* React vs Vue;
+* Zustand vs Vue Reactive;
+* Tailwind vs CSS;
+* organização interna de componentes;
+* `fetch` vs cliente HTTP em Rust;
+* nomes e divisão interna de arquivos;
+* diferentes estruturas de stores;
+* diferentes estratégias de componentes;
+
+não devem ser eliminadas apenas por uniformidade.
+
+Antes de propor uma convergência, identificar qual **decisão arquitetural comum** ela resolve.
+
+Se não houver uma decisão comum clara, manter as implementações independentes.
+
+---
+
+## Princípios de engenharia
+
+* Priorizar soluções simples, diretas e de baixa manutenção.
+* Evitar overengineering.
+* Não criar abstrações para necessidades hipotéticas.
+* Não adicionar dependências ou infraestrutura sem necessidade concreta.
+* Preservar soluções existentes que funcionam.
+* Não "modernizar" código apenas por preferência tecnológica.
+* Não substituir uma tecnologia apenas porque outra aplicação utiliza uma tecnologia diferente.
+* Antes de criar um package compartilhado, verificar se existe reutilização real ou um contrato comum que justifique sua existência.
+
+---
+
+## Packages compartilhados
+
+Packages em `packages/*` são pontos de entrada para funcionalidades realmente compartilhadas.
+
+Um package deve encapsular uma decisão ou capacidade comum quando isso reduzir duplicação ou manutenção.
+
+Não colocar dentro de packages:
+
+* regras de negócio específicas de uma aplicação;
+* prompts específicos de um app;
+* configurações específicas de um app;
+* modelos específicos de um app, salvo quando forem uma decisão deliberadamente compartilhada;
+* lógica de domínio de outro workspace.
+
+Quando uma mesma decisão possui implementações diferentes por razões técnicas, não forçar a implementação através de um package apenas para obter uniformidade.
+
+---
+
+## IA local
+
+Quando o monorepo decidir utilizar infraestrutura local de IA, a decisão deve ser registrada de forma independente da implementação.
+
+Exemplo:
+
+> IA local utiliza `llama-server`/llama.cpp.
+
+Isso não significa que todos os apps devam fazer a chamada HTTP da mesma maneira.
+
+Um app pode utilizar:
+
+* `@bosguega/llama-cpp` no TypeScript;
+
+enquanto outro pode utilizar:
+
+* um cliente Rust diretamente;
+
+se o contexto técnico justificar.
+
+Packages como `@bosguega/llama-cpp` devem ser usados quando realmente simplificarem a implementação de um consumidor, não como mecanismo obrigatório de uniformização.
+
+---
 
 ## TypeScript
 
-O `tsconfig.json` raiz é a base. Cada app/package estende dele com `"extends": "../../tsconfig.json"`.
-- `strict: true` obrigatório em todo o monorepo
-- `target: ES2022`, `module: ESNext`, `moduleResolution: bundler`
+* Usar `strict: true`.
+* Preferir configurações compartilhadas quando isso reduzir divergências acidentais.
+* Não alterar uma configuração de um workspace apenas para torná-la visualmente igual a outro sem benefício concreto.
+* Preferir funções a classes em código compartilhado, salvo quando uma classe oferecer vantagem clara.
+* Usar nomes descritivos.
+* Comentários devem explicar contexto ou decisões, não repetir o código.
+
+---
+
+## Aplicações
+
+Cada aplicação pode ter:
+
+* framework frontend próprio;
+* gerenciamento de estado próprio;
+* sistema de estilos próprio;
+* organização interna própria;
+* bibliotecas específicas;
+* implementação própria de integrações.
+
+Diferenças justificadas pelo domínio ou pela arquitetura local devem ser preservadas.
+
+Ao modificar uma aplicação existente, primeiro entender sua arquitetura atual antes de propor convergências com outros workspaces.
+
+---
+
+## Tauri / Rust
+
+Tauri 2 e Rust são utilizados nas aplicações desktop quando apropriado.
+
+A organização interna do Rust pode variar por aplicação.
+
+Separar módulos, criar abstrações ou reorganizar arquivos somente quando houver benefício concreto de manutenção, clareza ou reutilização.
+
+Não criar packages compartilhados para código Rust apenas porque dois apps possuem estruturas parecidas superficialmente.
+
+---
+
+## Banco de dados e persistência
+
+SQLite é a persistência local padrão das aplicações que necessitam de banco de dados local.
+
+Isso não implica que toda configuração ou preferência precise obrigatoriamente ser armazenada no SQLite.
+
+A escolha entre SQLite, arquivo de configuração e outras formas de persistência deve considerar a natureza dos dados.
+
+Quando duas aplicações tomarem decisões diferentes sobre persistência, investigar primeiro se existe uma diferença real de domínio antes de classificá-la como inconsistência.
+
+---
+
+## Busca
+
+Não assumir que a existência de uma tecnologia em uma aplicação a transforma automaticamente em padrão do monorepo.
+
+Por exemplo, o uso de SQLite FTS5 em uma aplicação não implica que toda outra aplicação deva migrar de `LIKE` para FTS5.
+
+A adoção deve ser motivada por necessidade funcional ou de desempenho.
+
+---
+
+## Validação
+
+Usar validação estruturada quando houver benefício real para a complexidade ou confiabilidade dos dados.
+
+Não exigir uma biblioteca específica de validação para todo formulário simplesmente para uniformizar os projetos.
+
+---
+
+## Testes
+
+Testes devem existir onde proporcionarem confiança útil sobre comportamento relevante.
+
+Uma aplicação não precisa adotar exatamente a mesma quantidade ou estrutura de testes de outra apenas para manter simetria.
+
+Quando uma ferramenta de testes for adotada como padrão, a decisão deve ser consciente e independente da implementação dos apps.
+
+---
+
+## Mudanças estruturais
+
+Antes de implementar uma mudança que afete mais de um workspace:
+
+1. Identificar a decisão arquitetural que está sendo padronizada.
+2. Separar a decisão das implementações atuais.
+3. Verificar se a decisão realmente se aplica aos dois workspaces.
+4. Escolher a implementação mais adequada para cada aplicação.
+5. Evitar alterações que tenham como único objetivo deixar os códigos parecidos.
+6. Preservar funcionalidades existentes.
+7. Não ampliar o escopo sem necessidade.
+
+Quando uma mesma decisão puder ser aplicada aos dois apps com implementações diferentes, isso é considerado uma solução válida.
+
+---
+
+## Regras específicas dos workspaces
+
+Antes de trabalhar em um workspace, procurar instruções locais, incluindo:
+
+* `.clinerules`
+* `.clinerules/`
+* `AGENTS.md`
+* outros arquivos de instruções existentes no próprio workspace
+
+Regras locais podem complementar estas regras globais.
+
+Em caso de conflito, uma decisão explícita e mais recente do projeto deve prevalecer sobre uma regra histórica ou uma suposição.
+
+Não assumir que uma regra antiga representa uma decisão atual.
+
+---
 
 ## Commits
 
-Usar [Conventional Commits](https://www.conventionalcommits.org/):
-- `feat:` — Nova funcionalidade
-- `fix:` — Correção de bug
-- `chore:` — Manutenção, deps, build
-- `docs:` — Documentação
-- `refactor:` — Refatoração sem mudança de comportamento
-- `test:` — Testes
-- `style:` — Formatação, estilos
+Quando o usuário solicitar commits, preferir Conventional Commits:
 
-## Convenções Gerais
-
-- Preferir **funções a classes** em packages compartilhados
-- Código autoexplicativo: comentários mínimos, nomes descritivos
-- Variáveis e funções em camelCase, componentes React/PascalCase
-- Arquivos em kebab-case para diretórios, camelCase para arquivos .ts
-- Mensagens de erro e UI em **pt-BR**
-- Código fonte e JSDoc em **inglês** (para libs compartilhadas)
-- Todo formulário deve usar validação com **Zod**
-
-## CI/CD
-
-GitHub Actions em `.github/workflows/`:
-- `ci-cd.yml` — CI básico
-- `deploy-pages.yml` — Deploy para GitHub Pages
-
-## Subdiretórios com regras próprias
-
-Cada workspace pode ter seu próprio `.clinerules` com regras específicas:
-- `packages/ai-core/.clinerules` — Regras da lib de IA
-- `apps/my_mercado/.clinerules` — Regras do app React
-- `apps/memoria_auxiliar/.clinerules` — Regras do app Vue + Tauri
+* `feat:` — nova funcionalidade
+* `fix:` — correção
+* `refactor:` — refatoração sem mudança de comportamento
+* `chore:` — manutenção, dependências ou build
+* `test:` — testes
+* `docs:` — documentação
+* `style:` — formatação ou estilo

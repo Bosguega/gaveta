@@ -32,6 +32,21 @@ export interface ChatResult {
   content: string;
 }
 
+export interface EmbeddingOptions {
+  model?: string;
+  input: string | string[];
+  signal?: AbortSignal;
+}
+
+export interface EmbedResult {
+  /** Um embedding por entrada, na mesma ordem de `input`. */
+  embeddings: number[][];
+}
+
+export interface ListModelsOptions {
+  signal?: AbortSignal;
+}
+
 export interface HealthOptions {
   signal?: AbortSignal;
 }
@@ -41,10 +56,14 @@ export interface LlamaClientOptions {
   defaultModel?: string;
   timeoutMs?: number;
   healthTimeoutMs?: number;
+  embedTimeoutMs?: number;
+  modelsTimeoutMs?: number;
 }
 
 export interface LlamaClient {
   readonly baseUrl: string;
   health(options?: HealthOptions): Promise<boolean>;
   chat(options: ChatOptions): Promise<ChatResult>;
+  embed(options: EmbeddingOptions): Promise<EmbedResult>;
+  listModels(options?: ListModelsOptions): Promise<string[]>;
 }

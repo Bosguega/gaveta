@@ -1,481 +1,413 @@
 <script setup lang="ts">
-import { ref, watch, computed, onMounted } from 'vue';
+/**
+ * Modal de configuração dos servidores locais llama-server.
+ *
+ * Cada servidor tem um único card com o comando de inicialização (configuração
+ * principal), status, botões de ação e resultado de teste.
+ */
+import { ref, onMounted, watch } from 'vue';
 import {
-  getApiKey,
-  setApiKey,
-  setApiModel,
-  getApiModel,
-  getAiMode,
-  setAiMode,
-  getAiProvider,
-  setAiProvider,
-  getAiBaseUrl,
-  setAiBaseUrl,
-  detectProvider,
-  setPersistenceEnabled,
-  isPersistenceEnabled,
-  listModels as listGeminiModels,
-  ollamaListModels,
-  createAiClient,
-  DEFAULT_AI_BASE_URL,
-  DEFAULT_MODEL_BY_PROVIDER,
-  ONLINE_DEFAULT_MODELS,
-  invalidateAiConfigCache,
-  initializeAiConfig,
-  isModelProviderMismatch,
-  mergeModelOptions,
-} from '@bosguega/ai-core';
-import type { AIMode, AIProvider, TestConnectionResult } from '@bosguega/ai-core';
-import { testOllamaEmbedding } from '../services/embeddingService';
-
-type ConnectionStatus = 'idle' | 'checking' | 'connected' | 'error' | 'offline';
-
-const CONNECTION_LABELS: Record<ConnectionStatus, string> = {
-  idle: 'Testar conexão',
-  offline: 'Offline',
-  checking: 'Verificando...',
-  connected: 'Conexão OK',
-  error: 'Erro na conexão',
-};
+  detectServerStatus,
+  isServerOwned,
+  startServer,
+  startServers,
+  stopServer,
+} from '../services/llamaServerControl';
+import { testEmbeddingConnection, type ConnectionTestResult } from '../services/embeddingConnection';
+import { probeServer } from '../services/llamaServerControl';
+import {
+  SERVER_STATUS_LABELS,
+  type LlamaServerKind,
+  type LlamaServerStatus,
+} from '../services/llamaServerStatus';
+import {
+  getChatCommand,
+  getChatConfig,
+  getEmbeddingCommand,
+  getEmbeddingConfig,
+  setChatCommand,
+  setEmbeddingCommand,
+} from '../services/tauriStore';
 
 const emit = defineEmits<{
   close: [];
-  saved: [];
 }>();
 
-// ── state ──
-const mode = ref<AIMode>('online');
-const key = ref('');
-const baseUrl = ref(DEFAULT_AI_BASE_URL);
-const selectedModel = ref('');
-const testing = ref(false);
-const connectionStatus = ref<ConnectionStatus>('idle');
-const fetchedModels = ref<string[]>([]);
-const fetchingModels = ref(false);
-const persist = ref(false);
+/* ── Estado reativo ────────────────────────────────────────────────── */
+
 const loading = ref(true);
 
+// Configurações somente-leitura (derivadas do store)
+const chatBaseUrl = ref('');
+const chatModel = ref('');
+const embeddingBaseUrl = ref('');
+const embeddingModel = ref('');
+
+// Comandos editáveis
+const chatCommand = ref('');
+const embeddingCommand = ref('');
+
+// Status dos servidores
+const chatStatus = ref<LlamaServerStatus>('parado');
+const embeddingStatus = ref<LlamaServerStatus>('parado');
+const chatError = ref('');
+const embeddingError = ref('');
+const chatOwned = ref(false);
+const embeddingOwned = ref(false);
+
+// Teste de conexão
+const testingChat = ref(false);
 const testingEmbedding = ref(false);
-const embeddingConnectionStatus = ref<ConnectionStatus>('idle');
+const chatTestResult = ref('');
+const embeddingTestResult = ref('');
 
-// Computed provider
-const onlineProvider = computed(() => {
-  const detected = detectProvider(key.value || null);
-  return detected === 'gemini' || detected === 'openai' ? detected : 'unknown';
+// Controle geral
+const busy = ref(false);
+
+/* ── Auto-save com debounce ────────────────────────────────────────── */
+
+let chatDebounce: ReturnType<typeof setTimeout> | null = null;
+let embeddingDebounce: ReturnType<typeof setTimeout> | null = null;
+
+watch(chatCommand, (value) => {
+  if (chatDebounce) clearTimeout(chatDebounce);
+  chatDebounce = setTimeout(() => void setChatCommand(value), 400);
 });
 
-const effectiveProvider = computed(() =>
-  mode.value === 'local' ? 'ollama' : onlineProvider.value,
-);
-
-const providerLabel = computed(() => {
-  const p = effectiveProvider.value;
-  if (p === 'gemini') return 'Google AI Studio';
-  if (p === 'openai') return 'OpenAI';
-  if (p === 'ollama') return 'Ollama';
-  return 'Desconhecido';
+watch(embeddingCommand, (value) => {
+  if (embeddingDebounce) clearTimeout(embeddingDebounce);
+  embeddingDebounce = setTimeout(() => void setEmbeddingCommand(value), 400);
 });
 
-const providerDefaultModel = computed(() => {
-  const p = effectiveProvider.value;
-  if (p === 'unknown') return DEFAULT_MODEL_BY_PROVIDER.gemini;
-  return DEFAULT_MODEL_BY_PROVIDER[p] ?? '';
-});
+/* ── Inicialização ─────────────────────────────────────────────────── */
 
-const models = computed(() => {
-  const hardcoded =
-    mode.value === 'local'
-      ? []
-      : effectiveProvider.value === 'gemini' || effectiveProvider.value === 'openai'
-        ? ONLINE_DEFAULT_MODELS[effectiveProvider.value] ?? []
-        : [];
-  return mergeModelOptions(hardcoded, fetchedModels.value, selectedModel.value);
-});
-
-const isBgeM3Installed = computed(() => {
-  if (mode.value !== 'local') return true;
-  if (fetchedModels.value.length === 0) return true;
-  return fetchedModels.value.some((name) => name.toLowerCase().includes('bge-m3'));
-});
-
-const canFetchModels = computed(() => mode.value === 'local' || !!key.value.trim());
-
-// ── lifecycle ──
 onMounted(async () => {
-  const [savedKey, savedModel, savedMode, savedBaseUrl, savedPersist] = await Promise.all([
-    getApiKey(),
-    getApiModel(),
-    getAiMode(),
-    getAiBaseUrl(),
-    isPersistenceEnabled(),
+  const [chatCfg, embeddingCfg, chatCmd, embeddingCmd] = await Promise.all([
+    getChatConfig(),
+    getEmbeddingConfig(),
+    getChatCommand(),
+    getEmbeddingCommand(),
   ]);
 
-  key.value = savedKey ?? '';
-  mode.value = savedMode;
-  selectedModel.value = savedModel;
-  baseUrl.value = savedBaseUrl;
-  persist.value = savedPersist;
-
-  // Load models on mount if online and has key
-  if (mode.value === 'online' && key.value && onlineProvider.value !== 'unknown') {
-    await fetchModels();
-  }
+  chatBaseUrl.value = chatCfg.baseUrl;
+  chatModel.value = chatCfg.model;
+  embeddingBaseUrl.value = embeddingCfg.baseUrl;
+  embeddingModel.value = embeddingCfg.model;
+  chatCommand.value = chatCmd;
+  embeddingCommand.value = embeddingCmd;
 
   loading.value = false;
+
+  await Promise.all([refresh('chat'), refresh('embedding')]);
 });
 
-// Reset models when key changes
-watch(key, () => {
-  fetchedModels.value = [];
-  connectionStatus.value = 'idle';
-});
+/* ── Detectar estado atual ─────────────────────────────────────────── */
 
-// Auto-select model based on provider
-watch(
-  [effectiveProvider, fetchedModels, mode],
-  () => {
-    if (mode.value === 'local') {
-      if (!selectedModel.value && fetchedModels.value.length > 0) {
-        selectedModel.value = fetchedModels.value[0];
-      }
-      return;
-    }
-
-    if (!selectedModel.value) {
-      selectedModel.value = providerDefaultModel.value;
-      return;
-    }
-
-    if (isModelProviderMismatch(selectedModel.value, effectiveProvider.value)) {
-      selectedModel.value = providerDefaultModel.value;
-    }
-  },
-  { immediate: true },
-);
-
-// ── actions ──
-function handleModeChange(next: AIMode) {
-  mode.value = next;
-  fetchedModels.value = [];
-  connectionStatus.value = 'idle';
-  selectedModel.value = next === 'local' ? '' : providerDefaultModel.value;
+function isStopped(status: LlamaServerStatus): boolean {
+  return status === 'parado' || status === 'erro';
 }
 
-async function fetchModels() {
-  fetchingModels.value = true;
-  connectionStatus.value = 'checking';
+async function refresh(kind: LlamaServerKind): Promise<void> {
+  const isChat = kind === 'chat';
+  const baseUrl = isChat ? chatBaseUrl.value : embeddingBaseUrl.value;
+  const result = await detectServerStatus(kind, baseUrl, embeddingModel.value);
 
-  try {
-    if (mode.value === 'local') {
-      const url = baseUrl.value || DEFAULT_AI_BASE_URL;
-      const models = await ollamaListModels(url);
-      const names = models.map((m: { id: string }) => m.id);
-      fetchedModels.value = names;
-      if (!selectedModel.value && names.length > 0) {
-        // Evita auto-selecionar o bge-m3 ou outros modelos de embedding para a LLM
-        const chatModels = names.filter(
-          (name) => !name.toLowerCase().includes('embed') && !name.toLowerCase().includes('bge')
-        );
-        if (chatModels.length > 0) {
-          selectedModel.value = chatModels[0];
-        } else {
-          selectedModel.value = names[0];
-        }
-      }
-      connectionStatus.value = 'idle';
-      return;
-    }
-
-    const trimmedKey = key.value.trim();
-    if (!trimmedKey) {
-      connectionStatus.value = 'error';
-      return;
-    }
-
-    if (onlineProvider.value === 'gemini') {
-      const models = await listGeminiModels(trimmedKey);
-      const names = models.map((m: { id: string }) => m.id);
-      fetchedModels.value = names;
-      connectionStatus.value = 'connected';
-      return;
-    }
-
-    if (onlineProvider.value === 'openai') {
-      fetchedModels.value = [];
-      connectionStatus.value = 'connected';
-      return;
-    }
-
-    connectionStatus.value = 'error';
-  } catch {
-    connectionStatus.value = mode.value === 'local' ? 'offline' : 'error';
-  } finally {
-    fetchingModels.value = false;
-  }
-}
-
-async function handleTest() {
-  const provider = effectiveProvider.value;
-  if (provider === 'unknown' as AIProvider) return;
-
-  if (mode.value === 'online' && !key.value.trim()) return;
-  if (!selectedModel.value) return;
-
-  testing.value = true;
-  connectionStatus.value = 'checking';
-
-  try {
-    const client = createAiClient({
-      apiKey: mode.value === 'online' ? key.value.trim() : undefined,
-      baseUrl: mode.value === 'local' ? baseUrl.value || DEFAULT_AI_BASE_URL : undefined,
-      provider: provider as any,
-      model: selectedModel.value,
-    });
-
-    const result: TestConnectionResult = await client.testConnection();
-    connectionStatus.value = result.success ? 'connected' : mode.value === 'local' ? 'offline' : 'error';
-  } catch {
-    connectionStatus.value = mode.value === 'local' ? 'offline' : 'error';
-  } finally {
-    testing.value = false;
-  }
-}
-
-async function handleTestEmbedding() {
-  testingEmbedding.value = true;
-  embeddingConnectionStatus.value = 'checking';
-
-  try {
-    const result = await testOllamaEmbedding(baseUrl.value || DEFAULT_AI_BASE_URL);
-    embeddingConnectionStatus.value = result.success ? 'connected' : 'offline';
-    
-    // Se obteve sucesso e não há modelos cacheados, popula a lista silenciosamente
-    if (result.success && fetchedModels.value.length === 0) {
-      try {
-        const models = await ollamaListModels(baseUrl.value || DEFAULT_AI_BASE_URL);
-        fetchedModels.value = models.map((m: { id: string }) => m.id);
-      } catch {
-        // Silencioso
-      }
-    }
-  } catch {
-    embeddingConnectionStatus.value = 'offline';
-  } finally {
-    testingEmbedding.value = false;
-  }
-}
-
-async function handleSave() {
-  const provider = mode.value === 'local' ? 'ollama' : onlineProvider.value;
-
-  if (mode.value === 'online') {
-    const trimmedKey = key.value.trim();
-    if (!trimmedKey) return;
-    if (onlineProvider.value === 'unknown') return;
-
-    await setPersistenceEnabled(persist.value);
-    await setAiMode('online');
-    await setAiProvider(provider as AIProvider);
-    await setApiModel(selectedModel.value);
-    await setApiKey(trimmedKey);
+  if (isChat) {
+    chatStatus.value = result.status;
+    chatError.value = result.error ?? '';
+    chatOwned.value = await isServerOwned('chat');
   } else {
-    if (!selectedModel.value) return;
+    embeddingStatus.value = result.status;
+    embeddingError.value = result.error ?? '';
+    embeddingOwned.value = await isServerOwned('embedding');
+  }
+}
 
-    await setPersistenceEnabled(persist.value);
-    await setAiMode('local');
-    await setAiProvider('ollama');
-    await setAiBaseUrl(baseUrl.value || DEFAULT_AI_BASE_URL);
-    await setApiModel(selectedModel.value);
-    await setApiKey('');
+/* ── Iniciar servidor ──────────────────────────────────────────────── */
+
+async function launch(kind: LlamaServerKind): Promise<void> {
+  const isChat = kind === 'chat';
+  const baseUrl = isChat ? chatBaseUrl.value : embeddingBaseUrl.value;
+  const command = isChat ? chatCommand.value : embeddingCommand.value;
+  const currentStatus = isChat ? chatStatus.value : embeddingStatus.value;
+
+  if (isChat) chatStatus.value = 'iniciando';
+  else embeddingStatus.value = 'iniciando';
+  busy.value = true;
+
+  try {
+    const result = await startServer(
+      kind,
+      baseUrl,
+      command,
+      currentStatus,
+      embeddingModel.value,
+    );
+
+    if (isChat) {
+      chatStatus.value = result.status;
+      chatError.value = result.error ?? '';
+      chatOwned.value = await isServerOwned('chat');
+    } else {
+      embeddingStatus.value = result.status;
+      embeddingError.value = result.error ?? '';
+      embeddingOwned.value = await isServerOwned('embedding');
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (isChat) {
+      chatStatus.value = 'erro';
+      chatError.value = message;
+    } else {
+      embeddingStatus.value = 'erro';
+      embeddingError.value = message;
+    }
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function launchAll(): Promise<void> {
+  busy.value = true;
+  chatStatus.value = 'iniciando';
+  embeddingStatus.value = 'iniciando';
+
+  try {
+    const results = await startServers([
+      {
+        kind: 'chat',
+        baseUrl: chatBaseUrl.value,
+        command: chatCommand.value,
+        status: chatStatus.value,
+        embeddingModel: embeddingModel.value,
+      },
+      {
+        kind: 'embedding',
+        baseUrl: embeddingBaseUrl.value,
+        command: embeddingCommand.value,
+        status: embeddingStatus.value,
+        embeddingModel: embeddingModel.value,
+      },
+    ]);
+
+    chatStatus.value = results.chat.status;
+    chatError.value = results.chat.error ?? '';
+    embeddingStatus.value = results.embedding.status;
+    embeddingError.value = results.embedding.error ?? '';
+  } finally {
+    busy.value = false;
   }
 
-  // Invalida e recarrega o cache sincronamente para o restante do app
-  invalidateAiConfigCache();
-  await initializeAiConfig();
+  chatOwned.value = await isServerOwned('chat');
+  embeddingOwned.value = await isServerOwned('embedding');
+}
 
-  emit('saved');
-  emit('close');
+/* ── Parar servidor ────────────────────────────────────────────────── */
+
+async function stop(kind: LlamaServerKind): Promise<void> {
+  const stopped = await stopServer(kind);
+  if (!stopped) return;
+
+  if (kind === 'chat') {
+    chatStatus.value = 'parado';
+    chatError.value = '';
+    chatOwned.value = false;
+    chatTestResult.value = '';
+  } else {
+    embeddingStatus.value = 'parado';
+    embeddingError.value = '';
+    embeddingOwned.value = false;
+    embeddingTestResult.value = '';
+  }
+}
+
+/* ── Testar conexão ────────────────────────────────────────────────── */
+
+async function handleTest(kind: LlamaServerKind): Promise<void> {
+  const isChat = kind === 'chat';
+
+  if (isChat) {
+    testingChat.value = true;
+    chatTestResult.value = '';
+    chatError.value = '';
+  } else {
+    testingEmbedding.value = true;
+    embeddingTestResult.value = '';
+    embeddingError.value = '';
+  }
+
+  try {
+    if (isChat) {
+      const ok = await probeServer(chatBaseUrl.value);
+      chatTestResult.value = ok ? '✓ Conectado' : '';
+      if (!ok) chatError.value = 'Servidor não respondeu.';
+    } else {
+      const result: ConnectionTestResult = await testEmbeddingConnection(
+        embeddingBaseUrl.value,
+        embeddingModel.value,
+      );
+      if (result.success) {
+        embeddingTestResult.value = result.dimensions
+          ? `✓ Conectado · ${result.dimensions} dimensões`
+          : '✓ Conectado';
+      } else {
+        embeddingError.value = result.error ?? 'Não foi possível validar o servidor de embeddings.';
+      }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (isChat) chatError.value = message;
+    else embeddingError.value = message;
+  } finally {
+    if (isChat) testingChat.value = false;
+    else testingEmbedding.value = false;
+  }
 }
 
 function handleClose() {
+  if (chatDebounce) {
+    clearTimeout(chatDebounce);
+    chatDebounce = null;
+    void setChatCommand(chatCommand.value);
+  }
+  if (embeddingDebounce) {
+    clearTimeout(embeddingDebounce);
+    embeddingDebounce = null;
+    void setEmbeddingCommand(embeddingCommand.value);
+  }
   emit('close');
 }
 </script>
+
 
 <template>
   <Teleport to="body">
     <div class="modal-overlay" @click.self="handleClose">
       <div class="ai-config-modal">
-        <!-- Header -->
         <div class="modal-header">
           <div class="modal-title">
-            <span class="title-icon">{{ mode === 'local' ? '🖥️' : '🔑' }}</span>
-            <h2>Configurar IA</h2>
+            <span class="title-icon">&#129693;</span>
+            <h2>Servidores locais</h2>
           </div>
-          <button class="close-btn" @click="handleClose">✕</button>
+          <button class="close-btn" @click="handleClose">&#10005;</button>
         </div>
 
-        <!-- Mode Toggle -->
-        <div class="mode-toggle">
-          <button
-            :class="{ active: mode === 'online' }"
-            @click="handleModeChange('online')"
-          >
-            IA Online
-          </button>
-          <button
-            :class="{ active: mode === 'local' }"
-            @click="handleModeChange('local')"
-          >
-            IA Local
-          </button>
-        </div>
+        <div v-if="loading" class="loading-hint">Carregando configuração...</div>
 
-        <!-- Provider & Model Card -->
-        <div class="config-card">
-          <div class="provider-row">
-            <span class="label">Provider:</span>
-            <span class="provider-value">{{ providerLabel }}</span>
-          </div>
+        <template v-else>
+          <!-- Chat -->
+          <div class="config-card">
+            <div class="card-header">
+              <div class="card-identity">
+                <span class="card-title">{{ chatModel ? `Chat · ${chatModel}` : 'Chat / LLM' }}</span>
+                <span class="card-url">{{ chatBaseUrl }}</span>
+              </div>
+              <span class="server-status" :class="chatStatus">
+                {{ SERVER_STATUS_LABELS[chatStatus] }}
+              </span>
+            </div>
 
-          <!-- Model selector -->
-          <div class="field">
-            <div class="model-header">
-              <label>Modelo:</label>
+            <textarea
+              v-model="chatCommand"
+              rows="3"
+              class="command-input"
+              spellcheck="false"
+            />
+
+            <p v-if="chatTestResult" class="test-success">{{ chatTestResult }}</p>
+            <p v-if="chatError" class="server-error">{{ chatError }}</p>
+
+            <div class="action-row">
               <button
-                class="fetch-btn"
-                :disabled="fetchingModels || !canFetchModels"
-                @click="fetchModels"
+                class="btn-action btn-start"
+                :disabled="busy || !isStopped(chatStatus)"
+                @click="launch('chat')"
               >
-                {{ fetchingModels ? '🔄' : '🔃' }} Buscar modelos
+                Iniciar
+              </button>
+              <button
+                class="btn-action btn-test"
+                :disabled="testingChat || busy"
+                @click="handleTest('chat')"
+              >
+                {{ testingChat ? 'Testando...' : 'Testar' }}
+              </button>
+              <button
+                v-if="chatOwned"
+                class="btn-action btn-stop"
+                :disabled="busy"
+                @click="stop('chat')"
+              >
+                Parar
               </button>
             </div>
-            <select v-model="selectedModel" @change="connectionStatus = 'idle'">
-              <option disabled value="">
-                {{ mode === 'local' ? 'Busque modelos locais' : 'Informe uma API key válida' }}
-              </option>
-              <option v-for="m in models" :key="m" :value="m">
-                {{ m }}
-              </option>
-            </select>
-          </div>
-        </div>
-
-        <!-- API Key (online only) -->
-        <div v-if="mode === 'online'" class="key-section">
-          <label class="field-label">API KEY</label>
-          <input
-            type="password"
-            v-model="key"
-            :placeholder="onlineProvider === 'gemini' ? 'AIza...' : 'sk-...'"
-            class="key-input"
-            @input="connectionStatus = 'idle'"
-          />
-          <label class="persist-check">
-            <input type="checkbox" v-model="persist" />
-            <span>Salvar permanentemente neste dispositivo</span>
-          </label>
-          <p class="persist-hint">
-            {{ persist
-              ? 'A chave será mantida mesmo após fechar o app.'
-              : 'A chave será apagada por segurança ao fechar o app.' }}
-          </p>
-        </div>
-
-        <!-- Persist checkbox for local mode -->
-        <div v-if="mode === 'local'" class="key-section">
-          <label class="persist-check">
-            <input type="checkbox" v-model="persist" />
-            <span>Manter configurações salvas</span>
-          </label>
-        </div>
-
-        <!-- Seção dedicada de Embeddings (Ollama bge-m3) -->
-        <div class="config-card embedding-section">
-          <div class="provider-row">
-            <span class="label">Serviço de Embeddings:</span>
-            <span class="provider-value">Ollama (bge-m3)</span>
           </div>
 
-          <div class="field">
-            <label>URL do Ollama (Embeddings):</label>
-            <input
-              type="text"
-              v-model="baseUrl"
-              placeholder="http://localhost:11434"
-              class="url-input"
-              @input="embeddingConnectionStatus = 'idle'"
+          <!-- Embeddings -->
+          <div class="config-card">
+            <div class="card-header">
+              <div class="card-identity">
+                <span class="card-title">{{ embeddingModel ? `Embeddings · ${embeddingModel}` : 'Embeddings' }}</span>
+                <span class="card-url">{{ embeddingBaseUrl }}</span>
+              </div>
+              <span class="server-status" :class="embeddingStatus">
+                {{ SERVER_STATUS_LABELS[embeddingStatus] }}
+              </span>
+            </div>
+
+            <textarea
+              v-model="embeddingCommand"
+              rows="3"
+              class="command-input"
+              spellcheck="false"
             />
+
+            <p v-if="embeddingTestResult" class="test-success">{{ embeddingTestResult }}</p>
+            <p v-if="embeddingError" class="server-error">{{ embeddingError }}</p>
+
+            <div class="action-row">
+              <button
+                class="btn-action btn-start"
+                :disabled="busy || !isStopped(embeddingStatus)"
+                @click="launch('embedding')"
+              >
+                Iniciar
+              </button>
+              <button
+                class="btn-action btn-test"
+                :disabled="testingEmbedding || busy"
+                @click="handleTest('embedding')"
+              >
+                {{ testingEmbedding ? 'Testando...' : 'Testar' }}
+              </button>
+              <button
+                v-if="embeddingOwned"
+                class="btn-action btn-stop"
+                :disabled="busy"
+                @click="stop('embedding')"
+              >
+                Parar
+              </button>
+            </div>
           </div>
 
-          <!-- Status / Teste Embeddings -->
-          <div class="test-row">
-            <button
-              class="test-btn"
-              :class="embeddingConnectionStatus"
-              :disabled="testingEmbedding"
-              @click="handleTestEmbedding"
-            >
-              <span v-if="testingEmbedding">🔄</span>
-              <span v-else-if="embeddingConnectionStatus === 'connected'">✓</span>
-              <span v-else-if="embeddingConnectionStatus === 'error' || embeddingConnectionStatus === 'offline'">✗</span>
-              {{ testingEmbedding ? 'Testando embedding...' : (embeddingConnectionStatus === 'connected' ? 'Embedding OK (bge-m3)' : (embeddingConnectionStatus === 'error' || embeddingConnectionStatus === 'offline' ? 'Erro no embedding' : 'Testar conexão de embedding')) }}
-            </button>
-          </div>
-
-          <!-- Helper se bge-m3 não estiver baixado -->
-          <div v-if="mode === 'local' && !isBgeM3Installed" class="model-guide-box">
-            <p><strong>💡 Dica:</strong> O modelo de embedding <code>bge-m3</code> não foi detectado no seu Ollama.</p>
-            <p>Execute no terminal: <code>ollama pull bge-m3</code></p>
-          </div>
-        </div>
-
-        <!-- Base URL (local mode only for LLM chat) -->
-        <div v-if="mode === 'local'" class="field">
-          <label>URL do Ollama (Chat / LLM):</label>
-          <input
-            type="text"
-            v-model="baseUrl"
-            placeholder="http://localhost:11434"
-            class="url-input"
-            @input="connectionStatus = 'idle'"
-          />
-        </div>
-
-        <!-- Local Model Warning -->
-        <div v-if="mode === 'local' && models.length === 0 && !fetchingModels" class="warning-box">
-          <p>Nenhum modelo encontrado no Ollama local.</p>
-          <p class="warning-hint">
-            Certifique-se de que o Ollama está rodando e que você executou
-            <code>ollama run qwen2.5:1.5b</code> (ou outro modelo).
-          </p>
-        </div>
-
-        <!-- Actions -->
-        <div class="modal-actions">
-          <button
-            class="test-btn"
-            :class="connectionStatus"
-            :disabled="testing || (mode === 'online' && !key)"
-            @click="handleTest"
-          >
-            <span v-if="testing">🔄</span>
-            <span v-else-if="connectionStatus === 'connected'">✓</span>
-            <span v-else-if="connectionStatus === 'error' || connectionStatus === 'offline'">✗</span>
-            {{ testing ? CONNECTION_LABELS[connectionStatus] : CONNECTION_LABELS[connectionStatus] }}
+          <!-- Ação global -->
+          <button class="btn-start-all" :disabled="busy" @click="launchAll">
+            {{ busy ? 'Iniciando...' : 'Iniciar servidores' }}
           </button>
-
-          <div class="action-row">
-            <button class="btn-secondary" @click="handleClose">Cancelar</button>
-            <button class="btn-primary" @click="handleSave">Salvar</button>
-          </div>
-        </div>
+        </template>
       </div>
     </div>
   </Teleport>
 </template>
 
+
 <style scoped>
+.loading-hint {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -509,6 +441,8 @@ function handleClose() {
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(56, 189, 248, 0.25);
   box-sizing: border-box;
 }
+
+/* ── Header ─────────────────────────────────────────────────────── */
 
 .modal-header {
   display: flex;
@@ -547,36 +481,8 @@ function handleClose() {
   color: white;
 }
 
-/* Mode Toggle */
-.mode-toggle {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
+/* ── Config Card ────────────────────────────────────────────────── */
 
-.mode-toggle button {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px;
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.mode-toggle button.active {
-  background: rgba(56, 189, 248, 0.15);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.mode-toggle button:hover:not(.active) {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-/* Config Card */
 .config-card {
   background: rgba(15, 23, 42, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.05);
@@ -584,286 +490,168 @@ function handleClose() {
   padding: 16px;
   display: flex;
   flex-direction: column;
+  gap: 10px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
   gap: 12px;
 }
 
-.provider-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.provider-row .label {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-}
-
-.provider-value {
-  font-size: 0.75rem;
-  color: var(--accent);
-  font-weight: bold;
-}
-
-/* Fields */
-.field {
+.card-identity {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
+  min-width: 0;
 }
 
-.field label {
-  font-size: 0.75rem;
+.card-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.card-url {
+  font-family: monospace;
+  font-size: 0.7rem;
   color: var(--text-secondary);
 }
 
-.field input {
-  background: var(--bg-color);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 14px;
-  color: var(--text-primary);
-  font-size: 0.9rem;
-  outline: none;
-  transition: border-color 0.2s;
+/* ── Status ─────────────────────────────────────────────────────── */
+
+.server-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.field input:focus {
+.server-status.parado {
+  color: var(--text-secondary);
+}
+
+.server-status.iniciando {
+  color: #f59e0b;
+}
+
+.server-status.executando {
+  color: #10b981;
+}
+
+.server-status.erro {
+  color: #ef4444;
+}
+
+/* ── Comando ────────────────────────────────────────────────────── */
+
+.command-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text-primary);
+  font-family: monospace;
+  font-size: 0.75rem;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.command-input:focus {
+  outline: none;
   border-color: var(--accent);
 }
 
-.model-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+/* ── Mensagens ──────────────────────────────────────────────────── */
+
+.test-success {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #10b981;
+  font-weight: 600;
 }
 
-.fetch-btn {
-  background: none;
-  border: none;
-  color: var(--accent);
-  font-size: 0.7rem;
+.server-error {
+  margin: 0;
+  padding: 8px 10px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  color: #fca5a5;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+/* ── Botões de ação ─────────────────────────────────────────────── */
+
+.action-row {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-action {
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-weight: 600;
+  font-size: 0.8rem;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  opacity: 1;
+  transition: opacity 0.15s;
 }
 
-.fetch-btn:disabled {
-  opacity: 0.5;
+.btn-action:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
-.field select {
-  background: var(--bg-color);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 14px;
-  color: var(--text-primary);
-  font-size: 0.9rem;
-  outline: none;
-  cursor: pointer;
-  transition: border-color 0.2s;
-  appearance: auto;
-}
-
-.field select:focus {
-  border-color: var(--accent);
-}
-
-.field select option {
-  background: #1e1e2e;
-  color: white;
-}
-
-/* Key Section */
-.key-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.field-label {
-  font-size: 0.8rem;
-  font-weight: bold;
-  color: var(--text-secondary);
-}
-
-.key-input {
-  background: rgba(15, 23, 42, 0.4);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 14px;
-  color: var(--text-primary);
-  font-size: 0.9rem;
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.key-input:focus {
-  border-color: var(--accent);
-}
-
-.persist-check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  user-select: none;
-  padding: 4px 0;
-}
-
-.persist-check input {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--accent);
-}
-
-.persist-check span {
-  font-size: 0.85rem;
-  color: var(--text-primary);
-}
-
-.persist-hint {
-  font-size: 0.7rem;
-  color: var(--text-secondary);
-  margin: 0;
-  padding-left: 26px;
-}
-
-/* Actions */
-.actions {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.btn-start {
+  background: var(--accent);
+  border: none;
+  color: #0f172a;
 }
 
 .btn-test {
-  width: 100%;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px;
-  color: var(--text-primary);
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-test:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-test.status-success {
-  background: rgba(16, 185, 129, 0.1);
-  border-color: #10b981;
-  color: #10b981;
-}
-
-.btn-test.status-error {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: var(--error);
-  color: var(--error);
-}
-
-.action-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.btn-secondary {
   background: transparent;
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px;
+  color: var(--text-primary);
+}
+
+.btn-test:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-stop {
+  background: transparent;
+  border: 1px solid var(--border);
   color: var(--text-secondary);
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
 }
 
-.btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.05);
+.btn-stop:not(:disabled):hover {
+  border-color: #ef4444;
+  color: #ef4444;
 }
 
-.btn-primary {
+/* ── Botão global ───────────────────────────────────────────────── */
+
+.btn-start-all {
+  width: 100%;
   background: var(--accent);
   border: none;
   border-radius: 10px;
-  padding: 10px;
+  padding: 10px 14px;
   color: #0f172a;
-  font-size: 0.9rem;
   font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-primary:hover {
-  background: var(--accent-hover);
-}
-
-.embedding-warning {
-  background: rgba(245, 158, 11, 0.08);
-  border: 1px solid rgba(245, 158, 11, 0.25);
-  border-radius: 10px;
-  padding: 12px;
-  font-size: 0.8rem;
-  color: #f59e0b;
-  line-height: 1.4;
-  text-align: left;
-}
-
-.embedding-warning code {
-  display: block;
-  background: rgba(0, 0, 0, 0.25);
-  padding: 4px 8px;
-  border-radius: 6px;
-  margin-top: 6px;
-  font-family: monospace;
-  color: #fbbf24;
-  font-size: 0.75rem;
-}
-
-.input-with-btn {
-  display: flex;
-  gap: 8px;
-}
-
-.input-with-btn input {
-  flex: 1;
-}
-
-.btn-test-embed {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 16px;
-  color: var(--text-primary);
   font-size: 0.85rem;
-  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
+  transition: opacity 0.15s;
 }
 
-.btn-test-embed:disabled {
+.btn-start-all:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.btn-test-embed.status-success {
-  background: rgba(16, 185, 129, 0.1);
-  border-color: #10b981;
-  color: #10b981;
-}
-
-.btn-test-embed.status-error {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: var(--error);
-  color: var(--error);
 }
 </style>

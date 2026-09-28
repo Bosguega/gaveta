@@ -123,7 +123,20 @@ fn open_and_migrate_database(app: &tauri::AppHandle) -> Result<Connection, Strin
             CREATE TABLE IF NOT EXISTS embedding_cache (
                 hash TEXT PRIMARY KEY,
                 embedding TEXT NOT NULL,
+                model_name TEXT NOT NULL DEFAULT '',
+                dimensions INTEGER NOT NULL DEFAULT 0,
+                normalization TEXT NOT NULL DEFAULT '',
+                version TEXT NOT NULL DEFAULT '',
                 created_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS embedding_profile (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                model_name TEXT NOT NULL,
+                dimensions INTEGER NOT NULL,
+                normalization TEXT NOT NULL,
+                version TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS chat_history (
@@ -143,7 +156,122 @@ fn open_and_migrate_database(app: &tauri::AppHandle) -> Result<Connection, Strin
     let _ = connection.execute("ALTER TABLE notes ADD COLUMN reminder_at TEXT", []);
     let _ = connection.execute("ALTER TABLE notes ADD COLUMN updated_at TEXT", []);
 
+    ensure_embedding_cache_schema(&connection)?;
+
     Ok(connection)
+}
+
+/// O cache de embeddings é atrelado ao perfil (modelo, dimensão, normalização,
+/// versão). Bases antigas, sem esses metadados, são recriadas: o cache é
+/// descartável por definição e não vale migrar vetores obsoletos.
+fn ensure_embedding_cache_schema(connection: &Connection) -> Result<(), String> {
+    let has_profile_columns = {
+        let mut statement = connection
+            .prepare("PRAGMA table_info(embedding_cache)")
+            .map_err(|error| format!("Nao foi possivel inspecionar o cache de embeddings: {error}"))?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|error| format!("Nao foi possivel inspecionar o cache de embeddings: {error}"))?;
+        let names = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("Nao foi possivel inspecionar o cache de embeddings: {error}"))?;
+        names.iter().any(|name| name == "version")
+    };
+
+    if has_profile_columns {
+        return Ok(());
+    }
+
+    connection
+        .execute_batch(
+            "
+            DROP TABLE IF EXISTS embedding_cache;
+
+            CREATE TABLE embedding_cache (
+                hash TEXT PRIMARY KEY,
+                embedding TEXT NOT NULL,
+                model_name TEXT NOT NULL DEFAULT '',
+                dimensions INTEGER NOT NULL DEFAULT 0,
+                normalization TEXT NOT NULL DEFAULT '',
+                version TEXT NOT NULL DEFAULT '',
+                created_at TEXT
+            );
+            ",
+        )
+        .map_err(|error| format!("Nao foi possivel recriar o cache de embeddings: {error}"))
+}
+
+/// Registra o perfil de embeddings ativo.
+///
+/// Se o perfil mudou desde a última execução, o cache e os vetores das notas
+/// são invalidados, evitando comparar espaços vetoriais diferentes.
+#[tauri::command]
+fn sync_embedding_profile(
+    state: tauri::State<DbState>,
+    model_name: String,
+    dimensions: i64,
+    normalization: String,
+    version: String,
+) -> Result<bool, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+
+    let current: Option<(String, i64, String, String)> = conn
+        .query_row(
+            "SELECT model_name, dimensions, normalization, version FROM embedding_profile WHERE id = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .ok();
+
+    let matches = current
+        .as_ref()
+        .map(|(model, dims, norm, current_version)| {
+            model == &model_name
+                && *dims == dimensions
+                && norm == &normalization
+                && current_version == &version
+        })
+        .unwrap_or(false);
+
+    if matches {
+        return Ok(false);
+    }
+
+    conn.execute("DELETE FROM embedding_cache", [])
+        .map_err(|error| format!("Nao foi possivel limpar o cache de embeddings: {error}"))?;
+    conn.execute("UPDATE notes SET embedding = '[]'", [])
+        .map_err(|error| format!("Nao foi possivel invalidar os embeddings das notas: {error}"))?;
+
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO embedding_profile (id, model_name, dimensions, normalization, version, updated_at)
+         VALUES (1, ?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(id) DO UPDATE SET
+            model_name = excluded.model_name,
+            dimensions = excluded.dimensions,
+            normalization = excluded.normalization,
+            version = excluded.version,
+            updated_at = excluded.updated_at",
+        params![model_name, dimensions, normalization, version, now],
+    )
+    .map_err(|error| format!("Nao foi possivel salvar o perfil de embeddings: {error}"))?;
+
+    Ok(true)
+}
+
+#[tauri::command]
+fn get_embedding_profile(
+    state: tauri::State<DbState>,
+) -> Result<Option<(String, i64, String, String, String)>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+
+    Ok(conn
+        .query_row(
+            "SELECT model_name, dimensions, normalization, version, updated_at FROM embedding_profile WHERE id = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+        )
+        .ok())
 }
 
 #[tauri::command]
@@ -378,19 +506,37 @@ fn save_cached_embedding(
     state: tauri::State<DbState>,
     hash: String,
     embedding: String,
+    model_name: Option<String>,
+    dimensions: Option<i64>,
+    normalization: Option<String>,
+    version: Option<String>,
 ) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let created_at = Utc::now().to_rfc3339();
 
     conn.execute(
         "
-        INSERT INTO embedding_cache (hash, embedding, created_at)
-        VALUES (?1, ?2, ?3)
+        INSERT INTO embedding_cache (
+            hash, embedding, model_name, dimensions, normalization, version, created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
         ON CONFLICT(hash) DO UPDATE SET
             embedding = excluded.embedding,
+            model_name = excluded.model_name,
+            dimensions = excluded.dimensions,
+            normalization = excluded.normalization,
+            version = excluded.version,
             created_at = excluded.created_at
         ",
-        params![hash, embedding, created_at],
+        params![
+            hash,
+            embedding,
+            model_name.unwrap_or_default(),
+            dimensions.unwrap_or_default(),
+            normalization.unwrap_or_default(),
+            version.unwrap_or_default(),
+            created_at
+        ],
     )
     .map_err(|error| format!("Nao foi possivel salvar cache: {error}"))?;
 
@@ -466,6 +612,199 @@ fn clear_chat_history(state: tauri::State<DbState>) -> Result<(), String> {
     Ok(())
 }
 
+// ── Servidores locais llama-server ──
+
+/// Processos iniciados pela própria aplicação, por servidor.
+///
+/// Apenas os processos guardados aqui podem ser encerrados pelo app. Um
+/// llama-server que já estava rodando antes é apenas detectado via health check.
+#[derive(Default)]
+pub struct ServerState(pub Mutex<HashMap<String, std::process::Child>>);
+
+#[cfg(windows)]
+const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+
+fn normalize_server_kind(kind: &str) -> Result<String, String> {
+    match kind {
+        "chat" => Ok("chat".to_string()),
+        "embedding" => Ok("embedding".to_string()),
+        other => Err(format!("Servidor desconhecido: {other}")),
+    }
+}
+
+/// Divide uma linha de comando Windows em programa + argumentos.
+///
+/// Segue as regras do CommandLineToArgvW: separadores delimitam argumentos,
+/// aspas agrupam valores com espaços e barras invertidas antes de aspas
+/// podem escapá-las. Caminhos entre aspas (com espaços) são preservados.
+/// Normaliza a sintaxe de shell que aparece ao copiar um comando de terminal.
+///
+/// Remove o operador de chamada `&` e resolve as continuacoes de linha com
+/// crase. O app nao executa por shell: o primeiro token precisa ser o
+/// executavel, nao um metacaractere do shell.
+fn normalize_shell_syntax(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '`' {
+            // Crase seguida de espaco/quebra = continuacao de linha: vira um espaco.
+            while matches!(chars.peek(), Some(next) if next.is_whitespace()) {
+                chars.next();
+            }
+            out.push(' ');
+            continue;
+        }
+        out.push(c);
+    }
+
+    // Operador de chamada do PowerShell: `& "programa.exe" args...`
+    let trimmed = out.trim_start();
+    trimmed.strip_prefix('&').unwrap_or(trimmed).to_string()
+}
+
+fn parse_command_line(input: &str) -> Result<Vec<String>, String> {
+    let input = &normalize_shell_syntax(input);
+    let mut args: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut has_token = false;
+
+    let mut chars = input.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => {
+                in_quotes = !in_quotes;
+                has_token = true;
+            }
+            '\\' => {
+                let mut backslashes = 1;
+                while let Some('\\') = chars.peek() {
+                    backslashes += 1;
+                    chars.next();
+                }
+
+                if let Some(&'"') = chars.peek() {
+                    // Metade das barras escapa a barra, a outra escapa a aspa.
+                    for _ in 0..(backslashes / 2) {
+                        current.push('\\');
+                    }
+                    if backslashes % 2 == 0 {
+                        in_quotes = !in_quotes;
+                    } else {
+                        current.push('"');
+                    }
+                    chars.next();
+                } else {
+                    for _ in 0..backslashes {
+                        current.push('\\');
+                    }
+                }
+                has_token = true;
+            }
+            c if c.is_whitespace() && !in_quotes => {
+                if has_token {
+                    args.push(std::mem::take(&mut current));
+                    has_token = false;
+                }
+            }
+            c => {
+                current.push(c);
+                has_token = true;
+            }
+        }
+    }
+
+    if in_quotes {
+        return Err("Aspas nao balanceadas no comando configurado.".to_string());
+    }
+
+    if has_token {
+        args.push(current);
+    }
+
+    Ok(args)
+}
+
+/// Inicia um llama-server em processo e janela de console próprios.
+///
+/// O processo e independente do app: continua rodando depois que o comando
+/// termina, com stdout/stderr visiveis para diagnostico.
+#[tauri::command]
+fn start_llama_server(
+    state: tauri::State<ServerState>,
+    kind: String,
+    command: String,
+) -> Result<bool, String> {
+    let key = normalize_server_kind(&kind)?;
+
+    if command.trim().is_empty() {
+        return Err("Nenhum comando configurado para este servidor.".to_string());
+    }
+
+    let parts = parse_command_line(&command)?;
+    let program = parts
+        .first()
+        .cloned()
+        .ok_or_else(|| "Comando configurado vazio.".to_string())?;
+
+    let mut builder = std::process::Command::new(&program);
+    builder
+        .args(&parts[1..])
+        .stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit());
+
+    // Janela de console propria: os logs do llama-server ficam visiveis.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        builder.creation_flags(CREATE_NEW_CONSOLE);
+    }
+
+    let child = builder.spawn().map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            return format!(
+                "Executavel nao encontrado: {program}\nConfira o caminho e as aspas do comando configurado."
+            );
+        }
+        format!("Nao foi possivel iniciar '{program}': {error}")
+    })?;
+
+    let mut servers = state.0.lock().map_err(|e| e.to_string())?;
+    servers.insert(key, child);
+
+    Ok(true)
+}
+
+/// Encerra apenas o processo iniciado pela propria aplicacao.
+///
+/// Retorna false quando o app nao e dono do processo (servidor previamente
+/// iniciado pelo usuario) — nesse caso nada e encerrado.
+#[tauri::command]
+fn stop_llama_server(state: tauri::State<ServerState>, kind: String) -> Result<bool, String> {
+    let key = normalize_server_kind(&kind)?;
+
+    let mut servers = state.0.lock().map_err(|e| e.to_string())?;
+    let Some(mut child) = servers.remove(&key) else {
+        return Ok(false);
+    };
+
+    child
+        .kill()
+        .map_err(|error| format!("Nao foi possivel encerrar o processo: {error}"))?;
+
+    Ok(true)
+}
+
+/// Informa se o app iniciou (e portanto pode encerrar) aquele servidor.
+#[tauri::command]
+fn is_llama_server_owned(state: tauri::State<ServerState>, kind: String) -> Result<bool, String> {
+    let key = normalize_server_kind(&kind)?;
+    let servers = state.0.lock().map_err(|e| e.to_string())?;
+    Ok(servers.contains_key(&key))
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -473,6 +812,7 @@ pub fn run() {
             let conn = open_and_migrate_database(app.handle())
                 .expect("Falha ao abrir e migrar SQLite");
             app.manage(DbState(Mutex::new(conn)));
+            app.manage(ServerState::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -487,6 +827,11 @@ pub fn run() {
             import_notes_json,
             get_cached_embedding,
             save_cached_embedding,
+            sync_embedding_profile,
+            get_embedding_profile,
+            start_llama_server,
+            stop_llama_server,
+            is_llama_server_owned,
             get_chat_history,
             save_chat_session,
             delete_chat_session,
@@ -497,4 +842,103 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("erro ao executar o aplicativo Tauri");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_program_and_arguments() {
+        let parts = parse_command_line("llama-server.exe -m model.gguf --port 8080").unwrap();
+        assert_eq!(
+            parts,
+            vec!["llama-server.exe", "-m", "model.gguf", "--port", "8080"]
+        );
+    }
+
+    #[test]
+    fn keeps_quoted_paths_with_spaces_together() {
+        let parts = parse_command_line(
+            r#""C:\Trabalhos\Modelos\llama bin\llama-server.exe" -m "C:\Modelos\meu modelo.gguf" --port 8081"#,
+        )
+        .unwrap();
+
+        assert_eq!(parts[0], r"C:\Trabalhos\Modelos\llama bin\llama-server.exe");
+        assert_eq!(parts[1], "-m");
+        assert_eq!(parts[2], r"C:\Modelos\meu modelo.gguf");
+        assert_eq!(parts[3], "--port");
+        assert_eq!(parts[4], "8081");
+    }
+
+    #[test]
+    fn preserves_backslashes_in_unquoted_windows_paths() {
+        let parts = parse_command_line(r"C:\bin\llama-server.exe -m C:\m\model.gguf").unwrap();
+        assert_eq!(parts[0], r"C:\bin\llama-server.exe");
+        assert_eq!(parts[2], r"C:\m\model.gguf");
+    }
+
+    #[test]
+    fn collapses_extra_whitespace() {
+        let parts = parse_command_line("  llama-server.exe   -ngl 99  ").unwrap();
+        assert_eq!(parts, vec!["llama-server.exe", "-ngl", "99"]);
+    }
+
+    #[test]
+    fn treats_empty_quoted_value_as_token() {
+        let parts = parse_command_line(r#"llama-server.exe -p "" --port 8080"#).unwrap();
+        assert_eq!(parts, vec!["llama-server.exe", "-p", "", "--port", "8080"]);
+    }
+
+    #[test]
+    fn rejects_unbalanced_quotes() {
+        assert!(parse_command_line(r#"llama-server.exe -m "model.gguf"#).is_err());
+    }
+
+    #[test]
+    fn returns_no_parts_for_blank_command() {
+        assert!(parse_command_line("   ").unwrap().is_empty());
+    }
+
+    #[test]
+    fn rejects_unknown_server_kind() {
+        assert!(normalize_server_kind("outro").is_err());
+        assert!(normalize_server_kind("chat").is_ok());
+        assert!(normalize_server_kind("embedding").is_ok());
+    }
+
+    #[test]
+    fn ignores_powershell_call_operator() {
+        let parts = parse_command_line(
+            r#"& "C:\Trabalhos\Modelos\llama-server.exe" -m "C:\Modelos\bge-m3.gguf" --port 8081"#,
+        )
+        .unwrap();
+
+        assert_eq!(parts[0], r"C:\Trabalhos\Modelos\llama-server.exe");
+        assert_eq!(parts[1], "-m");
+        assert_eq!(parts[2], r"C:\Modelos\bge-m3.gguf");
+    }
+
+    #[test]
+    fn resolves_powershell_line_continuation() {
+        // Mesmo comando colado do terminal, com crases e quebras de linha.
+        let parts = parse_command_line(
+            "& \"C:\\bin\\llama-server.exe\" `\r\n  -m \"C:\\m\\bge-m3.gguf\" `\r\n  --embedding `\r\n  --port 8081",
+        )
+        .unwrap();
+
+        assert_eq!(parts[0], r"C:\bin\llama-server.exe");
+        assert_eq!(parts[2], r"C:\m\bge-m3.gguf");
+        assert!(parts.contains(&"--embedding".to_string()));
+        assert!(parts.contains(&"8081".to_string()));
+        assert!(!parts.iter().any(|arg| arg.contains('`')));
+    }
+
+    #[test]
+    fn keeps_arguments_that_merely_start_with_ampersand() {
+        // Só o operador de chamada inicial é removido; argumentos são preservados.
+        let parts = parse_command_line(r#"llama-server.exe --jinja "&x" "#).unwrap();
+        assert_eq!(parts[0], "llama-server.exe");
+        assert_eq!(parts[2], "&x");
+    }
 }
