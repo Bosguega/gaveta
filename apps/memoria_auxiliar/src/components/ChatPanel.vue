@@ -199,7 +199,8 @@ onUpdated(scrollToBottom);
                 <span class="debug-badge" :class="{ used: msg.usedIds?.includes(source.note.id) }">
                   {{ msg.usedIds?.includes(source.note.id) ? '✓ Usada' : '✗ Descartada' }}
                 </span>
-                <span class="debug-score">Score: {{ (source.score * 100).toFixed(1) }}%</span>
+                <span v-if="source.score > 0" class="debug-score">Score: {{ (source.score * 100).toFixed(1) }}%</span>
+                <span v-else class="debug-score" title="Resultado por busca textual (embeddings indisponíveis)">Busca textual</span>
                 <span class="debug-date">{{ formatDate(source.note.created_at) }}</span>
               </div>
               <InteractiveContent :text="'#' + source.note.id + ': ' + source.note.content" class="debug-content-text" />

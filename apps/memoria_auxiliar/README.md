@@ -17,13 +17,14 @@ Diferente de blocos de notas tradicionais, ele utiliza **busca semântica com IA
 
 ### 🔍 1. Busca Semântica Inteligente
 - **Encontre pelo sentido:** Pesquise por *"como configurar o banco de dados"* e encontre notas sobre *"credenciais do postgresql"*.
-- **Filtro por Tags:** Digite `#` ou clique nas tags para filtrar assuntos específicos em um instante.
-- **Resumos Automáticos:** Gere um resumo consolidado de várias notas com apenas um clique.
-- **Fallback Offline:** Funciona mesmo sem conexão com a internet através da busca textual direta.
+- **Busca enquanto digita:** a busca é disparada após 300 ms sem digitação, ou imediatamente pelo botão **Buscar** / <kbd>Ctrl</kbd> + <kbd>F</kbd>.
+- **Filtro por Tags:** clique nas tags abaixo do campo de busca para restringir os resultados. O filtro é aplicado **antes** do ranqueamento, então a lista é preenchida com as melhores notas da tag escolhida.
+- **Resumos Automáticos:** Gere um resumo consolidado das notas exibidas com apenas um clique. O botão aparece sempre que há notas na lista, mesmo sem busca ativa.
+- **Fallback Offline:** Se o servidor de embeddings estiver indisponível, o app usa busca textual direta (SQLite) e sinaliza o **Modo texto (fallback)** no cabeçalho.
 
 ### 💬 2. Conversar com suas Memórias (RAG Chat)
 - Um assistente de IA que lê apenas as **suas** notas para responder perguntas, planejar ideias ou correlacionar informações antigas.
-- **Fontes com 1 clique:** Cada resposta cita exatamente quais notas foram usadas como referência.
+- **Fontes com 1 clique:** Cada resposta cita exatamente quais notas foram usadas como referência. O painel de debug permite inspecionar as notas recuperadas e as descartadas.
 - **Histórico de conversas:** Salve e continue conversas anteriores a qualquer momento.
 
 ### ⚡ 3. Captura Rápida (Estilo Spotlight / Raycast)
@@ -88,7 +89,8 @@ Escolha a paleta visual que combina com seu estilo nas Configurações:
    ```
 
 3. **Configure sua IA:**
-   Abra a aba **⚙️ Config** no aplicativo. O app usa **dois processos `llama-server` independentes**:
+   Abra a aba **Configurações** no aplicativo. O app usa **dois processos `llama-server` independentes**, e o
+   cartão **Configurar IA** abre o modal para configurá-los:
 
    ```bash
    # Chat (geração de texto) — porta 8080
@@ -102,7 +104,8 @@ Escolha a paleta visual que combina com seu estilo nas Configurações:
    **Testar conexão** para validar.
 
    As configurações são persistidas em `memoria_auxiliar_config.json`, na pasta
-   de dados do app, e podem ser alteradas a qualquer momento pela tela de Config.
+   de dados do app, e podem ser alteradas a qualquer momento pela aba
+   **Configurações**.
 
 ---
 
@@ -170,7 +173,50 @@ Se o perfil mudar, o app limpa o cache e invalida os vetores das notas, para que
 espaços vetoriais diferentes nunca sejam comparados entre si.
 
 > ⚠️ Ao trocar de modelo de embeddings, as notas existentes precisam ser
-> reindexadas (reeditadas ou recriadas) para voltarem a aparecer na busca semântica.
+> reindexadas para voltarem a aparecer na busca semântica. Isso pode ser feito pelo
+> botão **Reindexar notas**, na seção *Busca Semântica* das Configurações — ele
+> regenera o vetor apenas das notas que estão sem embedding válido, mostra o
+> progresso e nunca sobrescreve um vetor existente com um resultado vazio.
+
+> ℹ️ Notas salvas enquanto o servidor de embeddings estava indisponível ficam sem
+> vetor: a nota é preservada e aparece normalmente na lista, apenas não é
+> encontrada pela busca semântica até ser reindexada.
+
+---
+
+## 🔎 Como a Busca Funciona
+
+A busca é **semântica por padrão**, com fallback textual automático.
+
+1. O texto digitado vira um embedding via `llama-server` (com cache por hash do
+   texto e perfil do modelo).
+2. A similaridade de **cosseno** é calculada contra o vetor de cada nota. Notas
+   sem vetor ou com dimensão diferente da consulta são ignoradas.
+3. O resultado só entra na lista se passar pelo **threshold de 0.45**. Para
+   consultas com mais de 100 caracteres, o threshold cai para 0.35, já que
+   perguntas longas tendem a diluir a similaridade.
+4. Os resultados são ordenados por score e limitados aos **10 mais relevantes**.
+   Na interface, cada nota exibe a similaridade em porcentagem.
+5. Se o servidor de embeddings falhar, o app recorre à **busca textual** (até 20
+   notas) e mostra o selo *Modo texto (fallback)*. Nesse caso não há
+   similaridade calculada, então a porcentagem não é exibida.
+
+Detalhes de comportamento:
+
+- Cada busca recebe um token de sequência. Se você digitar rápido, respostas de
+  buscas anteriores são descartadas e nunca substituem o resultado atual.
+- O filtro de tag é aplicado **antes** do ranqueamento, de modo que as 10
+  posições são preenchidas por notas da tag selecionada — e não por notas de
+  outras tags que depois seriam removidas da tela.
+- O **Gerar resumo com IA** resume exatamente as notas exibidas na lista
+  (resultados da busca ou todas as notas, quando não há busca ativa). O conteúdo
+  é sanitizado antes de ir para o modelo.
+
+No **Chat**, a recuperação usa o mesmo pipeline. As notas usadas na resposta são
+identificadas pelo modelo, que retorna os IDs em uma linha `USED_IDS: [...]`; a
+interface destaca essas fontes e permite abrir o painel de debug. Quando o
+fallback textual é usado no chat, as fontes aparecem como **Busca textual**, sem
+porcentagem — nenhuma similaridade foi calculada nesse caso.
 
 ---
 
@@ -178,13 +224,30 @@ espaços vetoriais diferentes nunca sejam comparados entre si.
 
 - `src/services/tauriStore.ts`: persistência de configuração e perfil dos dois servidores.
 - `src/services/llmService.ts`: chat, RAG, sanitização de prompt e parsing de `USED_IDS`.
-- `src/services/embeddingService.ts`: geração de embeddings e cache por hash.
+- `src/services/embeddingService.ts`: geração de embeddings, cache por hash e resolução da chave de cache.
 - `src/services/embeddingProfile.ts`: perfil, chave de cache, normalização L2.
-- `src/services/similarityService.ts`: similaridade de cosseno e busca semântica.
+- `src/services/similarityService.ts`: similaridade de cosseno, busca semântica e `hasValidEmbedding`.
+- `src/services/reindexService.ts`: seleção e reindexação de notas sem embedding válido.
 - `src/services/embeddingConnection.ts`: teste de conexão do servidor de embeddings.
 - `src/services/llamaServerControl.ts`: inicialização e verificação dos servidores locais.
 - `src/services/llamaServerStatus.ts`: estados e validação dos comandos.
-- `src/components/AiConfigModal.vue`: modal de configuração dos servidores locais.
+- `src/utils/tagFilter.ts`: comparação de tags e filtro de candidatos antes da busca.
+- `src/utils/latestRequest.ts`: guarda de sequência para descartar respostas obsoletas.
+- `src/components/SearchBox.vue`: campo de busca (debounce), botão Buscar e filtro de tags.
+- `src/components/ResultsList.vue`: lista de resultados e botão de resumo.
+- `src/components/ChatPanel.vue`: chat, fontes da resposta e painel de debug.
+- `src/components/AiConfigModal.vue`: modal de configuração dos servidores locais, aberto a partir das Configurações.
+- `src/views/SettingsView.vue`: configurações, reindexação e exportação/importação.
+
+### Testes
+
+Os testes rodam com **Vitest** e cobrem as partes com lógica: similaridade,
+reindexação, filtro de tags, sanitização de prompt, controle dos servidores e a
+guarda de requisições. Execute com:
+
+```bash
+npm test
+```
 
 O cliente HTTP de `llama-server` vem do package compartilhado
 [`@bosguega/llama-cpp`](../../packages/llama-cpp), que expõe `health()`,

@@ -7,6 +7,7 @@ import { getEmbedding, resolveEmbeddingCacheKey } from './services/embeddingServ
 import { generateAnswer, summarizeResults } from './services/llmService'
 import { searchBySimilarity } from './services/similarityService'
 import { createLatestRequestGate } from './utils/latestRequest'
+import { filterNotesByTag, noteMatchesTag } from './utils/tagFilter'
 import type { ApiErrorLike } from './types'
 import type { Note } from './types'
 import ChatPanel from './components/ChatPanel.vue'
@@ -35,20 +36,18 @@ async function loadNotes() {
 const displayedResults = computed(() => {
     // Com uma busca ativa, a lista reflete apenas os resultados dela.
     // Assim uma busca sem correspondências mostra o estado vazio em vez de todas as notas.
-    let list = notesStore.searchActive
+    const list = notesStore.searchActive
         ? notesStore.results
         : notesStore.notes.map(note => ({ note, score: 0 }))
 
-    if (notesStore.selectedTag) {
-        const target = notesStore.selectedTag.toLowerCase()
-        list = list.filter(r => {
-            if (!r.note.tags) return false
-            return r.note.tags.toLowerCase().split(',').map(t => t.trim()).includes(target)
-        })
-    }
-
-    return list
+    return list.filter(r => noteMatchesTag(r.note, notesStore.selectedTag))
 })
+
+// A tag é aplicada ANTES da busca para que o limite de resultados seja preenchido
+// por notas que o usuário realmente verá, e não por notas de outras tags.
+function searchCandidates(notes: Note[]): Note[] {
+    return filterNotesByTag(notes, notesStore.selectedTag)
+}
 
 async function createNote(content: string, tags = '', pinned = false, reminder_at: string | null = null) {
     await runAction(async () => {
@@ -134,7 +133,7 @@ async function searchNotes(query: string) {
             const embedding = await getEmbedding(query)
             if (!searchGate.isCurrent(token)) return
 
-            notesStore.results = searchBySimilarity(notesStore.notes, embedding, 10, 0.45, query.length)
+            notesStore.results = searchBySimilarity(searchCandidates(notesStore.notes), embedding, 10, 0.45, query.length)
             notesStore.searchFallbackMode = false
             notesStore.summary = ''
         } catch (embedError) {
@@ -145,7 +144,9 @@ async function searchNotes(query: string) {
             const textMatches = await searchNotesText(query, 20)
             if (!searchGate.isCurrent(token)) return
 
-            notesStore.results = textMatches.map(note => ({ note, score: 0 }))
+            // Mesma restrição de tag do caminho semântico, para o limite de
+            // resultados ser preenchido apenas por notas que serão exibidas.
+            notesStore.results = searchCandidates(textMatches).map(note => ({ note, score: 0 }))
             notesStore.summary = ''
             showToast('Buscando por texto direto (embeddings indisponíveis)', 'info')
         }
@@ -194,8 +195,10 @@ async function clearAllNotes() {
 }
 
 async function generateSummary() {
+    // displayedResults já é exatamente o que o usuário está vendo: resultados da
+    // busca (já restritos à tag selecionada) ou todas as notas quando não há busca.
     await runAction(async () => {
-        notesStore.summary = await summarizeResults(displayedResults.value.filter(r => r.score > 0 || notesStore.results.length > 0))
+        notesStore.summary = await summarizeResults(displayedResults.value)
     }, 'Gerando resumo...')
 }
 
@@ -208,8 +211,10 @@ async function askAI(question: string) {
             const embedding = await getEmbedding(question)
             retrievedResults = searchBySimilarity(notesStore.notes, embedding, 10, 0.45, question.length)
         } catch {
+            // Fallback textual: nenhuma similaridade foi calculada, então o score
+            // é 0 — o mesmo critério do fallback da busca, em vez de um valor artificial.
             const textMatches = await searchNotesText(question, 10)
-            retrievedResults = textMatches.map(note => ({ note, score: 0.5 }))
+            retrievedResults = textMatches.map(note => ({ note, score: 0 }))
         }
 
         const { answer, usedIds } = await generateAnswer(question, retrievedResults)
