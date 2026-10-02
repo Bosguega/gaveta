@@ -41,8 +41,8 @@ export async function searchNotesText(query: string, limit = 20): Promise<Note[]
   });
 }
 
-export async function deleteNote(id: number): Promise<void> {
-  await invoke('delete_note', { id });
+export async function deleteNote(id: number, cacheKey?: string): Promise<void> {
+  await invoke('delete_note', { id, cacheKey: cacheKey ?? null });
 }
 
 export async function updateNote(

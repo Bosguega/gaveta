@@ -1,5 +1,5 @@
 ﻿<script setup lang="ts">
-import { ref, watch, computed, onMounted } from 'vue';
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
 import { notesStore } from '../store/notesStore';
 
 const emit = defineEmits<{
@@ -27,14 +27,25 @@ const allTags = computed(() => {
 watch(query, (newVal) => {
   if (timeout) clearTimeout(timeout);
   timeout = setTimeout(() => {
+    timeout = null;
     emit('search', newVal.trim());
   }, 300);
 });
 
 function submit() {
-  const value = query.value.trim();
-  emit('search', value);
+  // Busca imediata: cancela o debounce pendente para não disparar uma segunda
+  // requisição com o mesmo texto logo em seguida.
+  if (timeout) {
+    clearTimeout(timeout);
+    timeout = null;
+  }
+  emit('search', query.value.trim());
 }
+
+onUnmounted(() => {
+  // Evita busca fire-and-forget após o componente sair da tela.
+  if (timeout) clearTimeout(timeout);
+});
 
 function selectTag(tag: string | null) {
   if (notesStore.selectedTag === tag) {

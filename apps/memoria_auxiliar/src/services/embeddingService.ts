@@ -44,6 +44,28 @@ export async function getEmbedding(text: string): Promise<number[]> {
   return embedding;
 }
 
+/**
+ * Resolve a chave de cache de um texto sem gerar embedding.
+ *
+ * Usada na exclusão de notas para que o backend consiga remover apenas a entrada
+ * de cache que ficou órfã. Devolve `undefined` quando a chave não pode ser
+ * montada — nesses casos a limpeza é um no-op, por decisão de segurança.
+ */
+export async function resolveEmbeddingCacheKey(text?: string): Promise<string | undefined> {
+  const normalized = text?.trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  try {
+    const { model } = await getEmbeddingConfig();
+    const profile = buildEmbeddingProfile(model);
+    return buildEmbeddingCacheKey(profile, await sha256(normalized));
+  } catch {
+    return undefined;
+  }
+}
+
 async function requestEmbedding(
   baseUrl: string,
   model: string,

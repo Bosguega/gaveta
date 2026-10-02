@@ -3,9 +3,10 @@ import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useDeviceUI } from './composables/useDeviceUI'
 import { notesStore, updateStreak, resetStats, initStats, initTheme, showToast, navigateTo } from './store/notesStore'
 import { listNotes, saveNote, updateNote, deleteNote, deleteAllNotes, togglePinNote, searchNotesText } from './services/databaseService'
-import { getEmbedding } from './services/embeddingService'
+import { getEmbedding, resolveEmbeddingCacheKey } from './services/embeddingService'
 import { generateAnswer, summarizeResults } from './services/llmService'
 import { searchBySimilarity } from './services/similarityService'
+import { createLatestRequestGate } from './utils/latestRequest'
 import type { ApiErrorLike } from './types'
 import type { Note } from './types'
 import ChatPanel from './components/ChatPanel.vue'
@@ -32,7 +33,9 @@ async function loadNotes() {
 
 // Displayed results: either similarity results or all notes filtered by tag
 const displayedResults = computed(() => {
-    let list = notesStore.results.length > 0
+    // Com uma busca ativa, a lista reflete apenas os resultados dela.
+    // Assim uma busca sem correspondências mostra o estado vazio em vez de todas as notas.
+    let list = notesStore.searchActive
         ? notesStore.results
         : notesStore.notes.map(note => ({ note, score: 0 }))
 
@@ -57,12 +60,17 @@ async function createNote(content: string, tags = '', pinned = false, reminder_a
         }
 
         if (notesStore.editingNote) {
-            await updateNote(notesStore.editingNote.id, content, embedding, tags, pinned, reminder_at)
+            // Se a geração falhar (servidor de embeddings offline), preserva o vetor
+            // anterior em vez de sobrescrever a nota com um embedding vazio.
+            const previousEmbedding = notesStore.editingNote.parsedEmbedding ?? []
+            const effectiveEmbedding = embedding.length > 0 ? embedding : previousEmbedding
+
+            await updateNote(notesStore.editingNote.id, content, effectiveEmbedding, tags, pinned, reminder_at)
             const updatedNote: Note = {
                 ...notesStore.editingNote,
                 content,
-                embedding: JSON.stringify(embedding),
-                parsedEmbedding: embedding.length > 0 ? embedding : undefined,
+                embedding: JSON.stringify(effectiveEmbedding),
+                parsedEmbedding: effectiveEmbedding.length > 0 ? effectiveEmbedding : undefined,
                 tags,
                 pinned,
                 reminder_at,
@@ -105,23 +113,38 @@ async function handleTogglePin(id: number) {
     }
 }
 
+// Cada busca recebe um token; respostas de buscas antigas são descartadas para
+// que uma digitação rápida nunca exiba o resultado de uma consulta anterior.
+const searchGate = createLatestRequestGate()
+
 async function searchNotes(query: string) {
+    const token = searchGate.begin()
+
     if (!query.trim()) {
         notesStore.results = []
+        notesStore.searchActive = false
         notesStore.searchFallbackMode = false
         return
     }
 
+    notesStore.searchActive = true
+
     await runAction(async () => {
         try {
             const embedding = await getEmbedding(query)
+            if (!searchGate.isCurrent(token)) return
+
             notesStore.results = searchBySimilarity(notesStore.notes, embedding, 10, 0.45, query.length)
             notesStore.searchFallbackMode = false
             notesStore.summary = ''
         } catch (embedError) {
+            if (!searchGate.isCurrent(token)) return
+
             console.warn('Busca semântica indisponível, usando fallback por texto:', embedError)
             notesStore.searchFallbackMode = true
             const textMatches = await searchNotesText(query, 20)
+            if (!searchGate.isCurrent(token)) return
+
             notesStore.results = textMatches.map(note => ({ note, score: 0 }))
             notesStore.summary = ''
             showToast('Buscando por texto direto (embeddings indisponíveis)', 'info')
@@ -147,7 +170,9 @@ function confirmAction() {
 async function removeNote(id: number) {
     showConfirmModal('Tem certeza que deseja excluir esta nota?', async () => {
         await runAction(async () => {
-            await deleteNote(id)
+            // A chave de cache é derivada do conteúdo; sem ela a limpeza no
+            // backend é um no-op (preferível a apagar cache ainda reutilizável).
+            await deleteNote(id, await resolveEmbeddingCacheKey(notesStore.notes.find(n => n.id === id)?.content))
             notesStore.notes = notesStore.notes.filter(n => n.id !== id)
             notesStore.results = notesStore.results.filter(r => r.note.id !== id)
             showToast('Nota excluída.', 'info')

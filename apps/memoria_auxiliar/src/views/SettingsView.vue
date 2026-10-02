@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import AiConfigModal from '../components/AiConfigModal.vue';
 import { exportNotesJson, importNotesJson, listNotes } from '../services/databaseService';
+import { reindexNotes, selectNotesToReindex } from '../services/reindexService';
 import { notesStore, showToast, setTheme } from '../store/notesStore';
 import type { AppTheme } from '../types';
 
@@ -14,6 +15,12 @@ const showAiConfig = ref(false);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const isExporting = ref(false);
 const isImporting = ref(false);
+const isReindexing = ref(false);
+const reindexProcessed = ref(0);
+const reindexTotal = ref(0);
+
+/** Notas sem embedding válido: alvo da ação de reindexação. */
+const pendingReindexNotes = computed(() => selectNotesToReindex(notesStore.notes));
 
 const themesList: { id: AppTheme; name: string; desc: string; colors: string[] }[] = [
   { id: 'dark', name: 'Midnight Dark', desc: 'Azul escuro clássico', colors: ['#0f172a', '#1e293b', '#38bdf8'] },
@@ -99,6 +106,49 @@ async function handleFileChange(event: Event) {
   } finally {
     isImporting.value = false;
     if (fileInputRef.value) fileInputRef.value.value = '';
+  }
+}
+
+async function handleReindex() {
+  const pending = pendingReindexNotes.value;
+
+  if (!pending.length) {
+    showToast('Todas as notas já possuem embedding válido.', 'info');
+    return;
+  }
+
+  isReindexing.value = true;
+  reindexProcessed.value = 0;
+  reindexTotal.value = pending.length;
+
+  try {
+    const result = await reindexNotes(notesStore.notes, {
+      onProgress: (progress) => {
+        reindexProcessed.value = progress.processed;
+        reindexTotal.value = progress.total;
+      },
+    });
+
+    // Recarrega do banco para refletir os embeddings gravados.
+    notesStore.notes = await listNotes();
+    emit('notesReloaded');
+
+    if (result.failed === 0) {
+      showToast(`${result.reindexed} nota(s) reindexada(s) com sucesso!`, 'success');
+    } else {
+      showToast(
+        `${result.reindexed} reindexada(s), ${result.failed} falha(s). ` +
+        'Verifique se o servidor de embeddings está rodando.',
+        'error',
+      );
+    }
+  } catch (error) {
+    console.error('Erro ao reindexar notas:', error);
+    showToast('Falha ao reindexar notas.', 'error');
+  } finally {
+    isReindexing.value = false;
+    reindexProcessed.value = 0;
+    reindexTotal.value = 0;
   }
 }
 </script>
@@ -214,6 +264,29 @@ async function handleFileChange(event: Event) {
             <span class="shortcut-desc">Alternar para Configurações</span>
             <kbd>Ctrl + 5</kbd>
           </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Busca Semântica</h3>
+        <p class="section-desc">
+          Reindexa apenas as notas que estão sem embedding válido (por exemplo, criadas
+          com o servidor de embeddings desligado). Notas já indexadas não são reprocessadas.
+        </p>
+
+        <div class="reindex-actions">
+          <button
+            class="btn-backup"
+            :disabled="isReindexing || pendingReindexNotes.length === 0"
+            @click="handleReindex"
+          >
+            {{ isReindexing
+              ? `Reindexando ${reindexProcessed}/${reindexTotal}...`
+              : 'Reindexar notas' }}
+          </button>
+          <span class="reindex-hint">
+            {{ pendingReindexNotes.length }} nota(s) pendente(s)
+          </span>
         </div>
       </div>
 
@@ -364,6 +437,23 @@ async function handleFileChange(event: Event) {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.reindex-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.reindex-hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.btn-backup:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-backup {

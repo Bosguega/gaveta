@@ -50,6 +50,15 @@ function parseNoteEmbedding(note: Note): number[] | null {
 }
 
 /**
+ * Indica se a nota possui um embedding válido (vetor não vazio).
+ *
+ * Usado para distinguir notas pesquisáveis de notas que precisam de reindexação.
+ */
+export function hasValidEmbedding(note: Note): boolean {
+  return parseNoteEmbedding(note) !== null;
+}
+
+/**
  * Busca notas por similaridade de cosseno utilizando embedding já em memória (ou parseando sob demanda).
  * Notas cujo vetor tenha dimensão diferente da consulta são ignoradas explicitamente.
  */

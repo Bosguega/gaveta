@@ -381,11 +381,67 @@ fn search_notes_text(
     Ok(notes)
 }
 
+/// Remove a entrada de cache de uma nota excluída, mas apenas quando ela não é
+/// mais referenciada por nenhuma nota existente.
+///
+/// `cache_key` é opcional por decisão: sem ele a limpeza não acontece (no-op),
+/// preferível a remover uma entrada que ainda possa ser reutilizada. Como a
+/// chave de cache deriva do conteúdo, notas com conteúdo idêntico compartilham a
+/// mesma entrada — por isso conferimos o conteúdo antes de apagar.
+fn prune_orphan_cache_entry(
+    conn: &Connection,
+    cache_key: Option<String>,
+    content: &str,
+) -> Result<(), String> {
+    let Some(cache_key) = cache_key else {
+        return Ok(());
+    };
+
+    let remaining: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM notes WHERE content = ?1",
+            params![content],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("Nao foi possivel verificar o cache de embeddings: {error}"))?;
+
+    if remaining > 0 {
+        return Ok(());
+    }
+
+    conn.execute(
+        "DELETE FROM embedding_cache WHERE hash = ?1",
+        params![cache_key],
+    )
+    .map_err(|error| format!("Nao foi possivel limpar cache de embeddings orfao: {error}"))?;
+
+    Ok(())
+}
+
 #[tauri::command]
-fn delete_note(state: tauri::State<DbState>, id: i64) -> Result<(), String> {
+fn delete_note(
+    state: tauri::State<DbState>,
+    id: i64,
+    cache_key: Option<String>,
+) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
+
+    // Conteudo e necessario para decidir se a entrada de cache ainda e usada.
+    let content: Option<String> = conn
+        .query_row(
+            "SELECT content FROM notes WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )
+        .ok();
+
     conn.execute("DELETE FROM notes WHERE id = ?1", params![id])
         .map_err(|error| format!("Nao foi possivel excluir a nota: {error}"))?;
+
+    if let Some(content) = content {
+        prune_orphan_cache_entry(&conn, cache_key, &content)?;
+    }
+
     Ok(())
 }
 
@@ -940,5 +996,89 @@ mod tests {
         let parts = parse_command_line(r#"llama-server.exe --jinja "&x" "#).unwrap();
         assert_eq!(parts[0], "llama-server.exe");
         assert_eq!(parts[2], "&x");
+    }
+
+    // --- Limpeza de cache de embeddings após exclusão de nota ---
+
+    fn cache_test_connection() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE notes (id INTEGER PRIMARY KEY, content TEXT NOT NULL, embedding TEXT NOT NULL);
+            CREATE TABLE embedding_cache (hash TEXT PRIMARY KEY, embedding TEXT NOT NULL);
+            ",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn cache_row_count(conn: &Connection, hash: &str) -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM embedding_cache WHERE hash = ?1",
+            params![hash],
+            |row| row.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn removes_orphan_cache_entry_after_note_deletion() {
+        let conn = cache_test_connection();
+        conn.execute(
+            "INSERT INTO notes (id, content, embedding) VALUES (1, 'conteudo a', '[]')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO embedding_cache (hash, embedding) VALUES ('key-a', '[1,0]')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute("DELETE FROM notes WHERE id = 1", []).unwrap();
+        prune_orphan_cache_entry(&conn, Some("key-a".to_string()), "conteudo a").unwrap();
+
+        assert_eq!(cache_row_count(&conn, "key-a"), 0);
+    }
+
+    #[test]
+    fn preserves_cache_entry_still_used_by_another_note() {
+        // Notas com o mesmo conteúdo compartilham a chave de cache.
+        let conn = cache_test_connection();
+        conn.execute(
+            "INSERT INTO notes (id, content, embedding) VALUES (1, 'igual', '[]')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO notes (id, content, embedding) VALUES (2, 'igual', '[]')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO embedding_cache (hash, embedding) VALUES ('key-igual', '[1,0]')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute("DELETE FROM notes WHERE id = 1", []).unwrap();
+        prune_orphan_cache_entry(&conn, Some("key-igual".to_string()), "igual").unwrap();
+
+        assert_eq!(cache_row_count(&conn, "key-igual"), 1);
+    }
+
+    #[test]
+    fn keeps_cache_when_no_key_is_provided() {
+        // Sem chave não há como saber o que é órfão: a limpeza é no-op.
+        let conn = cache_test_connection();
+        conn.execute(
+            "INSERT INTO embedding_cache (hash, embedding) VALUES ('key-x', '[1,0]')",
+            [],
+        )
+        .unwrap();
+
+        prune_orphan_cache_entry(&conn, None, "qualquer").unwrap();
+
+        assert_eq!(cache_row_count(&conn, "key-x"), 1);
     }
 }

@@ -192,6 +192,8 @@ export const notesStore = reactive({
   quickCaptureOpen: false,
   notes: [] as Note[],
   results: [] as SearchResult[],
+  /** Indica que existe uma consulta ativa na busca. Distingue "nenhum resultado" de "sem busca". */
+  searchActive: false,
   editingNote: null as Note | null,
   formDirtyContent: '' as string,
   selectedTag: null as string | null,
