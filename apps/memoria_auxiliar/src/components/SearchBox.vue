@@ -1,11 +1,26 @@
 ﻿<script setup lang="ts">
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
 import { notesStore } from '../store/notesStore';
+import { hasActiveFilters } from '../utils/searchFilters';
+import type { EmbeddingFilter, PeriodFilter } from '../utils/searchFilters';
 
 const emit = defineEmits<{
   search: [query: string];
-  filterTag: [tag: string | null];
 }>();
+
+const PERIOD_OPTIONS: { value: PeriodFilter; label: string }[] = [
+  { value: 'all', label: 'Qualquer data' },
+  { value: '7d', label: 'Últimos 7 dias' },
+  { value: '30d', label: 'Últimos 30 dias' },
+  { value: 'month', label: 'Este mês' },
+  { value: 'lastYear', label: 'Ano passado' },
+];
+
+const EMBEDDING_OPTIONS: { value: EmbeddingFilter; label: string }[] = [
+  { value: 'any', label: 'Embedding: todos' },
+  { value: 'with', label: 'Com embedding' },
+  { value: 'without', label: 'Sem embedding' },
+];
 
 const query = ref('');
 const searchInputRef = ref<HTMLInputElement | null>(null);
@@ -48,12 +63,16 @@ onUnmounted(() => {
 });
 
 function selectTag(tag: string | null) {
-  if (notesStore.selectedTag === tag) {
-    notesStore.selectedTag = null;
-  } else {
-    notesStore.selectedTag = tag;
-  }
-  emit('filterTag', notesStore.selectedTag);
+  // Clicar na mesma tag desmarca o filtro.
+  notesStore.filters.tag = notesStore.filters.tag === tag ? null : tag;
+}
+
+function resetFilters() {
+  notesStore.filters.tag = null;
+  notesStore.filters.period = 'all';
+  notesStore.filters.pinnedOnly = false;
+  notesStore.filters.withReminder = false;
+  notesStore.filters.embedding = 'any';
 }
 
 function focus() {
@@ -87,7 +106,7 @@ defineExpose({ focus, setQuery: (val: string) => { query.value = val; } });
       <span class="tags-title">Filtrar por tag:</span>
       <button
         class="tag-pill"
-        :class="{ active: notesStore.selectedTag === null }"
+        :class="{ active: notesStore.filters.tag === null }"
         @click="selectTag(null)"
       >
         Todas
@@ -96,10 +115,49 @@ defineExpose({ focus, setQuery: (val: string) => { query.value = val; } });
         v-for="tag in allTags"
         :key="tag"
         class="tag-pill"
-        :class="{ active: notesStore.selectedTag === tag }"
+        :class="{ active: notesStore.filters.tag === tag }"
         @click="selectTag(tag)"
       >
         #{{ tag }}
+      </button>
+    </div>
+
+    <!-- Filtros combináveis: período, fixadas, lembrete e embedding -->
+    <div class="filters-bar">
+      <span class="tags-title">Filtros:</span>
+      <select v-model="notesStore.filters.period" class="filter-select" title="Filtrar por período de criação">
+        <option v-for="option in PERIOD_OPTIONS" :key="option.value" :value="option.value">
+          {{ option.label }}
+        </option>
+      </select>
+
+      <select v-model="notesStore.filters.embedding" class="filter-select" title="Filtrar por embedding válido">
+        <option v-for="option in EMBEDDING_OPTIONS" :key="option.value" :value="option.value">
+          {{ option.label }}
+        </option>
+      </select>
+
+      <button
+        class="tag-pill"
+        :class="{ active: notesStore.filters.pinnedOnly }"
+        @click="notesStore.filters.pinnedOnly = !notesStore.filters.pinnedOnly"
+      >
+        📌 Fixadas
+      </button>
+      <button
+        class="tag-pill"
+        :class="{ active: notesStore.filters.withReminder }"
+        @click="notesStore.filters.withReminder = !notesStore.filters.withReminder"
+      >
+        ⏰ Com lembrete
+      </button>
+
+      <button
+        v-if="hasActiveFilters(notesStore.filters)"
+        class="tag-pill clear"
+        @click="resetFilters"
+      >
+        ✕ Limpar filtros
       </button>
     </div>
   </section>
@@ -156,6 +214,35 @@ defineExpose({ focus, setQuery: (val: string) => { query.value = val; } });
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.filters-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.filter-select {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 3px 8px;
+  border-radius: 14px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.tag-pill.clear {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.3);
 }
 
 .tags-title {

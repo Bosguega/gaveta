@@ -18,8 +18,11 @@ Diferente de blocos de notas tradicionais, ele utiliza **busca semântica com IA
 ### 🔍 1. Busca Semântica Inteligente
 - **Encontre pelo sentido:** Pesquise por *"como configurar o banco de dados"* e encontre notas sobre *"credenciais do postgresql"*.
 - **Busca enquanto digita:** a busca é disparada após 300 ms sem digitação, ou imediatamente pelo botão **Buscar** / <kbd>Ctrl</kbd> + <kbd>F</kbd>.
-- **Filtro por Tags:** clique nas tags abaixo do campo de busca para restringir os resultados. O filtro é aplicado **antes** do ranqueamento, então a lista é preenchida com as melhores notas da tag escolhida.
+- **Filtros combináveis:** além da tag, filtre por período (últimos 7/30 dias, este mês, ano passado), notas fixadas, notas com lembrete e notas com/sem embedding válido. Todos os filtros são aplicados **antes** do ranqueamento, então a lista é preenchida com as melhores notas dentro do recorte escolhido. O botão **Limpar filtros** aparece quando há algum ativo.
+- **Busca por período:** filtre "notas dos últimos 7 dias", "este mês" e "ano passado" por meio do seletor de período, calculado sobre `created_at` — sem interpretação de linguagem natural.
 - **Resumos Automáticos:** Gere um resumo consolidado das notas exibidas com apenas um clique. O botão aparece sempre que há notas na lista, mesmo sem busca ativa.
+- **Notas relacionadas:** Ao editar uma nota, o app mostra até 5 memórias semanticamente próximas (similaridade acima de 70%) logo abaixo do formulário. Clique em qualquer uma para abri-la.
+- **Aviso de memórias duplicadas:** Ao salvar uma nota, se ela for praticamente igual a outras (similaridade acima de 95%), o app mostra um aviso com a lista para você comparar. **Nada é apagado ou substituído automaticamente** — a decisão é sempre sua.
 - **Fallback Offline:** Se o servidor de embeddings estiver indisponível, o app usa busca textual direta (SQLite) e sinaliza o **Modo texto (fallback)** no cabeçalho.
 
 ### 💬 2. Conversar com suas Memórias (RAG Chat)
@@ -188,16 +191,18 @@ espaços vetoriais diferentes nunca sejam comparados entre si.
 
 A busca é **semântica por padrão**, com fallback textual automático.
 
-1. O texto digitado vira um embedding via `llama-server` (com cache por hash do
+1. **Filtros** (tag, período, fixadas, lembrete, embedding) são aplicados às notas
+   **antes** de qualquer ranqueamento — no caminho semântico e também no textual.
+2. O texto digitado vira um embedding via `llama-server` (com cache por hash do
    texto e perfil do modelo).
-2. A similaridade de **cosseno** é calculada contra o vetor de cada nota. Notas
+3. A similaridade de **cosseno** é calculada contra o vetor de cada nota. Notas
    sem vetor ou com dimensão diferente da consulta são ignoradas.
-3. O resultado só entra na lista se passar pelo **threshold de 0.45**. Para
+4. O resultado só entra na lista se passar pelo **threshold de 0.45**. Para
    consultas com mais de 100 caracteres, o threshold cai para 0.35, já que
    perguntas longas tendem a diluir a similaridade.
-4. Os resultados são ordenados por score e limitados aos **10 mais relevantes**.
+5. Os resultados são ordenados por score e limitados aos **10 mais relevantes**.
    Na interface, cada nota exibe a similaridade em porcentagem.
-5. Se o servidor de embeddings falhar, o app recorre à **busca textual** (até 20
+6. Se o servidor de embeddings falhar, o app recorre à **busca textual** (até 20
    notas) e mostra o selo *Modo texto (fallback)*. Nesse caso não há
    similaridade calculada, então a porcentagem não é exibida.
 
@@ -205,12 +210,34 @@ Detalhes de comportamento:
 
 - Cada busca recebe um token de sequência. Se você digitar rápido, respostas de
   buscas anteriores são descartadas e nunca substituem o resultado atual.
-- O filtro de tag é aplicado **antes** do ranqueamento, de modo que as 10
-  posições são preenchidas por notas da tag selecionada — e não por notas de
-  outras tags que depois seriam removidas da tela.
+- Os filtros são aplicados **antes** do ranqueamento, de modo que as posições da
+  lista são preenchidas por notas que satisfazem o recorte escolhido — e não por
+  notas descartadas logo depois.
+- Os filtros também valem para a lista exibida quando **não há busca ativa**: a
+  aba de pesquisa respeita o mesmo recorte.
 - O **Gerar resumo com IA** resume exatamente as notas exibidas na lista
   (resultados da busca ou todas as notas, quando não há busca ativa). O conteúdo
   é sanitizado antes de ir para o modelo.
+- O seletor de período usa `created_at`. Para "ano passado", o limite superior é o
+  início do ano corrente.
+
+### Notas relacionadas e duplicadas
+
+Ambas reaproveitam a mesma busca por similaridade, sem criar um segundo sistema de
+embeddings:
+
+- **Relacionadas** — ao editar uma nota, o próprio embedding dela vira a consulta e
+  as demais notas são ranqueadas com threshold **0.7** (até 5). Como aqui a
+  "consulta" é a própria nota e não uma pergunta, o ajuste de threshold para
+  textos longos é desativado.
+- **Duplicadas** — ao salvar, as outras notas são comparadas com threshold **0.95**,
+  bem mais exigente, porque a intenção é afirmar igualdade e não apenas sugerir
+  semelhança. Sem embedding disponível, a verificação recorre à comparação de
+  conteúdo idêntico já normalizado (espaços colapsados, sem diferenciar
+  maiúsculas de minúsculas).
+
+A detecção é **estritamente de leitura**: nenhuma nota é apagada, alterada ou
+substituída. O app apenas informa e deixa a escolha com o usuário.
 
 No **Chat**, a recuperação usa o mesmo pipeline. As notas usadas na resposta são
 identificadas pelo modelo, que retorna os IDs em uma linha `USED_IDS: [...]`; a
@@ -228,12 +255,14 @@ porcentagem — nenhuma similaridade foi calculada nesse caso.
 - `src/services/embeddingProfile.ts`: perfil, chave de cache, normalização L2.
 - `src/services/similarityService.ts`: similaridade de cosseno, busca semântica e `hasValidEmbedding`.
 - `src/services/reindexService.ts`: seleção e reindexação de notas sem embedding válido.
+- `src/services/relatedNotesService.ts`: notas relacionadas e detecção de quase duplicatas.
 - `src/services/embeddingConnection.ts`: teste de conexão do servidor de embeddings.
 - `src/services/llamaServerControl.ts`: inicialização e verificação dos servidores locais.
 - `src/services/llamaServerStatus.ts`: estados e validação dos comandos.
-- `src/utils/tagFilter.ts`: comparação de tags e filtro de candidatos antes da busca.
+- `src/utils/searchFilters.ts`: filtros combináveis (tag, período, fixadas, lembrete, embedding).
+- `src/utils/tagFilter.ts`: comparação de tags usada pelos filtros.
 - `src/utils/latestRequest.ts`: guarda de sequência para descartar respostas obsoletas.
-- `src/components/SearchBox.vue`: campo de busca (debounce), botão Buscar e filtro de tags.
+- `src/components/SearchBox.vue`: campo de busca (debounce), botão Buscar, tags e filtros.
 - `src/components/ResultsList.vue`: lista de resultados e botão de resumo.
 - `src/components/ChatPanel.vue`: chat, fontes da resposta e painel de debug.
 - `src/components/AiConfigModal.vue`: modal de configuração dos servidores locais, aberto a partir das Configurações.
@@ -242,8 +271,8 @@ porcentagem — nenhuma similaridade foi calculada nesse caso.
 ### Testes
 
 Os testes rodam com **Vitest** e cobrem as partes com lógica: similaridade,
-reindexação, filtro de tags, sanitização de prompt, controle dos servidores e a
-guarda de requisições. Execute com:
+reindexação, filtros de busca, notas relacionadas e duplicatas, sanitização de
+prompt, controle dos servidores e a guarda de requisições. Execute com:
 
 ```bash
 npm test

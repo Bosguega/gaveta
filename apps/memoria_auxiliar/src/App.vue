@@ -6,10 +6,11 @@ import { listNotes, saveNote, updateNote, deleteNote, deleteAllNotes, togglePinN
 import { getEmbedding, resolveEmbeddingCacheKey } from './services/embeddingService'
 import { generateAnswer, summarizeResults } from './services/llmService'
 import { searchBySimilarity } from './services/similarityService'
+import { detectDuplicates, findRelatedNotes } from './services/relatedNotesService'
 import { createLatestRequestGate } from './utils/latestRequest'
-import { filterNotesByTag, noteMatchesTag } from './utils/tagFilter'
+import { filterNotes, noteMatchesFilters } from './utils/searchFilters'
 import type { ApiErrorLike } from './types'
-import type { Note } from './types'
+import type { Note, SearchResult } from './types'
 import ChatPanel from './components/ChatPanel.vue'
 import NoteForm from './components/NoteForm.vue'
 import ResultsList from './components/ResultsList.vue'
@@ -32,7 +33,7 @@ async function loadNotes() {
     notesStore.notes = await listNotes()
 }
 
-// Displayed results: either similarity results or all notes filtered by tag
+// Displayed results: either similarity results or all notes, filtered
 const displayedResults = computed(() => {
     // Com uma busca ativa, a lista reflete apenas os resultados dela.
     // Assim uma busca sem correspondências mostra o estado vazio em vez de todas as notas.
@@ -40,14 +41,21 @@ const displayedResults = computed(() => {
         ? notesStore.results
         : notesStore.notes.map(note => ({ note, score: 0 }))
 
-    return list.filter(r => noteMatchesTag(r.note, notesStore.selectedTag))
+    return list.filter(r => noteMatchesFilters(r.note, notesStore.filters))
 })
 
-// A tag é aplicada ANTES da busca para que o limite de resultados seja preenchido
-// por notas que o usuário realmente verá, e não por notas de outras tags.
+// Os filtros são aplicados ANTES da busca para que o limite de resultados seja
+// preenchido por notas que o usuário realmente verá, e não por notas descartadas.
 function searchCandidates(notes: Note[]): Note[] {
-    return filterNotesByTag(notes, notesStore.selectedTag)
+    return filterNotes(notes, notesStore.filters)
 }
+
+/** Notas relacionadas à nota em edição, calculadas a partir do embedding já existente. */
+const relatedNotes = computed<SearchResult[]>(() => {
+    const note = notesStore.editingNote
+    if (!note) return []
+    return findRelatedNotes(notesStore.notes, note)
+})
 
 async function createNote(content: string, tags = '', pinned = false, reminder_at: string | null = null) {
     await runAction(async () => {
@@ -77,6 +85,7 @@ async function createNote(content: string, tags = '', pinned = false, reminder_a
             }
             notesStore.notes = notesStore.notes.map(n => n.id === updatedNote.id ? updatedNote : n)
             notesStore.results = notesStore.results.map(r => r.note.id === updatedNote.id ? { ...r, note: updatedNote } : r)
+            checkDuplicates(content, effectiveEmbedding, updatedNote.id)
             notesStore.editingNote = null
             showToast('Nota atualizada com sucesso!', 'success')
             navigateTo('search')
@@ -85,10 +94,24 @@ async function createNote(content: string, tags = '', pinned = false, reminder_a
             note.parsedEmbedding = embedding.length > 0 ? embedding : undefined
             notesStore.notes = [note, ...notesStore.notes]
             updateStreak()
+            checkDuplicates(content, embedding, note.id)
             showToast('Nota salva com sucesso!', 'success')
             navigateTo('search')
         }
     }, notesStore.editingNote ? 'Atualizando nota...' : 'Salvando nota...')
+}
+
+/**
+ * Avisa o usuário quando a nota salva é praticamente igual a outras já existentes.
+ * Apenas informa: nada é apagado ou substituído automaticamente.
+ */
+function checkDuplicates(content: string, embedding: number[], savedId: number) {
+    const duplicates = detectDuplicates(notesStore.notes, content, embedding, savedId)
+    notesStore.duplicateWarning = duplicates.length > 0 ? { savedId, notes: duplicates } : null
+}
+
+function dismissDuplicateWarning() {
+    notesStore.duplicateWarning = null
 }
 
 function startEdit(note: Note) {
@@ -341,12 +364,38 @@ onUnmounted(() => {
         <!-- TELA: PESQUISAR -->
         <div v-if="notesStore.activeView === 'search'" class="view-container">
             <SearchBox ref="searchBoxRef" @search="searchNotes" />
+            <section v-if="notesStore.duplicateWarning" class="panel duplicate-panel">
+                <div class="duplicate-header">
+                    <h3>Memórias muito parecidas</h3>
+                    <button type="button" class="secondary" @click="dismissDuplicateWarning">
+                        Dispensar
+                    </button>
+                </div>
+                <p class="duplicate-hint">
+                    A nota #{{ notesStore.duplicateWarning.savedId }} ficou igual ou muito
+                    parecida com {{ notesStore.duplicateWarning.notes.length }}
+                    {{ notesStore.duplicateWarning.notes.length === 1 ? 'nota existente' : 'notas existentes' }}.
+                    Nada foi apagado — compare e decida você mesmo.
+                </p>
+                <ul class="duplicate-list">
+                    <li v-for="dup in notesStore.duplicateWarning.notes" :key="dup.note.id">
+                        <div class="duplicate-item">
+                            <span class="memory-badge">#{{ dup.note.id }}</span>
+                            <span class="duplicate-content">{{ dup.note.content.slice(0, 140) }}{{ dup.note.content.length > 140 ? '…' : '' }}</span>
+                        </div>
+                        <div class="duplicate-actions">
+                            <button type="button" class="secondary" @click="startEdit(dup.note)">Abrir</button>
+                            <button type="button" class="danger" @click="removeNote(dup.note.id)">Excluir</button>
+                        </div>
+                    </li>
+                </ul>
+            </section>
             <ResultsList
                 :results="displayedResults"
                 @delete="removeNote"
                 @edit="startEdit"
                 @toggle-pin="handleTogglePin"
-                @select-tag="tag => { notesStore.selectedTag = tag }"
+                @select-tag="tag => { notesStore.filters.tag = notesStore.filters.tag === tag ? null : tag }"
             />
             <section v-if="displayedResults.length" class="summary-section">
                 <button type="button" class="secondary" @click="generateSummary">
@@ -359,6 +408,19 @@ onUnmounted(() => {
         <!-- TELA: INCLUIR DICAS -->
         <div v-if="notesStore.activeView === 'add'" class="view-container">
             <NoteForm ref="noteFormRef" @save="createNote" />
+            <section v-if="relatedNotes.length" class="panel related-panel">
+                <h3>Notas relacionadas</h3>
+                <p class="related-hint">Outras memórias semanticamente próximas desta.</p>
+                <ul class="related-list">
+                    <li v-for="rel in relatedNotes" :key="rel.note.id" @click="startEdit(rel.note)">
+                        <span class="memory-badge">#{{ rel.note.id }}</span>
+                        <span class="related-content">
+                            {{ rel.note.content.slice(0, 120) }}{{ rel.note.content.length > 120 ? '…' : '' }}
+                        </span>
+                        <span class="related-score">{{ (rel.score * 100).toFixed(0) }}%</span>
+                    </li>
+                </ul>
+            </section>
         </div>
 
         <!-- TELA: RAG CHAT -->
@@ -453,5 +515,117 @@ onUnmounted(() => {
 .toast-enter-from, .toast-leave-to {
     opacity: 0;
     transform: translateY(-20px) scale(0.95);
+}
+
+/* ── Memórias quase duplicadas ── */
+.duplicate-panel {
+    border-color: rgba(245, 158, 11, 0.35);
+}
+
+.duplicate-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6px;
+}
+
+.duplicate-header h3,
+.related-panel h3 {
+    margin: 0;
+    font-size: 0.95rem;
+}
+
+.duplicate-hint,
+.related-hint {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin: 0 0 10px;
+}
+
+.duplicate-list,
+.related-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.duplicate-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    background: rgba(245, 158, 11, 0.07);
+    border-radius: 8px;
+    flex-wrap: wrap;
+}
+
+.duplicate-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.duplicate-content,
+.related-content {
+    font-size: 0.82rem;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.duplicate-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.duplicate-actions button {
+    font-size: 0.72rem;
+    padding: 3px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+}
+
+.duplicate-actions button.danger {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* ── Notas relacionadas ── */
+.related-panel {
+    margin-top: 14px;
+}
+
+.related-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.related-list li:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.related-score {
+    margin-left: auto;
+    font-size: 0.72rem;
+    color: var(--accent);
+    flex-shrink: 0;
 }
 </style>

@@ -1,6 +1,7 @@
 import { reactive } from 'vue';
 import type { ApiErrorLike } from '../types';
 import type { AppTheme, ChatMessage, ChatSession, ClipboardAnalysis, Note, SearchResult, Stats, ToastNotification } from '../types';
+import type { EmbeddingFilter, PeriodFilter, SearchFilters } from '../utils/searchFilters';
 import { tauriStore } from '../services/tauriStore';
 
 function getTodayString() {
@@ -196,7 +197,17 @@ export const notesStore = reactive({
   searchActive: false,
   editingNote: null as Note | null,
   formDirtyContent: '' as string,
-  selectedTag: null as string | null,
+  /**
+   * Filtros combináveis da pesquisa. `filters.tag` substitui o antigo
+   * `selectedTag`, agora apenas um dos filtros aplicados antes do ranqueamento.
+   */
+  filters: {
+    tag: null as string | null,
+    period: 'all' as PeriodFilter,
+    pinnedOnly: false,
+    withReminder: false,
+    embedding: 'any' as EmbeddingFilter,
+  } as SearchFilters,
   messages: [] as ChatMessage[],
   chatSessions: [] as ChatSession[],
   currentSessionId: null as number | null,
@@ -206,6 +217,11 @@ export const notesStore = reactive({
   error: null as ApiErrorLike | null,
   activeView: 'search' as 'search' | 'add' | 'chat' | 'insights' | 'settings',
   searchFallbackMode: false,
+  /**
+   * Aviso de memórias quase duplicadas. Preenchido após salvar; `null` quando não
+   * há sobreposição. Nunca dispara remoção automática.
+   */
+  duplicateWarning: null as { savedId: number; notes: SearchResult[] } | null,
   confirmModal: {
     show: false,
     message: '',
