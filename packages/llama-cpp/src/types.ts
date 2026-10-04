@@ -1,4 +1,4 @@
-export type ChatRole = 'system' | 'user' | 'assistant';
+export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
 
 export interface ChatTextContentPart {
   type: 'text';
@@ -14,9 +14,52 @@ export interface ChatImageUrlContentPart {
 
 export type ChatContentPart = ChatTextContentPart | ChatImageUrlContentPart;
 
+/**
+ * Definição de uma ferramenta exposta ao modelo (schema no formato OpenAI).
+ * Os nomes vêm do servidor; ex.: `tavily_tavily_search`.
+ */
+export interface ChatToolFunction {
+  name: string;
+  description?: string;
+  parameters?: Record<string, unknown>;
+}
+
+export interface ChatTool {
+  type: 'function';
+  function: ChatToolFunction;
+}
+
+/**
+ * `tool_choice` no formato OpenAI: as formas curtas aceitas pelo llama-server
+ * ou a escolha explícita de uma função.
+ */
+export type ChatToolChoice =
+  | 'none'
+  | 'auto'
+  | 'required'
+  | { type: 'function'; function: { name: string } };
+
+/**
+ * Chamada de ferramenta devolvida pelo modelo. `arguments` é a string JSON
+ * recebida do servidor — o parsing é responsabilidade do chamador.
+ */
+export interface ChatToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
 export interface ChatMessage {
   role: ChatRole;
-  content: string | ChatContentPart[];
+  /** `null` é aceito para mensagens do assistant que só carregam `tool_calls`. */
+  content: string | ChatContentPart[] | null;
+  /** Presente em mensagens do assistant que pedem a execução de ferramentas. */
+  tool_calls?: ChatToolCall[];
+  /** Presente em mensagens de role 'tool', ligando o resultado à chamada. */
+  tool_call_id?: string;
 }
 
 export interface ChatOptions {
@@ -25,11 +68,39 @@ export interface ChatOptions {
   temperature?: number;
   maxTokens?: number;
   enableThinking?: boolean;
+  /** Ferramentas disponíveis ao modelo. Omitido, o comportamento é o atual. */
+  tools?: ChatTool[];
+  /** Estratégia de escolha de ferramenta, repassada como `tool_choice`. */
+  toolChoice?: ChatToolChoice;
   signal?: AbortSignal;
 }
 
 export interface ChatResult {
+  /**
+   * Texto do modelo. Pode vir vazio quando a resposta é uma chamada de
+   * ferramenta — nesse caso `toolCalls` estará preenchido.
+   */
   content: string;
+  /** Chamadas de ferramenta pedidas pelo modelo, quando houver. */
+  toolCalls?: ChatToolCall[];
+  /** `finish_reason` do servidor (ex.: 'stop', 'length', 'tool_calls'). */
+  finishReason?: string;
+}
+
+export interface ListToolsOptions {
+  signal?: AbortSignal;
+}
+
+export interface CallToolOptions {
+  signal?: AbortSignal;
+}
+
+export interface ToolCallResult {
+  /**
+   * Texto plano devolvido pelo llama-server em `plain_text_response`,
+   * normalizado para camelCase como os demais campos deste package.
+   */
+  plainTextResponse?: string;
 }
 
 export interface EmbeddingOptions {
@@ -58,6 +129,7 @@ export interface LlamaClientOptions {
   healthTimeoutMs?: number;
   embedTimeoutMs?: number;
   modelsTimeoutMs?: number;
+  toolsTimeoutMs?: number;
 }
 
 export interface LlamaClient {
@@ -66,4 +138,10 @@ export interface LlamaClient {
   chat(options: ChatOptions): Promise<ChatResult>;
   embed(options: EmbeddingOptions): Promise<EmbedResult>;
   listModels(options?: ListModelsOptions): Promise<string[]>;
+  listTools(options?: ListToolsOptions): Promise<ChatTool[]>;
+  callTool(
+    tool: string,
+    params?: Record<string, unknown>,
+    options?: CallToolOptions
+  ): Promise<ToolCallResult>;
 }

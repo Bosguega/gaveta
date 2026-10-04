@@ -217,6 +217,237 @@ describe('@bosguega/llama-cpp client', () => {
     });
   });
 
+  describe('chat() with tools', () => {
+    const searchTool = {
+      type: 'function' as const,
+      function: {
+        name: 'tavily_tavily_search',
+        description: 'Busca na web',
+        parameters: {
+          type: 'object',
+          properties: { query: { type: 'string' } },
+          required: ['query'],
+        },
+      },
+    };
+
+    it('sends tools in the payload when provided', async () => {
+      let capturedBody: any = null;
+
+      globalThis.fetch = vi.fn().mockImplementation(async (_url, init) => {
+        capturedBody = JSON.parse(init.body);
+        return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      });
+
+      const client = createLlamaClient();
+      await client.chat({
+        messages: [{ role: 'user', content: 'oi' }],
+        tools: [searchTool],
+      });
+
+      expect(capturedBody.tools).toEqual([searchTool]);
+    });
+
+    it('omits tools/tool_choice when none are provided (legacy payload preserved)', async () => {
+      let capturedBody: any = null;
+
+      globalThis.fetch = vi.fn().mockImplementation(async (_url, init) => {
+        capturedBody = JSON.parse(init.body);
+        return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      });
+
+      const client = createLlamaClient();
+      await client.chat({ messages: [{ role: 'user', content: 'oi' }] });
+
+      expect(capturedBody).toEqual({ messages: [{ role: 'user', content: 'oi' }] });
+    });
+
+    it('forwards tool_choice (string and object forms)', async () => {
+      const bodies: any[] = [];
+
+      globalThis.fetch = vi.fn().mockImplementation(async (_url, init) => {
+        bodies.push(JSON.parse(init.body));
+        return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      });
+
+      const client = createLlamaClient();
+      await client.chat({
+        messages: [{ role: 'user', content: 'a' }],
+        tools: [searchTool],
+        toolChoice: 'auto',
+      });
+      await client.chat({
+        messages: [{ role: 'user', content: 'b' }],
+        tools: [searchTool],
+        toolChoice: { type: 'function', function: { name: 'tavily_tavily_search' } },
+      });
+
+      expect(bodies[0].tool_choice).toBe('auto');
+      expect(bodies[1].tool_choice).toEqual({
+        type: 'function',
+        function: { name: 'tavily_tavily_search' },
+      });
+    });
+
+    it('parses a tool_calls response with finish_reason "tool_calls"', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                finish_reason: 'tool_calls',
+                message: {
+                  content: '',
+                  tool_calls: [
+                    {
+                      id: 'call_1',
+                      type: 'function',
+                      function: {
+                        name: 'tavily_tavily_search',
+                        arguments: '{"query":"cotacao do dolar"}',
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      );
+
+      const client = createLlamaClient();
+      const result = await client.chat({ messages: [{ role: 'user', content: 'q' }] });
+
+      expect(result.finishReason).toBe('tool_calls');
+      expect(result.content).toBe('');
+      expect(result.toolCalls).toEqual([
+        {
+          id: 'call_1',
+          type: 'function',
+          function: { name: 'tavily_tavily_search', arguments: '{"query":"cotacao do dolar"}' },
+        },
+      ]);
+    });
+
+    it('preserves multiple tool_calls', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                finish_reason: 'tool_calls',
+                message: {
+                  content: '',
+                  tool_calls: [
+                    {
+                      id: 'a',
+                      type: 'function',
+                      function: { name: 'tavily_tavily_search', arguments: '{"query":"a"}' },
+                    },
+                    {
+                      id: 'b',
+                      type: 'function',
+                      function: { name: 'tavily_tavily_extract', arguments: '{"urls":["https://x"]}' },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      );
+
+      const client = createLlamaClient();
+      const result = await client.chat({ messages: [{ role: 'user', content: 'q' }] });
+
+      expect(result.toolCalls).toHaveLength(2);
+      expect(result.toolCalls?.map((c) => c.function.name)).toEqual([
+        'tavily_tavily_search',
+        'tavily_tavily_extract',
+      ]);
+      expect(result.toolCalls?.[1].id).toBe('b');
+    });
+
+    it('accepts null/missing content when tool_calls are present', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                finish_reason: 'tool_calls',
+                message: {
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: 'call_1',
+                      type: 'function',
+                      function: { name: 'tavily_tavily_search', arguments: '{}' },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      );
+
+      const client = createLlamaClient();
+      const result = await client.chat({ messages: [{ role: 'user', content: 'q' }] });
+
+      expect(result.content).toBe('');
+      expect(result.toolCalls).toHaveLength(1);
+    });
+
+    it('sends a tool role message in the continuation', async () => {
+      let capturedBody: any = null;
+
+      globalThis.fetch = vi.fn().mockImplementation(async (_url, init) => {
+        capturedBody = JSON.parse(init.body);
+        return new Response(JSON.stringify({ choices: [{ message: { content: 'resposta final' } }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      });
+
+      const client = createLlamaClient();
+      await client.chat({
+        messages: [
+          { role: 'user', content: 'qual a cotacao?' },
+          {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              {
+                id: 'call_1',
+                type: 'function',
+                function: { name: 'tavily_tavily_search', arguments: '{"query":"cotacao"}' },
+              },
+            ],
+          },
+          { role: 'tool', tool_call_id: 'call_1', content: 'R$ 5,17' },
+        ],
+      });
+
+      expect(capturedBody.messages[2]).toEqual({
+        role: 'tool',
+        tool_call_id: 'call_1',
+        content: 'R$ 5,17',
+      });
+    });
+  });
+
   describe('embed()', () => {
     it('posts to /v1/embeddings and returns a single embedding as [[...]]', async () => {
       let capturedUrl = '';
@@ -471,4 +702,176 @@ describe('@bosguega/llama-cpp client', () => {
     });
   });
 
+  describe('listTools()', () => {
+    it('calls GET /tools and returns normalized definitions', async () => {
+      let capturedUrl = '';
+      let capturedInit: RequestInit | undefined;
+
+      globalThis.fetch = vi.fn().mockImplementation(async (url, init) => {
+        capturedUrl = url;
+        capturedInit = init;
+        return new Response(
+          JSON.stringify([
+            {
+              display_name: 'tavily_tavily_search',
+              tool: 'tavily_tavily_search',
+              type: 'mcp',
+              permissions: { write: false },
+              uses_cwd: false,
+              definition: {
+                type: 'function',
+                function: {
+                  name: 'tavily_tavily_search',
+                  description: 'Busca na web',
+                  parameters: {
+                    type: 'object',
+                    properties: { query: { type: 'string' } },
+                    required: ['query'],
+                  },
+                },
+              },
+            },
+          ]),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      });
+
+      const client = createLlamaClient({ baseUrl: 'http://127.0.0.1:8080' });
+      const tools = await client.listTools();
+
+      expect(capturedUrl).toBe('http://127.0.0.1:8080/tools');
+      expect(capturedInit?.method).toBe('GET');
+      expect(tools).toEqual([
+        {
+          type: 'function',
+          function: {
+            name: 'tavily_tavily_search',
+            description: 'Busca na web',
+            parameters: {
+              type: 'object',
+              properties: { query: { type: 'string' } },
+              required: ['query'],
+            },
+          },
+        },
+      ]);
+    });
+
+    it('extracts only valid function definitions (drops malformed entries)', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify([
+            { tool: 'broken' },
+            { definition: { type: 'other', function: { name: 'not_a_function' } } },
+            { definition: { type: 'function', function: { description: 'sem nome' } } },
+            { definition: { type: 'function', function: { name: 'ok_tool' } } },
+          ]),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      );
+
+      const client = createLlamaClient();
+      await expect(client.listTools()).resolves.toEqual([
+        { type: 'function', function: { name: 'ok_tool' } },
+      ]);
+    });
+
+    it('throws LlamaInvalidResponseError when the body is not an array', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ tools: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
+
+      const client = createLlamaClient();
+      await expect(client.listTools()).rejects.toThrow(LlamaInvalidResponseError);
+    });
+
+    it('propagates HTTP errors as LlamaHttpError', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(new Response('boom', { status: 500 }));
+
+      const client = createLlamaClient();
+      await expect(client.listTools()).rejects.toThrow(LlamaHttpError);
+    });
+  });
+
+  describe('callTool()', () => {
+    it('calls POST /tools with the tool name and params', async () => {
+      let capturedUrl = '';
+      let capturedInit: RequestInit | undefined;
+      let capturedBody: any = null;
+
+      globalThis.fetch = vi.fn().mockImplementation(async (url, init) => {
+        capturedUrl = url;
+        capturedInit = init;
+        capturedBody = JSON.parse(init.body);
+        return new Response(JSON.stringify({ plain_text_response: 'resultado' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      });
+
+      const client = createLlamaClient({ baseUrl: 'http://127.0.0.1:8080' });
+      await client.callTool('tavily_tavily_search', { query: 'cotacao do dolar' });
+
+      expect(capturedUrl).toBe('http://127.0.0.1:8080/tools');
+      expect(capturedInit?.method).toBe('POST');
+      expect(capturedBody).toEqual({
+        tool: 'tavily_tavily_search',
+        params: { query: 'cotacao do dolar' },
+      });
+    });
+
+    it('returns the plain_text_response without interpreting it', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ plain_text_response: 'Conteudo da pagina' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
+
+      const client = createLlamaClient();
+      const result = await client.callTool('tavily_tavily_extract', { urls: ['https://x'] });
+
+      expect(result.plainTextResponse).toBe('Conteudo da pagina');
+    });
+
+    it('sends an empty params object when params are omitted', async () => {
+      let capturedBody: any = null;
+
+      globalThis.fetch = vi.fn().mockImplementation(async (_url, init) => {
+        capturedBody = JSON.parse(init.body);
+        return new Response(JSON.stringify({ plain_text_response: '' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      });
+
+      const client = createLlamaClient();
+      await client.callTool('tool_without_params');
+
+      expect(capturedBody).toEqual({ tool: 'tool_without_params', params: {} });
+    });
+
+    it('propagates HTTP errors as LlamaHttpError', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(new Response('tool failed', { status: 500 }));
+
+      const client = createLlamaClient();
+      await expect(
+        client.callTool('tavily_tavily_search', { query: 'x' })
+      ).rejects.toThrow(LlamaHttpError);
+    });
+
+    it('throws LlamaInvalidResponseError on non-JSON body', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response('not-json', { status: 200, headers: { 'Content-Type': 'text/plain' } })
+      );
+
+      const client = createLlamaClient();
+      await expect(
+        client.callTool('tavily_tavily_search', { query: 'x' })
+      ).rejects.toThrow(LlamaInvalidResponseError);
+    });
+  });
 });

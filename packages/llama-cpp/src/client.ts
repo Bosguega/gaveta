@@ -5,14 +5,19 @@ import {
   LlamaTimeoutError,
 } from './errors';
 import type {
+  CallToolOptions,
   ChatOptions,
   ChatResult,
+  ChatTool,
+  ChatToolCall,
   EmbeddingOptions,
   EmbedResult,
   HealthOptions,
   ListModelsOptions,
+  ListToolsOptions,
   LlamaClient,
   LlamaClientOptions,
+  ToolCallResult,
 } from './types';
 
 export const DEFAULT_BASE_URL = 'http://127.0.0.1:8080';
@@ -20,6 +25,7 @@ export const DEFAULT_CHAT_TIMEOUT_MS = 180_000;
 export const DEFAULT_HEALTH_TIMEOUT_MS = 5_000;
 export const DEFAULT_EMBED_TIMEOUT_MS = 60_000;
 export const DEFAULT_MODELS_TIMEOUT_MS = 10_000;
+export const DEFAULT_TOOLS_TIMEOUT_MS = 60_000;
 
 export function normalizeBaseUrl(baseUrl?: string): string {
   const url = (baseUrl?.trim() || DEFAULT_BASE_URL).replace(/\/+$/, '');
@@ -28,8 +34,10 @@ export function normalizeBaseUrl(baseUrl?: string): string {
 
 interface OpenAiChatCompletionResponse {
   choices?: Array<{
+    finish_reason?: string;
     message?: {
-      content?: string;
+      content?: string | null;
+      tool_calls?: unknown;
     };
   }>;
 }
@@ -44,6 +52,86 @@ interface OpenAiEmbeddingsResponse {
 
 function isNumberArray(value: unknown): value is number[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'number');
+}
+
+/**
+ * Normaliza `choices[0].message.tool_calls` para o tipo público, descartando
+ * entradas malformadas em vez de deixar dados inválidos vazarem ao chamador.
+ */
+function parseToolCalls(raw: unknown): ChatToolCall[] | undefined {
+  if (!Array.isArray(raw)) {
+    return undefined;
+  }
+
+  const calls: ChatToolCall[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') {
+      continue;
+    }
+    const entry = item as Record<string, unknown>;
+    const fn = entry.function;
+    if (!fn || typeof fn !== 'object') {
+      continue;
+    }
+    const fnRecord = fn as Record<string, unknown>;
+    if (typeof fnRecord.name !== 'string' || fnRecord.name.length === 0) {
+      continue;
+    }
+    calls.push({
+      id: typeof entry.id === 'string' ? entry.id : '',
+      type: 'function',
+      function: {
+        name: fnRecord.name,
+        arguments: typeof fnRecord.arguments === 'string' ? fnRecord.arguments : '',
+      },
+    });
+  }
+
+  return calls.length > 0 ? calls : undefined;
+}
+
+/**
+ * Normaliza a resposta de `GET /tools`: extrai apenas as definições de função
+ * válidas, prontas para serem passadas em `chat({ tools })`. Itens malformados
+ * ou que não sejam `type: "function"` são descartados.
+ */
+function parseTools(raw: unknown): ChatTool[] {
+  if (!Array.isArray(raw)) {
+    throw new LlamaInvalidResponseError('A resposta de /tools não é um array.');
+  }
+
+  const tools: ChatTool[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') {
+      continue;
+    }
+    const definition = (item as Record<string, unknown>).definition;
+    if (!definition || typeof definition !== 'object') {
+      continue;
+    }
+    const def = definition as Record<string, unknown>;
+    const fn = def.function;
+    if (def.type !== 'function' || !fn || typeof fn !== 'object') {
+      continue;
+    }
+    const fnRecord = fn as Record<string, unknown>;
+    if (typeof fnRecord.name !== 'string' || fnRecord.name.length === 0) {
+      continue;
+    }
+    const tool: ChatTool = {
+      type: 'function',
+      function: { name: fnRecord.name },
+    };
+    if (typeof fnRecord.description === 'string') {
+      tool.function.description = fnRecord.description;
+    }
+    if (fnRecord.parameters && typeof fnRecord.parameters === 'object') {
+      tool.function.parameters = fnRecord.parameters as Record<string, unknown>;
+    }
+    tools.push(tool);
+  }
+
+  return tools;
 }
 
 function handleFetchError(err: unknown, defaultMessage: string): never {
@@ -66,6 +154,7 @@ export function createLlamaClient(options?: LlamaClientOptions): LlamaClient {
   const healthTimeoutMs = options?.healthTimeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS;
   const embedTimeoutMs = options?.embedTimeoutMs ?? DEFAULT_EMBED_TIMEOUT_MS;
   const modelsTimeoutMs = options?.modelsTimeoutMs ?? DEFAULT_MODELS_TIMEOUT_MS;
+  const toolsTimeoutMs = options?.toolsTimeoutMs ?? DEFAULT_TOOLS_TIMEOUT_MS;
 
   /**
    * Executa uma requisição JSON aplicando timeout interno e suporte a
@@ -198,6 +287,12 @@ export function createLlamaClient(options?: LlamaClientOptions): LlamaClient {
           enable_thinking: chatOpts.enableThinking,
         };
       }
+      if (Array.isArray(chatOpts.tools) && chatOpts.tools.length > 0) {
+        body.tools = chatOpts.tools;
+      }
+      if (chatOpts.toolChoice !== undefined) {
+        body.tool_choice = chatOpts.toolChoice;
+      }
 
       const controller = new AbortController();
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -253,14 +348,28 @@ export function createLlamaClient(options?: LlamaClientOptions): LlamaClient {
         );
       }
 
-      const content = parsed.choices?.[0]?.message?.content;
-      if (typeof content !== 'string' || content.trim().length === 0) {
+      const message = parsed.choices?.[0]?.message;
+      const content = message?.content;
+      const toolCalls = parseToolCalls(message?.tool_calls);
+
+      const hasContent = typeof content === 'string' && content.trim().length > 0;
+      // Sem texto E sem tool_calls não há resposta útil — mesmo erro de antes.
+      if (!hasContent && !toolCalls) {
         throw new LlamaInvalidResponseError('O modelo não retornou conteúdo em choices[0].message.content.');
       }
 
-      return {
-        content,
+      const result: ChatResult = {
+        content: typeof content === 'string' ? content : '',
       };
+      if (toolCalls) {
+        result.toolCalls = toolCalls;
+      }
+      const finishReason = parsed.choices?.[0]?.finish_reason;
+      if (typeof finishReason === 'string') {
+        result.finishReason = finishReason;
+      }
+
+      return result;
     },
 
     async embed(embedOpts: EmbeddingOptions): Promise<EmbedResult> {
@@ -334,6 +443,43 @@ export function createLlamaClient(options?: LlamaClientOptions): LlamaClient {
       return parsed.data
         .map((entry) => entry?.id)
         .filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
+    },
+
+    async listTools(listOpts?: ListToolsOptions): Promise<ChatTool[]> {
+      const url = `${baseUrl}/tools`;
+
+      const parsed = await requestJson<unknown>({
+        url,
+        timeoutMs: toolsTimeoutMs,
+        signal: listOpts?.signal,
+        method: 'GET',
+        failMessage: `Falha ao enviar requisição para ${url}`,
+      });
+
+      return parseTools(parsed);
+    },
+
+    async callTool(
+      tool: string,
+      params?: Record<string, unknown>,
+      callOpts?: CallToolOptions
+    ): Promise<ToolCallResult> {
+      const url = `${baseUrl}/tools`;
+
+      const parsed = await requestJson<Record<string, unknown>>({
+        url,
+        timeoutMs: toolsTimeoutMs,
+        signal: callOpts?.signal,
+        method: 'POST',
+        body: { tool, params: params ?? {} },
+        failMessage: `Falha ao enviar requisição para ${url}`,
+      });
+
+      const result: ToolCallResult = {};
+      if (typeof parsed.plain_text_response === 'string') {
+        result.plainTextResponse = parsed.plain_text_response;
+      }
+      return result;
     },
   };
 }
