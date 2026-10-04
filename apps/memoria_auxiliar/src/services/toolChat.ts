@@ -8,7 +8,9 @@
  * usar web", UI nem estado global. O cliente é injetado para permitir testes
  * com mocks e evitar acoplamento à configuração de servidores do app.
  */
-import type { ChatMessage, ChatTool, LlamaClient } from '@bosguega/llama-cpp';
+import type { ChatMessage, LlamaClient } from '@bosguega/llama-cpp';
+import { isWebSearchRequested } from '../utils/webIntent';
+import { limitToolResultContent, restrictToolDefinitions } from './toolRestrictions';
 
 /** Limite de rodadas de ferramentas para evitar loop infinito. */
 export const MAX_TOOL_ROUNDS = 5;
@@ -54,8 +56,13 @@ export async function askWithTools(
 ): Promise<ToolChatOutcome> {
   const maxRounds = options?.maxRounds ?? MAX_TOOL_ROUNDS;
 
-  // As definicoes vem do proprio servidor; nada e hardcoded aqui.
-  const tools: ChatTool[] = await client.listTools();
+  // A web e uma capacidade adicional: as ferramentas so sao oferecidas quando o
+  // usuario pede explicitamente uma consulta externa. Sem esse pedido, o chat
+  // segue igual ao de sempre, sem `tools`, baseado nas notas (RAG).
+  const webAllowed = isWebSearchRequested(question);
+  // As definicoes vem do proprio servidor; nada e hardcoded aqui. O schema e
+  // reduzido antes de chegar ao modelo para controlar a capacidade exposta.
+  const tools = webAllowed ? restrictToolDefinitions(await client.listTools()) : undefined;
 
   const messages: ChatMessage[] = [
     { role: 'system', content: options?.systemPrompt ?? DEFAULT_SYSTEM_PROMPT },
@@ -69,6 +76,12 @@ export async function askWithTools(
 
     const toolCalls = result.toolCalls;
     if (!toolCalls || toolCalls.length === 0) {
+      return { answer: result.content, chatCalls: round, toolExecutions };
+    }
+
+    // Sem ferramentas autorizadas, nenhuma chamada e executada: o usuario nao
+    // pediu consulta externa, entao o resultado vao-a como esta.
+    if (!tools) {
       return { answer: result.content, chatCalls: round, toolExecutions };
     }
 
@@ -87,7 +100,7 @@ export async function askWithTools(
       messages.push({
         role: 'tool',
         tool_call_id: call.id,
-        content: toolResult.plainTextResponse ?? '',
+        content: limitToolResultContent(toolResult.plainTextResponse),
       });
     }
   }

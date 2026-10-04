@@ -42,6 +42,12 @@ function mockClient(partial: Partial<LlamaClient>): LlamaClient {
   } as unknown as LlamaClient;
 }
 
+/** Pergunta que autoriza explicitamente a consulta a web. */
+const WEB_QUESTION = 'pesquise na web sobre o dolar';
+
+/** Pergunta comum, sem pedido de consulta externa. */
+const LOCAL_QUESTION = 'o que minhas notas dizem sobre o dolar';
+
 describe('askWithTools (tool calling loop)', () => {
   it('retorna a resposta direta quando o LLM nao pede ferramentas', async () => {
     const chat = vi.fn(async (_opts: ChatOptions): Promise<ChatResult> => ({ content: 'ola mundo' }));
@@ -52,8 +58,8 @@ describe('askWithTools (tool calling loop)', () => {
 
     expect(outcome).toEqual({ answer: 'ola mundo', chatCalls: 1, toolExecutions: 0 });
     expect(callTool).not.toHaveBeenCalled();
-    // As tools do servidor sao repassadas ao chat mesmo quando vazias.
-    expect(chat.mock.calls[0][0].tools).toEqual([]);
+    // Sem pedido de web, as tools nem sao buscadas no servidor.
+    expect(chat.mock.calls[0][0].tools).toBeUndefined();
   });
 
   it('executa uma ferramenta e usa o resultado na resposta final', async () => {
@@ -64,7 +70,7 @@ describe('askWithTools (tool calling loop)', () => {
     const callTool = vi.fn(async () => ({ plainTextResponse: 'R$ 5,17' }));
     const client = mockClient({ chat, callTool, listTools: vi.fn(async () => [searchTool]) });
 
-    const outcome = await askWithTools('qual a cotacao?', client);
+    const outcome = await askWithTools(WEB_QUESTION, client);
 
     expect(outcome.answer).toBe('resposta final');
     expect(outcome.chatCalls).toBe(2);
@@ -88,7 +94,7 @@ describe('askWithTools (tool calling loop)', () => {
     const callTool = vi.fn(async () => ({ plainTextResponse: 'ok' }));
     const client = mockClient({ chat, callTool });
 
-    const outcome = await askWithTools('q', client);
+    const outcome = await askWithTools(WEB_QUESTION, client);
 
     expect(outcome.toolExecutions).toBe(2);
     expect(callTool).toHaveBeenNthCalledWith(1, 'tavily_tavily_search', { query: 'x' });
@@ -104,7 +110,7 @@ describe('askWithTools (tool calling loop)', () => {
     const callTool = vi.fn(async () => ({ plainTextResponse: 'ok' }));
     const client = mockClient({ chat, callTool });
 
-    const outcome = await askWithTools('q', client);
+    const outcome = await askWithTools(WEB_QUESTION, client);
 
     expect(outcome.answer).toBe('final');
     expect(outcome.chatCalls).toBe(3);
@@ -121,7 +127,7 @@ describe('askWithTools (tool calling loop)', () => {
     const callTool = vi.fn(async () => ({ plainTextResponse: 'ok' }));
     const client = mockClient({ chat, callTool });
 
-    await expect(askWithTools('q', client)).rejects.toThrow(/rodadas/i);
+    await expect(askWithTools(WEB_QUESTION, client)).rejects.toThrow(/rodadas/i);
     expect(chat).toHaveBeenCalledTimes(MAX_TOOL_ROUNDS);
   });
 
@@ -141,7 +147,7 @@ describe('askWithTools (tool calling loop)', () => {
     const callTool = vi.fn();
     const client = mockClient({ chat, callTool });
 
-    await expect(askWithTools('q', client)).rejects.toThrow(/JSON/i);
+    await expect(askWithTools(WEB_QUESTION, client)).rejects.toThrow(/JSON/i);
     expect(callTool).not.toHaveBeenCalled();
   });
 
@@ -154,6 +160,136 @@ describe('askWithTools (tool calling loop)', () => {
     });
     const client = mockClient({ chat, callTool });
 
-    await expect(askWithTools('q', client)).rejects.toThrow('tool indisponivel');
+    await expect(askWithTools(WEB_QUESTION, client)).rejects.toThrow('tool indisponivel');
+  });
+it('trunca o resultado da busca ao entrar no historico, preservando tool_call_id', async () => {
+    const chat = vi
+      .fn(async (_opts: ChatOptions): Promise<ChatResult> => ({ content: '' }))
+      .mockResolvedValueOnce({ content: '', toolCalls: [toolCall('call_x', 'dolar')] })
+      .mockResolvedValueOnce({ content: 'final' });
+    const callTool = vi.fn(async () => ({ plainTextResponse: 'z'.repeat(20000) }));
+    const client = mockClient({ chat, callTool, listTools: vi.fn(async () => [searchTool]) });
+
+    await askWithTools(WEB_QUESTION, client);
+
+    const messages = chat.mock.calls[1][0].messages;
+    expect(messages[messages.length - 1]).toMatchObject({
+      role: 'tool',
+      tool_call_id: 'call_x',
+    });
+    expect(messages[messages.length - 1].content).toContain('truncado pelo aplicativo');
+  });
+
+  it('aplica o mesmo limite ao resultado do extract', async () => {
+    const chat = vi
+      .fn(async (_opts: ChatOptions): Promise<ChatResult> => ({ content: '' }))
+      .mockResolvedValueOnce({
+        content: '',
+        toolCalls: [
+          {
+            id: 'call_e',
+            type: 'function',
+            function: {
+              name: 'tavily_tavily_extract',
+              arguments: JSON.stringify({ urls: ['https://exemplo.com'] }),
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ content: 'final' });
+    const callTool = vi.fn(async () => ({ plainTextResponse: 'y'.repeat(9000) }));
+    const client = mockClient({ chat, callTool });
+
+    await askWithTools(WEB_QUESTION, client);
+
+    const messages = chat.mock.calls[1][0].messages;
+    const toolMessage = messages[messages.length - 1];
+    expect(toolMessage.role).toBe('tool');
+    expect(toolMessage.content).toContain('truncado pelo aplicativo');
+  });
+
+  it('repassa ao chat o schema da busca restrito', async () => {
+    const chat = vi
+      .fn(async (_opts: ChatOptions): Promise<ChatResult> => ({ content: 'ok' }))
+      .mockResolvedValueOnce({ content: 'ok' });
+    const exposedTool: ChatTool = {
+      type: 'function',
+      function: {
+        name: 'tavily_tavily_search',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string' },
+            include_raw_content: { type: 'boolean' },
+            max_results: { type: 'number', maximum: 20 },
+          },
+          required: ['query'],
+        },
+      },
+    };
+    const client = mockClient({ chat, listTools: vi.fn(async () => [exposedTool]) });
+
+    await askWithTools(WEB_QUESTION, client);
+
+    const properties = (chat.mock.calls[0][0].tools as ChatTool[])[0].function
+      .parameters as { properties: Record<string, unknown> };
+    expect(Object.keys(properties.properties)).toEqual(['query', 'max_results']);
+    expect(properties.properties.max_results).toMatchObject({ maximum: 3 });
+  });
+
+  it('nao passa tools quando a pergunta nao pede consulta externa', async () => {
+    const chat = vi.fn(async (_opts: ChatOptions): Promise<ChatResult> => ({ content: 'ok' }));
+    const client = mockClient({ chat, listTools: vi.fn(async () => [searchTool]) });
+
+    const outcome = await askWithTools(LOCAL_QUESTION, client);
+
+    expect(outcome.answer).toBe('ok');
+    expect(chat.mock.calls[0][0].tools).toBeUndefined();
+  });
+
+  it('nao lista nem executa ferramentas quando a web nao esta autorizada', async () => {
+    const chat = vi
+      .fn(async (_opts: ChatOptions): Promise<ChatResult> => ({ content: 'resposta local' }))
+      .mockResolvedValueOnce({
+        content: '',
+        toolCalls: [toolCall('c1', 'dolar')],
+      })
+      .mockResolvedValueOnce({ content: 'resposta local' });
+    const listTools = vi.fn(async () => [searchTool]);
+    const callTool = vi.fn(async () => ({ plainTextResponse: 'R$ 5,17' }));
+    const client = mockClient({ chat, listTools, callTool });
+
+    const outcome = await askWithTools(LOCAL_QUESTION, client);
+
+    expect(listTools).not.toHaveBeenCalled();
+    expect(callTool).not.toHaveBeenCalled();
+    expect(outcome.toolExecutions).toBe(0);
+  });
+
+  it('passa as tools ao chat quando a web esta autorizada', async () => {
+    const chat = vi.fn(async (_opts: ChatOptions): Promise<ChatResult> => ({ content: 'ok' }));
+    const listTools = vi.fn(async () => [searchTool]);
+    const client = mockClient({ chat, listTools });
+
+    await askWithTools(WEB_QUESTION, client);
+
+    expect(listTools).toHaveBeenCalledTimes(1);
+    expect(chat.mock.calls[0][0].tools).toEqual([searchTool]);
+  });
+
+  it('mantem o loop de tool calling funcionando com a web autorizada', async () => {
+    const chat = vi
+      .fn(async (_opts: ChatOptions): Promise<ChatResult> => ({ content: '' }))
+      .mockResolvedValueOnce({ content: '', toolCalls: [toolCall('call_1', 'dolar')] })
+      .mockResolvedValueOnce({ content: 'resposta final' });
+    const callTool = vi.fn(async () => ({ plainTextResponse: 'R$ 5,17' }));
+    const client = mockClient({ chat, callTool, listTools: vi.fn(async () => [searchTool]) });
+
+    const outcome = await askWithTools(WEB_QUESTION, client);
+
+    expect(outcome).toEqual({ answer: 'resposta final', chatCalls: 2, toolExecutions: 1 });
+    expect(callTool).toHaveBeenCalledWith('tavily_tavily_search', { query: 'dolar' });
+    // A segunda rodada continua recebendo as mesmas tools.
+    expect(chat.mock.calls[1][0].tools).toEqual([searchTool]);
   });
 });

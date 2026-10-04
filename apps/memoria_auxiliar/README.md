@@ -247,7 +247,63 @@ porcentagem — nenhuma similaridade foi calculada nesse caso.
 
 ---
 
-## 🧱 Estrutura
+## 🌐 Consulta à web (adicional, sob demanda)
+
+A web é uma **capacidade adicional**, nunca o padrão. A busca por notas e o RAG
+continuam respondendo tudo; a web só entra quando o usuário pede de forma
+explícita.
+
+> ⚠️ **Em desenvolvimento.** O fluxo existe e é testado, mas ainda não está
+> ligado ao chat da interface — nenhuma tela o aciona hoje.
+
+### Quando a web é liberada
+
+`isWebSearchRequested()` (`src/utils/webIntent.ts`) decide de forma determinística,
+sem outro LLM. Exige **dois** elementos: um verbo de consulta (*pesquise*,
+*busque*, *consulte*, *procure*, *verifique*...) **e** uma fonte externa (*web*,
+*internet*, *online*) próximos um do outro.
+
+| Pergunta | Web |
+| :--- | :---: |
+| "Pesquise na web sobre PGlite" | ✅ |
+| "Com base nessas notas, pesquise na internet se isso ainda é válido" | ✅ |
+| "O que minhas notas dizem sobre PGlite?" | ❌ |
+| "Qual é o preço atual do produto X?" | ❌ |
+
+A regra é conservadora por opção: na dúvida, **não** libera. Frases como "qual o
+preço atual?" não pedem consulta externa e continuam respondendo só com as notas.
+
+### Limites de segurança
+
+Dois controles independentes, ambos em `src/services/toolRestrictions.ts`:
+
+1. **Schema restrito.** As definições das tools vêm do servidor via
+   `listTools()` e são reduzidas antes de irem ao modelo. Na busca web ficam
+   apenas `query` (obrigatório), `max_results` (máximo **3**), `time_range` e
+   `search_depth`. Parâmetros como `include_raw_content` — que podem devolver
+   dezenas de milhares de caracteres — ficam inacessíveis ao modelo.
+2. **Teto de caracteres.** Como o `llama-server` **não valida** os argumentos
+   recebidos contra o schema, cada resultado é cortado em **8.000 caracteres**
+   antes de entrar no histórico, com uma marcação indicando o truncamento. Não
+   há resumo por LLM nem chamada adicional.
+
+### Como o fluxo funciona
+
+```text
+isWebSearchRequested(pergunta)
+  ├─ false → chat({ messages })                sem tools, sem chamada externa
+  └─ true  → listTools() → schema restrito → chat({ messages, tools })
+            → callTool() → resultado limitado → role: "tool" → chat() até responder
+```
+
+O `llama-server` precisa ser iniciado com um servidor MCP configurado
+(`--mcp-servers-config`, formato `mcpServers` do Cursor). O app descobre as
+ferramentas por `GET /tools` — nada é codificado aqui.
+
+> ℹ️ Mesmo sem tools autorizadas, se o modelo emitir `tool_calls` por conta própria,
+> elas **não são executadas**: a rodada encerra e a resposta segue como está.
+
+---
 
 - `src/services/tauriStore.ts`: persistência de configuração e perfil dos dois servidores.
 - `src/services/llmService.ts`: chat, RAG, sanitização de prompt e parsing de `USED_IDS`.
@@ -259,6 +315,9 @@ porcentagem — nenhuma similaridade foi calculada nesse caso.
 - `src/services/embeddingConnection.ts`: teste de conexão do servidor de embeddings.
 - `src/services/llamaServerControl.ts`: inicialização e verificação dos servidores locais.
 - `src/services/llamaServerStatus.ts`: estados e validação dos comandos.
+- `src/services/toolChat.ts`: loop de tool calling (chat → tool → resposta final).
+- `src/services/toolRestrictions.ts`: schema das tools exposto ao modelo e limite de caracteres do resultado.
+- `src/utils/webIntent.ts`: detecta o pedido explícito de consulta à web.
 - `src/utils/searchFilters.ts`: filtros combináveis (tag, período, fixadas, lembrete, embedding).
 - `src/utils/tagFilter.ts`: comparação de tags usada pelos filtros.
 - `src/utils/latestRequest.ts`: guarda de sequência para descartar respostas obsoletas.
@@ -272,7 +331,9 @@ porcentagem — nenhuma similaridade foi calculada nesse caso.
 
 Os testes rodam com **Vitest** e cobrem as partes com lógica: similaridade,
 reindexação, filtros de busca, notas relacionadas e duplicatas, sanitização de
-prompt, controle dos servidores e a guarda de requisições. Execute com:
+prompt, controle dos servidores, a guarda de requisições e o fluxo de tool
+calling (intenção de uso da web, schema restrito e limite de resultado).
+Execute com:
 
 ```bash
 npm test
@@ -280,4 +341,4 @@ npm test
 
 O cliente HTTP de `llama-server` vem do package compartilhado
 [`@bosguega/llama-cpp`](../../packages/llama-cpp), que expõe `health()`,
-`chat()`, `embed()` e `listModels()`.
+`chat()`, `embed()`, `listModels()`, `listTools()` e `callTool()`.
