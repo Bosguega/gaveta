@@ -15,6 +15,13 @@ import type { ChatTool } from '@bosguega/llama-cpp';
 /** Nome da ferramenta de busca web, conforme exposto pelo servidor. */
 const WEB_SEARCH_TOOL = 'tavily_tavily_search';
 
+/**
+ * Únicas ferramentas liberadas ao modelo. As demais que o servidor MCP
+ * anuncia (map, crawl, research...) são descartadas: não são necessárias e
+ * ampliariam o consumo de contexto e o custo da consulta.
+ */
+const ALLOWED_TOOLS = new Set([WEB_SEARCH_TOOL, 'tavily_tavily_extract']);
+
 /** Parametros mantidos na busca web no primeiro fluxo. */
 const SEARCH_ALLOWED_PARAMS = ['query', 'max_results', 'time_range', 'search_depth'] as const;
 
@@ -33,13 +40,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Deriva novas definicoes de ferramentas com o schema da busca web reduzido ao
- * primeiro fluxo. As definicoes originais nao sao mutadas e as demais tools sao
- * repassadas intactas.
+ * primeiro fluxo e descarta as ferramentas fora da lista permitida. As
+ * definicoes originais nao sao mutadas.
  */
 export function restrictToolDefinitions(tools: ChatTool[]): ChatTool[] {
-  return tools.map((tool) =>
-    tool.function.name === WEB_SEARCH_TOOL ? restrictSearchTool(tool) : tool,
-  );
+  return tools
+    .filter((tool) => ALLOWED_TOOLS.has(tool.function.name))
+    .map((tool) =>
+      tool.function.name === WEB_SEARCH_TOOL ? restrictSearchTool(tool) : tool,
+    );
 }
 
 function restrictSearchTool(tool: ChatTool): ChatTool {

@@ -10,17 +10,17 @@
  */
 import type { ChatMessage, LlamaClient } from '@bosguega/llama-cpp';
 import { isWebSearchRequested } from '../utils/webIntent';
+import { parseUsedIds } from './llmService';
 import { limitToolResultContent, restrictToolDefinitions } from './toolRestrictions';
 
 /** Limite de rodadas de ferramentas para evitar loop infinito. */
 export const MAX_TOOL_ROUNDS = 5;
 
-const DEFAULT_SYSTEM_PROMPT =
-  'Voce e um assistente. Use as ferramentas disponiveis quando precisar de informacao externa ou atualizada.';
-
 export interface ToolChatOutcome {
   /** Resposta final do modelo (sem tool calls pendentes). */
   answer: string;
+  /** IDs das memorias realmente utilizadas, lidos da linha USED_IDS. */
+  usedIds: number[];
   /** Quantidade de chamadas a chat() realizadas. */
   chatCalls: number;
   /** Quantidade de ferramentas efetivamente executadas. */
@@ -30,7 +30,34 @@ export interface ToolChatOutcome {
 export interface ToolChatOptions {
   maxRounds?: number;
   systemPrompt?: string;
+  /**
+   * Contexto RAG ja preparado (`buildNotesContext`). Quando presente, entra no
+   * prompt do modelo e os IDs citados em USED_IDS sao devolvidos em `usedIds`.
+   */
+  notesContext?: string;
 }
+
+/**
+ * Prompt do caminho com web: combina as memorias com o resultado das ferramentas.
+ * Difere do prompt do caminho local apenas ao permitir fonte externa — as
+ * instrucoes de citar USED_IDS e de nao inventar informacoes permanecem.
+ */
+const WEB_SYSTEM_PROMPT =
+  'Voce e uma memoria auxiliar pessoal.\n' +
+  '\n' +
+  'Voce pode responder usando as memorias fornecidas e, quando precisar de informacao externa ou atualizada, as ferramentas web disponiveis.\n' +
+  '\n' +
+  'REGRAS IMPORTANTES:\n' +
+  '- Nao invente informacoes.\n' +
+  '- Use as ferramentas quando a pergunta depender de dados externos ou atuais.\n' +
+  '- Nem toda memoria enviada precisa ser usada.\n' +
+  '- Use apenas as memorias realmente relevantes.\n' +
+  '\n' +
+  'SOBRE PESQUISAR NA WEB:\n' +
+  '- Faca poucas pesquisas e escolha consultas bem direcionadas ao que a pergunta pede.\n' +
+  '- Nao repita buscas nem pesquise de novo um tema que os resultados anteriores ja cobriram o suficiente.\n' +
+  '- Assim que tiver informacao suficiente para responder, pare de pesquisar e responda.\n' +
+  '- Nao tente fazer uma pesquisa exaustiva quando ela nao for necessaria para responder ao usuario.';
 
 /**
  * Converte a string de argumentos devolvida pelo modelo em objeto.
@@ -49,6 +76,20 @@ function parseToolArguments(raw: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
+/**
+ * Monta o resultado final, extraindo os IDs de memoria citados pelo modelo.
+ * Sem contexto de notas, a resposta pode citar apenas a web: `usedIds` fica vazio.
+ */
+function finish(answer: string, round: number, toolExecutions: number): ToolChatOutcome {
+  const parsed = parseUsedIds(answer);
+  return {
+    answer: parsed.answer,
+    usedIds: parsed.usedIds,
+    chatCalls: round,
+    toolExecutions,
+  };
+}
+
 export async function askWithTools(
   question: string,
   client: LlamaClient,
@@ -65,9 +106,16 @@ export async function askWithTools(
   const tools = webAllowed ? restrictToolDefinitions(await client.listTools()) : undefined;
 
   const messages: ChatMessage[] = [
-    { role: 'system', content: options?.systemPrompt ?? DEFAULT_SYSTEM_PROMPT },
-    { role: 'user', content: question },
+    { role: 'system', content: options?.systemPrompt ?? WEB_SYSTEM_PROMPT },
   ];
+
+  // O contexto RAG entra antes da pergunta, no mesmo formato do caminho local
+  // ([MEMORY_ID: N] + conteudo), para que o modelo possa citar USED_IDS.
+  const notesContext = options?.notesContext?.trim();
+  messages.push({
+    role: 'user',
+    content: notesContext ? `MEMORIAS:\n${notesContext}\n\nPERGUNTA:\n${question}` : question,
+  });
 
   let toolExecutions = 0;
 
@@ -76,13 +124,13 @@ export async function askWithTools(
 
     const toolCalls = result.toolCalls;
     if (!toolCalls || toolCalls.length === 0) {
-      return { answer: result.content, chatCalls: round, toolExecutions };
+      return finish(result.content, round, toolExecutions);
     }
 
     // Sem ferramentas autorizadas, nenhuma chamada e executada: o usuario nao
     // pediu consulta externa, entao o resultado vao-a como esta.
     if (!tools) {
-      return { answer: result.content, chatCalls: round, toolExecutions };
+      return finish(result.content, round, toolExecutions);
     }
 
     // Reenvia a mensagem do assistant com as tool calls para manter o historico

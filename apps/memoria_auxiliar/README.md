@@ -253,9 +253,6 @@ A web é uma **capacidade adicional**, nunca o padrão. A busca por notas e o RA
 continuam respondendo tudo; a web só entra quando o usuário pede de forma
 explícita.
 
-> ⚠️ **Em desenvolvimento.** O fluxo existe e é testado, mas ainda não está
-> ligado ao chat da interface — nenhuma tela o aciona hoje.
-
 ### Quando a web é liberada
 
 `isWebSearchRequested()` (`src/utils/webIntent.ts`) decide de forma determinística,
@@ -275,26 +272,63 @@ preço atual?" não pedem consulta externa e continuam respondendo só com as no
 
 ### Limites de segurança
 
-Dois controles independentes, ambos em `src/services/toolRestrictions.ts`:
+Três controles independentes:
 
-1. **Schema restrito.** As definições das tools vêm do servidor via
-   `listTools()` e são reduzidas antes de irem ao modelo. Na busca web ficam
-   apenas `query` (obrigatório), `max_results` (máximo **3**), `time_range` e
-   `search_depth`. Parâmetros como `include_raw_content` — que podem devolver
-   dezenas de milhares de caracteres — ficam inacessíveis ao modelo.
-2. **Teto de caracteres.** Como o `llama-server` **não valida** os argumentos
+1. **Escopo das ferramentas.** Só duas tools chegam ao modelo: `tavily_tavily_search`
+   e `tavily_tavily_extract`. As demais que o servidor MCP anuncia (`map`, `crawl`,
+   `research`) são descartadas em `restrictToolDefinitions()`
+   (`src/services/toolRestrictions.ts`).
+2. **Schema restrito.** As definições vêm do servidor via `listTools()` e são
+   reduzidas antes de irem ao modelo. Na busca web ficam apenas `query`
+   (obrigatório), `max_results` (máximo **3**), `time_range` e `search_depth`.
+   Parâmetros como `include_raw_content` — que podem devolver dezenas de milhares
+   de caracteres — ficam inacessíveis.
+3. **Teto de caracteres.** Como o `llama-server` **não valida** os argumentos
    recebidos contra o schema, cada resultado é cortado em **8.000 caracteres**
-   antes de entrar no histórico, com uma marcação indicando o truncamento. Não
-   há resumo por LLM nem chamada adicional.
+   antes de entrar no histórico, com marcação de truncamento. Não há resumo por
+   LLM nem chamada adicional.
+
+### Pesquisa com economia
+
+O prompt do caminho web (`WEB_SYSTEM_PROMPT`, em `toolChat.ts`) instrui o modelo a
+fazer poucas consultas, bem direcionadas, a não repetir buscas sobre temas já
+cobertos e a responder assim que tiver informação suficiente. É orientação, não
+número fixo de consultas.
+
+Sem isso, perguntas amplas (*"um panorama completo de…"*) faziam o Bonsai pesquisar
+até o limite de rodadas. Medido no Bonsai 2 com `-c 32768`, 10 notas e Tavily:
+
+| | Rodadas | Buscas | Tempo |
+| :--- | ---: | ---: | ---: |
+| Antes das regras | 5 (limite) | 7 | 211 s |
+| Depois das regras | 4 / 4 | 5 / 4 | 154 s / 150 s |
+
+A qualidade da resposta foi preservada: as respostas continuam estruturadas e
+citam fontes, com uma rodada de folga sob `MAX_TOOL_ROUNDS` (5).
+
+### Contexto do llama-server
+
+O servidor de chat roda com `-c 32768`. Com 10 notas de 5.000 caracteres
+(máximo que o app permite) somadas às tools e aos resultados web, o pior caso
+medido chegou a **20.962 tokens** — folga confortável, sem erro de contexto.
+Aumentar esse teto não tem custo de latência perceptível: o contexto maior só é
+"pago" quando é usado.
 
 ### Como o fluxo funciona
 
 ```text
-isWebSearchRequested(pergunta)
-  ├─ false → chat({ messages })                sem tools, sem chamada externa
-  └─ true  → listTools() → schema restrito → chat({ messages, tools })
-            → callTool() → resultado limitado → role: "tool" → chat() até responder
+askAI → RAG (notas recuperadas) → answerQuestion
+  ├─ isWebSearchRequested = false → generateAnswer(pergunta, notas)   [caminho normal]
+  └─ isWebSearchRequested = true  → listTools() → schema restrito
+                                    → chat({ messages, tools })
+                                    → callTool() → resultado limitado
+                                    → role: "tool" → chat() até responder
 ```
+
+O RAG roda **antes** e é comum aos dois caminhos: com ou sem web, o modelo recebe
+as mesmas notas no formato `[MEMORY_ID: N]`. O caminho com web devolve os
+`USED_IDS` da resposta final, então o painel de fontes e o debug continuam
+funcionando — uma resposta que usou só a web simplesmente tem `usedIds` vazio.
 
 O `llama-server` precisa ser iniciado com um servidor MCP configurado
 (`--mcp-servers-config`, formato `mcpServers` do Cursor). O app descobre as
@@ -315,8 +349,8 @@ ferramentas por `GET /tools` — nada é codificado aqui.
 - `src/services/embeddingConnection.ts`: teste de conexão do servidor de embeddings.
 - `src/services/llamaServerControl.ts`: inicialização e verificação dos servidores locais.
 - `src/services/llamaServerStatus.ts`: estados e validação dos comandos.
-- `src/services/toolChat.ts`: loop de tool calling (chat → tool → resposta final).
-- `src/services/toolRestrictions.ts`: schema das tools exposto ao modelo e limite de caracteres do resultado.
+- `src/services/toolChat.ts`: loop de tool calling e o prompt do caminho web.
+- `src/services/toolRestrictions.ts`: escopo e schema das tools, e o limite de caracteres do resultado.
 - `src/utils/webIntent.ts`: detecta o pedido explícito de consulta à web.
 - `src/utils/searchFilters.ts`: filtros combináveis (tag, período, fixadas, lembrete, embedding).
 - `src/utils/tagFilter.ts`: comparação de tags usada pelos filtros.
@@ -332,8 +366,8 @@ ferramentas por `GET /tools` — nada é codificado aqui.
 Os testes rodam com **Vitest** e cobrem as partes com lógica: similaridade,
 reindexação, filtros de busca, notas relacionadas e duplicatas, sanitização de
 prompt, controle dos servidores, a guarda de requisições e o fluxo de tool
-calling (intenção de uso da web, schema restrito e limite de resultado).
-Execute com:
+calling (intenção de uso da web, escopo e schema das tools, limite de resultado
+e passagem do contexto RAG). Execute com:
 
 ```bash
 npm test

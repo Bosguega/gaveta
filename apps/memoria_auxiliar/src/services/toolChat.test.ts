@@ -56,7 +56,12 @@ describe('askWithTools (tool calling loop)', () => {
 
     const outcome = await askWithTools('oi', client);
 
-    expect(outcome).toEqual({ answer: 'ola mundo', chatCalls: 1, toolExecutions: 0 });
+    expect(outcome).toEqual({
+      answer: 'ola mundo',
+      usedIds: [],
+      chatCalls: 1,
+      toolExecutions: 0,
+    });
     expect(callTool).not.toHaveBeenCalled();
     // Sem pedido de web, as tools nem sao buscadas no servidor.
     expect(chat.mock.calls[0][0].tools).toBeUndefined();
@@ -287,9 +292,55 @@ it('trunca o resultado da busca ao entrar no historico, preservando tool_call_id
 
     const outcome = await askWithTools(WEB_QUESTION, client);
 
-    expect(outcome).toEqual({ answer: 'resposta final', chatCalls: 2, toolExecutions: 1 });
+    expect(outcome).toEqual({
+      answer: 'resposta final',
+      usedIds: [],
+      chatCalls: 2,
+      toolExecutions: 1,
+    });
     expect(callTool).toHaveBeenCalledWith('tavily_tavily_search', { query: 'dolar' });
     // A segunda rodada continua recebendo as mesmas tools.
     expect(chat.mock.calls[1][0].tools).toEqual([searchTool]);
+  });
+
+  it('fornece o contexto RAG ao modelo no caminho com web', async () => {
+    const chat = vi.fn(async (_opts: ChatOptions): Promise<ChatResult> => ({ content: 'ok' }));
+    const client = mockClient({ chat, listTools: vi.fn(async () => [searchTool]) });
+
+    await askWithTools(WEB_QUESTION, client, {
+      notesContext: '[MEMORY_ID: 7]\nnota sobre pglite',
+    });
+
+    const [system, user] = chat.mock.calls[0][0].messages;
+    expect(system.content).toContain('ferramentas web disponiveis');
+    expect(user.content).toContain('[MEMORY_ID: 7]');
+    expect(user.content).toContain('nota sobre pglite');
+    expect(user.content).toContain(WEB_QUESTION);
+  });
+
+  it('extrai USED_IDS da resposta final no caminho com web', async () => {
+    const chat = vi.fn(async (_opts: ChatOptions): Promise<ChatResult> => ({
+      content: 'Resposta usando memoria e web.\n\nUSED_IDS: [7, 12]',
+    }));
+    const client = mockClient({ chat, listTools: vi.fn(async () => [searchTool]) });
+
+    const outcome = await askWithTools(WEB_QUESTION, client, {
+      notesContext: '[MEMORY_ID: 7]\nnota\n[MEMORY_ID: 12]\noutra nota',
+    });
+
+    expect(outcome.answer).toBe('Resposta usando memoria e web.');
+    expect(outcome.usedIds).toEqual([7, 12]);
+  });
+
+  it('devolve usedIds vazio quando a resposta usa somente a web', async () => {
+    const chat = vi.fn(async (_opts: ChatOptions): Promise<ChatResult> => ({
+      content: 'Resposta vinda da web.',
+    }));
+    const client = mockClient({ chat, listTools: vi.fn(async () => [searchTool]) });
+
+    const outcome = await askWithTools(WEB_QUESTION, client, { notesContext: '' });
+
+    expect(outcome.usedIds).toEqual([]);
+    expect(outcome.answer).toBe('Resposta vinda da web.');
   });
 });

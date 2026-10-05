@@ -4,7 +4,11 @@ import { useDeviceUI } from './composables/useDeviceUI'
 import { notesStore, updateStreak, resetStats, initStats, initTheme, showToast, navigateTo } from './store/notesStore'
 import { listNotes, saveNote, updateNote, deleteNote, deleteAllNotes, togglePinNote, searchNotesText } from './services/databaseService'
 import { getEmbedding, resolveEmbeddingCacheKey } from './services/embeddingService'
-import { generateAnswer, summarizeResults } from './services/llmService'
+import { createLlamaClient } from '@bosguega/llama-cpp'
+import { buildNotesContext, generateAnswer, summarizeResults } from './services/llmService'
+import { askWithTools } from './services/toolChat'
+import { isWebSearchRequested } from './utils/webIntent'
+import { getChatConfig } from './services/tauriStore'
 import { searchBySimilarity } from './services/similarityService'
 import { detectDuplicates, findRelatedNotes } from './services/relatedNotesService'
 import { createLatestRequestGate } from './utils/latestRequest'
@@ -225,6 +229,31 @@ async function generateSummary() {
     }, 'Gerando resumo...')
 }
 
+/**
+ * Gera a resposta do chat.
+ *
+ * O RAG roda sempre e antes: as notas recuperadas são o contexto dos dois
+ * caminhos. Se a pergunta pedir explicitamente uma consulta externa, as
+ * ferramentas web entram como capacidade adicional; caso contrário, o modelo
+ * responde apenas com as notas, como sempre.
+ */
+async function answerQuestion(question: string, results: SearchResult[]) {
+    const webAllowed = isWebSearchRequested(question)
+
+    if (!webAllowed) {
+        return generateAnswer(question, results)
+    }
+
+    const { baseUrl, model } = await getChatConfig()
+    const client = createLlamaClient({ baseUrl, defaultModel: model })
+
+    const { answer, usedIds } = await askWithTools(question, client, {
+        notesContext: buildNotesContext(results),
+    })
+
+    return { answer, usedIds }
+}
+
 async function askAI(question: string) {
     await runAction(async () => {
         notesStore.messages.push({ role: 'user', content: question })
@@ -240,7 +269,7 @@ async function askAI(question: string) {
             retrievedResults = textMatches.map(note => ({ note, score: 0 }))
         }
 
-        const { answer, usedIds } = await generateAnswer(question, retrievedResults)
+        const { answer, usedIds } = await answerQuestion(question, retrievedResults)
         const usedSources = retrievedResults.filter(r => usedIds.includes(r.note.id))
 
         notesStore.messages.push({

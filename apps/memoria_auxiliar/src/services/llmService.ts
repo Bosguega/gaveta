@@ -74,22 +74,35 @@ export async function summarizeResults(results: SearchResult[]): Promise<string>
   return summary;
 }
 
+/**
+ * Monta o bloco de notas com o marcador `[MEMORY_ID: N]`, sanitizado e limitado.
+ *
+ * Compartilhado entre o caminho normal (`generateAnswer`) e o caminho com web,
+ * para que ambos forneçam exatamente o mesmo contexto RAG ao modelo.
+ */
+export function buildNotesContext(results: SearchResult[]): string {
+  if (!results.length) {
+    return 'Nenhuma nota relevante encontrada.';
+  }
+
+  return results
+    .map((result) => `[MEMORY_ID: ${result.note.id}]\n${result.note.content}`)
+    .map((note) => sanitizePromptInput(note, MAX_NOTE_LENGTH))
+    .join('\n');
+}
+
+/** Prepara a pergunta do usuário para ir ao modelo. */
+export function sanitizeQuestion(question: string): string {
+  return sanitizePromptInput(question, MAX_QUESTION_LENGTH);
+}
+
 export async function generateAnswer(question: string, results: SearchResult[]): Promise<{ answer: string; usedIds: number[] }> {
   if (!question.trim()) {
     throw new Error('Pergunta vazia nao pode gerar resposta.');
   }
 
-  // Formata as notas com [MEMORY_ID: N] para a LLM identificar cada uma
-  const formattedNotes = results.map(
-    (result) => `[MEMORY_ID: ${result.note.id}]\n${result.note.content}`
-  );
-
-  const sanitizedQuestion = sanitizePromptInput(question, MAX_QUESTION_LENGTH);
-  const context = formattedNotes.length
-    ? formattedNotes
-      .map((note) => sanitizePromptInput(note, MAX_NOTE_LENGTH))
-      .join('\n')
-    : 'Nenhuma nota relevante encontrada.';
+  const context = buildNotesContext(results);
+  const sanitizedQuestion = sanitizeQuestion(question);
 
   const prompt = `Voce e uma memoria auxiliar pessoal.
 
@@ -112,10 +125,16 @@ Agora, responda a pergunta. Depois de responder, na linha final, informe SOMENTE
 USED_IDS: [id1, id2, id3]
 `;
 
-  return parseAnswerResponse(await generateText(prompt));
+  return parseUsedIds(await generateText(prompt));
 }
 
-function parseAnswerResponse(rawResponse: string): { answer: string; usedIds: number[] } {
+/**
+ * Extrai a linha `USED_IDS: [...]` da resposta do modelo.
+ *
+ * Usa a última ocorrência do marcador, para que um texto intermediário (por
+ * exemplo o raciocínio antes de uma tool call) não confunda o parser.
+ */
+export function parseUsedIds(rawResponse: string): { answer: string; usedIds: number[] } {
   const marker = 'USED_IDS: [';
   const markerIndex = rawResponse.lastIndexOf(marker);
 

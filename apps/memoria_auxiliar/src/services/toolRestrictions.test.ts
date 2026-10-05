@@ -90,6 +90,39 @@ describe('restrictToolDefinitions', () => {
     expect(propertiesOf(tools[1])).toHaveProperty('urls');
   });
 
+  it('descarta as ferramentas fora da lista permitida', () => {
+    const extras: ChatTool[] = [
+      {
+        type: 'function',
+        function: {
+          name: 'tavily_tavily_crawl',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'tavily_tavily_map',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'tavily_tavily_research',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+    ];
+
+    const tools = restrictToolDefinitions([fullSearchTool, extractTool, ...extras]);
+
+    expect(tools.map((t) => t.function.name)).toEqual([
+      'tavily_tavily_search',
+      'tavily_tavily_extract',
+    ]);
+  });
+
   it('produz um ChatTool valido com o nome preservado', () => {
     const [restricted] = restrictToolDefinitions([fullSearchTool]);
 

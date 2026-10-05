@@ -45,7 +45,7 @@ export const DEFAULT_EMBEDDING_MODEL = 'bge-m3';
  */
 export const DEFAULT_CHAT_COMMAND =
   '"C:\\Trabalhos\\Modelos\\llama-prism-b10709-9a9394a-bin-win-cuda-13.3-x64\\llama-server.exe" ' +
-  '-m "C:\\Trabalhos\\Modelos\\Ternary-Bonsai-2-27B-PQ2_0.gguf" --port 8080 -ngl 99 -c 16384';
+  '-m "C:\\Trabalhos\\Modelos\\Ternary-Bonsai-2-27B-PQ2_0.gguf" --port 8080 -ngl 99 -c 32768';
 
 export const DEFAULT_EMBEDDING_COMMAND =
   '"C:\\Trabalhos\\Modelos\\llama-prism-b10709-9a9394a-bin-win-cuda-13.3-x64\\llama-server.exe" ' +
