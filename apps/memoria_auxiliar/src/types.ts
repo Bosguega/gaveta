@@ -26,6 +26,35 @@ export interface ChatMessage {
   retrievedSources?: SearchResult[];
   /** IDs das memorias utilizadas, retornados pela LLM */
   usedIds?: number[];
+  /** Métricas da resposta. Ausente em conversas antigas: o rodapé não aparece. */
+  metrics?: ChatMetrics;
+}
+
+/**
+ * Métricas de uma resposta do assistente.
+ *
+ * Tokens e tempos vêm do llama.cpp quando ele os informa; o tempo total é
+ * medido no cliente (inclui rede e as rodadas de ferramentas).
+ */
+export interface ChatMetrics {
+  /** Tokens gerados na resposta. */
+  outputTokens?: number;
+  /** Tokens enviados ao modelo. */
+  inputTokens?: number;
+  /** Tokens de entrada + saída. */
+  totalTokens?: number;
+  /** Velocidade efetiva de geração (tok/s). */
+  tokensPerSecond?: number;
+  /** Tempo total da requisição, medido no cliente (ms). */
+  totalMs?: number;
+  /** Tempo até o primeiro token (ms). Sem streaming, equivale ao total. */
+  ttftMs?: number;
+  /** Tempo dedicado à geração dos tokens (ms). */
+  generationMs?: number;
+  /** Notas do RAG realmente usadas na resposta. */
+  notesUsed?: number;
+  /** Chamadas de ferramentas executadas (MCP). */
+  toolCalls?: number;
 }
 
 export interface ChatSession {

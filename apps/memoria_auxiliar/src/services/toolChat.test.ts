@@ -6,6 +6,7 @@ import type {
   ChatToolCall,
   LlamaClient,
 } from '@bosguega/llama-cpp';
+import { LlamaHttpError } from '@bosguega/llama-cpp';
 import { MAX_TOOL_ROUNDS, askWithTools } from './toolChat';
 
 const searchTool: ChatTool = {
@@ -48,6 +49,33 @@ const WEB_QUESTION = 'pesquise na web sobre o dolar';
 /** Pergunta comum, sem pedido de consulta externa. */
 const LOCAL_QUESTION = 'o que minhas notas dizem sobre o dolar';
 
+describe('erro de MCP desabilitado (HTTP 403)', () => {
+  it('traduz o 403 de feature_disabled em uma mensagem clara', async () => {
+    const chat = vi.fn();
+    const listTools = vi.fn(async () => {
+      throw new LlamaHttpError(
+        403,
+        '{"error":{"message":"this feature is disabled","type":"feature_disabled"}}',
+      );
+    });
+    const client = mockClient({ chat, listTools });
+
+    await expect(askWithTools(WEB_QUESTION, client)).rejects.toThrow(
+      /iniciado sem suporte a MCP/i,
+    );
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  it('nao interfere em outros erros HTTP', async () => {
+    const listTools = vi.fn(async () => {
+      throw new LlamaHttpError(500, 'erro interno');
+    });
+    const client = mockClient({ listTools });
+
+    await expect(askWithTools(WEB_QUESTION, client)).rejects.toThrow(LlamaHttpError);
+  });
+});
+
 describe('askWithTools (tool calling loop)', () => {
   it('retorna a resposta direta quando o LLM nao pede ferramentas', async () => {
     const chat = vi.fn(async (_opts: ChatOptions): Promise<ChatResult> => ({ content: 'ola mundo' }));
@@ -56,12 +84,12 @@ describe('askWithTools (tool calling loop)', () => {
 
     const outcome = await askWithTools('oi', client);
 
-    expect(outcome).toEqual({
-      answer: 'ola mundo',
-      usedIds: [],
-      chatCalls: 1,
-      toolExecutions: 0,
-    });
+    expect(outcome.answer).toBe('ola mundo');
+    expect(outcome.usedIds).toEqual([]);
+    expect(outcome.chatCalls).toBe(1);
+    expect(outcome.toolExecutions).toBe(0);
+    // O tempo total é medido no cliente, mesmo sem métricas do servidor.
+    expect(outcome.metrics?.totalMs).toBeGreaterThanOrEqual(0);
     expect(callTool).not.toHaveBeenCalled();
     // Sem pedido de web, as tools nem sao buscadas no servidor.
     expect(chat.mock.calls[0][0].tools).toBeUndefined();
@@ -292,12 +320,10 @@ it('trunca o resultado da busca ao entrar no historico, preservando tool_call_id
 
     const outcome = await askWithTools(WEB_QUESTION, client);
 
-    expect(outcome).toEqual({
-      answer: 'resposta final',
-      usedIds: [],
-      chatCalls: 2,
-      toolExecutions: 1,
-    });
+    expect(outcome.answer).toBe('resposta final');
+    expect(outcome.usedIds).toEqual([]);
+    expect(outcome.chatCalls).toBe(2);
+    expect(outcome.toolExecutions).toBe(1);
     expect(callTool).toHaveBeenCalledWith('tavily_tavily_search', { query: 'dolar' });
     // A segunda rodada continua recebendo as mesmas tools.
     expect(chat.mock.calls[1][0].tools).toEqual([searchTool]);
@@ -342,5 +368,39 @@ it('trunca o resultado da busca ao entrar no historico, preservando tool_call_id
 
     expect(outcome.usedIds).toEqual([]);
     expect(outcome.answer).toBe('Resposta vinda da web.');
+  });
+
+  it('soma as métricas do servidor em todas as rodadas', async () => {
+    const chat = vi
+      .fn(async (_opts: ChatOptions): Promise<ChatResult> => ({ content: '' }))
+      .mockResolvedValueOnce({
+        content: '',
+        toolCalls: [toolCall('c1', 'x')],
+        usage: { promptTokens: 100, completionTokens: 10, totalTokens: 110 },
+        timings: { predictedMs: 500, predictedPerSecond: 20 },
+      })
+      .mockResolvedValueOnce({
+        content: 'final',
+        usage: { promptTokens: 200, completionTokens: 30, totalTokens: 230 },
+        timings: { predictedMs: 900, predictedPerSecond: 33 },
+      });
+    const client = mockClient({
+      chat,
+      callTool: vi.fn(async () => ({ plainTextResponse: 'ok' })),
+      listTools: vi.fn(async () => [searchTool]),
+    });
+
+    const outcome = await askWithTools(WEB_QUESTION, client);
+
+    // 100+200 tokens de entrada somados entre as duas rodadas.
+    expect(outcome.metrics).toMatchObject({
+      inputTokens: 300,
+      outputTokens: 40,
+      totalTokens: 340,
+      generationMs: 1400,
+    });
+    // A velocidade vem da rodada que gerou a resposta final.
+    expect(outcome.metrics?.tokensPerSecond).toBe(33);
+    expect(outcome.metrics?.totalMs).toBeGreaterThanOrEqual(0);
   });
 });

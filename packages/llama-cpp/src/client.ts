@@ -40,6 +40,16 @@ interface OpenAiChatCompletionResponse {
       tool_calls?: unknown;
     };
   }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+  timings?: {
+    prompt_ms?: number;
+    predicted_ms?: number;
+    predicted_per_second?: number;
+  };
 }
 
 interface OpenAiModelsResponse {
@@ -309,6 +319,7 @@ export function createLlamaClient(options?: LlamaClientOptions): LlamaClient {
         controller.abort();
       }, chatTimeoutMs);
 
+      const startedAt = Date.now();
       let response: Response;
       try {
         response = await fetch(url, {
@@ -360,9 +371,24 @@ export function createLlamaClient(options?: LlamaClientOptions): LlamaClient {
 
       const result: ChatResult = {
         content: typeof content === 'string' ? content : '',
+        elapsedMs: Date.now() - startedAt,
       };
       if (toolCalls) {
         result.toolCalls = toolCalls;
+      }
+      if (parsed.usage) {
+        result.usage = {
+          promptTokens: parsed.usage.prompt_tokens,
+          completionTokens: parsed.usage.completion_tokens,
+          totalTokens: parsed.usage.total_tokens,
+        };
+      }
+      if (parsed.timings) {
+        result.timings = {
+          promptMs: parsed.timings.prompt_ms,
+          predictedMs: parsed.timings.predicted_ms,
+          predictedPerSecond: parsed.timings.predicted_per_second,
+        };
       }
       const finishReason = parsed.choices?.[0]?.finish_reason;
       if (typeof finishReason === 'string') {

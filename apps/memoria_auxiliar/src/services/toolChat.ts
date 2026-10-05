@@ -9,7 +9,9 @@
  * com mocks e evitar acoplamento à configuração de servidores do app.
  */
 import type { ChatMessage, LlamaClient } from '@bosguega/llama-cpp';
+import { LlamaHttpError } from '@bosguega/llama-cpp';
 import { isWebSearchRequested } from '../utils/webIntent';
+import type { ChatMetrics } from '../types';
 import { parseUsedIds } from './llmService';
 import { limitToolResultContent, restrictToolDefinitions } from './toolRestrictions';
 
@@ -25,6 +27,8 @@ export interface ToolChatOutcome {
   chatCalls: number;
   /** Quantidade de ferramentas efetivamente executadas. */
   toolExecutions: number;
+  /** Métricas somadas de todas as rodadas. */
+  metrics?: ChatMetrics;
 }
 
 export interface ToolChatOptions {
@@ -80,14 +84,38 @@ function parseToolArguments(raw: string): Record<string, unknown> {
  * Monta o resultado final, extraindo os IDs de memoria citados pelo modelo.
  * Sem contexto de notas, a resposta pode citar apenas a web: `usedIds` fica vazio.
  */
-function finish(answer: string, round: number, toolExecutions: number): ToolChatOutcome {
+function finish(answer: string, round: number, toolExecutions: number, metrics?: ChatMetrics): ToolChatOutcome {
   const parsed = parseUsedIds(answer);
   return {
     answer: parsed.answer,
     usedIds: parsed.usedIds,
     chatCalls: round,
     toolExecutions,
+    metrics,
   };
+}
+
+/**
+ * O llama-server só expõe /tools quando é iniciado com --mcp-servers-config.
+ * Sem isso ele responde HTTP 403 e a mensagem técnica não ajuda ninguém —
+ * aqui ela vira uma explicação do que fazer.
+ */
+function explainMcpDisabled(err: unknown): unknown {
+  if (err instanceof LlamaHttpError && err.status === 403 && err.responseBody.includes('feature_disabled')) {
+    return new Error(
+      'A consulta à web está indisponível porque o servidor do Bonsai foi iniciado sem suporte a MCP.',
+    );
+  }
+  return err;
+}
+
+/** Lista as tools do servidor, traduzindo o 403 de MCP desabilitado. */
+async function listToolsSafely(client: LlamaClient) {
+  try {
+    return await client.listTools();
+  } catch (err) {
+    throw explainMcpDisabled(err);
+  }
 }
 
 export async function askWithTools(
@@ -103,7 +131,7 @@ export async function askWithTools(
   const webAllowed = isWebSearchRequested(question);
   // As definicoes vem do proprio servidor; nada e hardcoded aqui. O schema e
   // reduzido antes de chegar ao modelo para controlar a capacidade exposta.
-  const tools = webAllowed ? restrictToolDefinitions(await client.listTools()) : undefined;
+  const tools = webAllowed ? restrictToolDefinitions(await listToolsSafely(client)) : undefined;
 
   const messages: ChatMessage[] = [
     { role: 'system', content: options?.systemPrompt ?? WEB_SYSTEM_PROMPT },
@@ -118,19 +146,48 @@ export async function askWithTools(
   });
 
   let toolExecutions = 0;
+  const startedAt = Date.now();
+  // Soma das métricas informadas pelo servidor em cada rodada.
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let totalTokens = 0;
+  let generationMs = 0;
+  let hasServerTokens = false;
 
   for (let round = 1; round <= maxRounds; round += 1) {
     const result = await client.chat({ messages, tools });
 
+    if (result.usage) {
+      hasServerTokens = true;
+      inputTokens += result.usage.promptTokens ?? 0;
+      outputTokens += result.usage.completionTokens ?? 0;
+      totalTokens += result.usage.totalTokens ?? 0;
+    }
+    if (result.timings?.predictedMs) {
+      generationMs += result.timings.predictedMs;
+    }
+
+    const tokenMetrics = hasServerTokens
+      ? { inputTokens, outputTokens, totalTokens, generationMs }
+      : {};
+
     const toolCalls = result.toolCalls;
     if (!toolCalls || toolCalls.length === 0) {
-      return finish(result.content, round, toolExecutions);
+      return finish(result.content, round, toolExecutions, {
+        ...tokenMetrics,
+        tokensPerSecond: result.timings?.predictedPerSecond,
+        totalMs: Date.now() - startedAt,
+      });
     }
 
     // Sem ferramentas autorizadas, nenhuma chamada e executada: o usuario nao
     // pediu consulta externa, entao o resultado vao-a como esta.
     if (!tools) {
-      return finish(result.content, round, toolExecutions);
+      return finish(result.content, round, toolExecutions, {
+        ...tokenMetrics,
+        tokensPerSecond: result.timings?.predictedPerSecond,
+        totalMs: Date.now() - startedAt,
+      });
     }
 
     // Reenvia a mensagem do assistant com as tool calls para manter o historico

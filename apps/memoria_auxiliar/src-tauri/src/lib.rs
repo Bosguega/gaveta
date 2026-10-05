@@ -89,6 +89,50 @@ fn remove_config(app: tauri::AppHandle, key: String) -> Result<(), String> {
     save_config(&app, &config)
 }
 
+// Arquivo de configuração dos servidores MCP, na mesma pasta de dados do app.
+// Vive ao lado do config.json para sobreviver a reinicializacoes e nao se
+// espalhar pelo projeto.
+const MCP_CONFIG_FILE: &str = "mcp.json";
+
+// Servidor MCP usado pela consulta a web. Tavily em modo keyless: search e
+// extract funcionam sem API key.
+const MCP_CONFIG_CONTENT: &str = r#"{
+  "mcpServers": {
+    "tavily": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "tavily-mcp@latest"]
+    }
+  }
+}"#;
+
+fn mcp_config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Nao foi possivel localizar app_data_dir: {error}"))?;
+
+    fs::create_dir_all(&dir)
+        .map_err(|error| format!("Nao foi possivel criar diretorio de dados: {error}"))?;
+
+    Ok(dir.join(MCP_CONFIG_FILE))
+}
+
+/// Cria o arquivo MCP se ainda nao existir e devolve o caminho absoluto.
+///
+/// O llama-server so expõe /tools quando e iniciado com --mcp-servers-config;
+/// sem isso ele responde HTTP 403 e a consulta a web fica indisponivel.
+#[tauri::command]
+fn ensure_mcp_config(app: tauri::AppHandle) -> Result<String, String> {
+    let path = mcp_config_path(&app)?;
+
+    if !path.exists() {
+        fs::write(&path, MCP_CONFIG_CONTENT)
+            .map_err(|error| format!("Nao foi possivel criar o arquivo MCP: {error}"))?;
+    }
+
+    Ok(path.to_string_lossy().to_string())
+}
+
 fn database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
@@ -894,7 +938,8 @@ pub fn run() {
             clear_chat_history,
             get_config,
             set_config,
-            remove_config
+            remove_config,
+            ensure_mcp_config
         ])
         .run(tauri::generate_context!())
         .expect("erro ao executar o aplicativo Tauri");

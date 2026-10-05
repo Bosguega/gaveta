@@ -75,7 +75,8 @@ function handleKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="quick-capture-overlay" @click.self="handleClose" @keydown="handleKeydown">
+  <!-- @keydown preserva o fechamento por Esc; o clique fora não fecha mais. -->
+  <div class="quick-capture-overlay" @keydown="handleKeydown">
     <div class="quick-capture-modal">
       <div class="qc-header">
         <div class="qc-title">

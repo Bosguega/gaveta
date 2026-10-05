@@ -330,17 +330,64 @@ as mesmas notas no formato `[MEMORY_ID: N]`. O caminho com web devolve os
 `USED_IDS` da resposta final, então o painel de fontes e o debug continuam
 funcionando — uma resposta que usou só a web simplesmente tem `usedIds` vazio.
 
-O `llama-server` precisa ser iniciado com um servidor MCP configurado
-(`--mcp-servers-config`, formato `mcpServers` do Cursor). O app descobre as
-ferramentas por `GET /tools` — nada é codificado aqui.
+### Configuração do MCP
+
+O `llama-server` só expõe `/tools` quando é iniciado com
+`--mcp-servers-config`; sem isso ele responde **HTTP 403** e a consulta à web
+falha. Para não depender de configuração manual, o app cuida disso sozinho:
+
+- o backend cria `mcp.json` na **própria pasta de dados**, ao lado do
+  `config.json` e do banco (Tavily em modo keyless: `search` e `extract`
+  funcionam sem API key);
+- o botão **Iniciar** acrescenta `--mcp-servers-config` ao comando do servidor de
+  chat na hora de subir o processo. O comando editável continua limpo — o caminho
+  absoluto não fica gravado na configuração.
+
+Basta reiniciar o servidor uma vez para a mudança valer.
+
+> ℹ️ Se o `llama-server` for iniciado fora do Tauri, não terá MCP. Nesse caso o
+> app mostra: *"A consulta à web está indisponível porque o servidor do Bonsai foi
+> iniciado sem suporte a MCP."*
 
 > ℹ️ Mesmo sem tools autorizadas, se o modelo emitir `tool_calls` por conta própria,
 > elas **não são executadas**: a rodada encerra e a resposta segue como está.
 
 ---
 
-- `src/services/tauriStore.ts`: persistência de configuração e perfil dos dois servidores.
-- `src/services/llmService.ts`: chat, RAG, sanitização de prompt e parsing de `USED_IDS`.
+## 📊 Métricas das respostas
+
+Cada resposta do assistente traz um rodapé discreto:
+
+```text
+⚡ 11,8 tok/s · 305 tokens · 69,2 s   ▸
+```
+
+Clicando na setinha, um painel mostra o resto: tokens de entrada, de saída e
+totais, tempo de geração, tempo total, notas usadas pelo RAG e chamadas de
+ferramenta.
+
+- Tokens e tempos vêm do próprio `llama.cpp` (`usage` e `timings` na resposta) —
+  nada é estimado.
+- O **tempo total** é medido no cliente, incluindo rede e, quando há consulta à
+  web, todas as rodadas de ferramentas.
+- **TTFT não é exibido**: o app não usa streaming, então o primeiro token chega
+  junto com a resposta completa — o valor real seria idêntico ao tempo total, e
+  repetir o número seria enganoso.
+- Conversas antigas, salvas antes desta camada, não têm métricas e continuam
+  funcionando normalmente — o rodapé simplesmente não aparece.
+
+---
+
+## 🪟 Modais
+
+Os modais fecham **apenas pelo botão de fechar**, nunca por clique fora — evita
+perder o que se está configurando. A captura rápida também fecha pelo `Esc`, por
+ser acionada por atalho global.
+
+---
+
+- `src/services/tauriStore.ts`: persistência de configuração e perfil dos dois servidores, e o arquivo MCP.
+- `src/services/llmService.ts`: chat, RAG, sanitização de prompt, parsing de `USED_IDS` e métricas.
 - `src/services/embeddingService.ts`: geração de embeddings, cache por hash e resolução da chave de cache.
 - `src/services/embeddingProfile.ts`: perfil, chave de cache, normalização L2.
 - `src/services/similarityService.ts`: similaridade de cosseno, busca semântica e `hasValidEmbedding`.
@@ -365,9 +412,9 @@ ferramentas por `GET /tools` — nada é codificado aqui.
 
 Os testes rodam com **Vitest** e cobrem as partes com lógica: similaridade,
 reindexação, filtros de busca, notas relacionadas e duplicatas, sanitização de
-prompt, controle dos servidores, a guarda de requisições e o fluxo de tool
-calling (intenção de uso da web, escopo e schema das tools, limite de resultado
-e passagem do contexto RAG). Execute com:
+prompt, controle dos servidores, a guarda de requisições, o fluxo de tool
+calling (intenção de uso da web, escopo e schema das tools, limite de resultado,
+passagem do contexto RAG) e as métricas. Execute com:
 
 ```bash
 npm test

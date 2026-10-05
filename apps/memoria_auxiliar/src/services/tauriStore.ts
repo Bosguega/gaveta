@@ -109,6 +109,30 @@ export async function getEmbeddingCommand(): Promise<string> {
   return value?.trim() || DEFAULT_EMBEDDING_COMMAND;
 }
 
+/**
+ * Caminho do arquivo de configuração dos servidores MCP, criado pelo backend
+ * na pasta de dados do app (ao lado do config.json).
+ */
+export async function getMcpConfigPath(): Promise<string> {
+  return invoke<string>('ensure_mcp_config');
+}
+
+/**
+ * Acrescenta `--mcp-servers-config` ao comando do llama-server de chat.
+ *
+ * Sem essa flag o servidor responde HTTP 403 em /tools e a consulta à web não
+ * funciona. A flag é aplicada só na inicialização — o comando editável pelo
+ * usuário continua limpo e não guarda caminho absoluto.
+ */
+export async function withMcpServersConfig(command: string): Promise<string> {
+  if (command.includes('--mcp-servers-config')) {
+    return command;
+  }
+
+  const path = await getMcpConfigPath();
+  return `${command} --mcp-servers-config "${path}"`;
+}
+
 export async function setEmbeddingCommand(command: string): Promise<void> {
   await setValue(KEY_EMBEDDING_COMMAND, command.trim());
 }

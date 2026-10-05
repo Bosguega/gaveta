@@ -75,6 +75,20 @@ export interface ChatOptions {
   signal?: AbortSignal;
 }
 
+/** Contagem de tokens devolvida pelo servidor. */
+export interface ChatUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+}
+
+/** Tempos de processamento devolvidos pelo llama.cpp. */
+export interface ChatTimings {
+  promptMs?: number;
+  predictedMs?: number;
+  predictedPerSecond?: number;
+}
+
 export interface ChatResult {
   /**
    * Texto do modelo. Pode vir vazio quando a resposta é uma chamada de
@@ -85,6 +99,11 @@ export interface ChatResult {
   toolCalls?: ChatToolCall[];
   /** `finish_reason` do servidor (ex.: 'stop', 'length', 'tool_calls'). */
   finishReason?: string;
+  /** Métricas do servidor, quando disponíveis. */
+  usage?: ChatUsage;
+  timings?: ChatTimings;
+  /** Tempo total medido no cliente, em ms (inclui rede). */
+  elapsedMs?: number;
 }
 
 export interface ListToolsOptions {

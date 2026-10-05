@@ -27,6 +27,7 @@ import {
   getEmbeddingConfig,
   setChatCommand,
   setEmbeddingCommand,
+  withMcpServersConfig,
 } from '../services/tauriStore';
 
 const emit = defineEmits<{
@@ -128,7 +129,9 @@ async function refresh(kind: LlamaServerKind): Promise<void> {
 async function launch(kind: LlamaServerKind): Promise<void> {
   const isChat = kind === 'chat';
   const baseUrl = isChat ? chatBaseUrl.value : embeddingBaseUrl.value;
-  const command = isChat ? chatCommand.value : embeddingCommand.value;
+  const rawCommand = isChat ? chatCommand.value : embeddingCommand.value;
+  // O MCP e necessario apenas para a consulta a web; embeddings nao usam tools.
+  const command = isChat ? await withMcpServersConfig(rawCommand) : rawCommand;
   const currentStatus = isChat ? chatStatus.value : embeddingStatus.value;
 
   if (isChat) chatStatus.value = 'iniciando';
@@ -177,7 +180,7 @@ async function launchAll(): Promise<void> {
       {
         kind: 'chat',
         baseUrl: chatBaseUrl.value,
-        command: chatCommand.value,
+        command: await withMcpServersConfig(chatCommand.value),
         status: chatStatus.value,
         embeddingModel: embeddingModel.value,
       },
@@ -282,7 +285,8 @@ function handleClose() {
 
 <template>
   <Teleport to="body">
-    <div class="modal-overlay" @click.self="handleClose">
+    <!-- Sem @click.self: o modal fecha apenas pelo botão "✕". -->
+    <div class="modal-overlay">
       <div class="ai-config-modal">
         <div class="modal-header">
           <div class="modal-title">

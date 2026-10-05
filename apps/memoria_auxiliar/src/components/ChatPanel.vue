@@ -28,6 +28,11 @@ const emit = defineEmits<{
 const question = ref('');
 const chatHistory = ref<HTMLElement | null>(null);
 const debugExpanded = ref<Record<number, boolean>>({});
+const metricsExpanded = ref<Record<number, boolean>>({});
+
+function toggleMetrics(index: number) {
+  metricsExpanded.value[index] = !metricsExpanded.value[index]
+}
 const showHistoryModal = ref(false);
 
 function toggleDebug(index: number) {
@@ -207,6 +212,48 @@ onUpdated(scrollToBottom);
             </div>
           </div>
         </div>
+      <!-- Métricas da resposta (discretas) -->
+        <div v-if="msg.role === 'assistant' && msg.metrics" class="metrics">
+          <button class="metrics-summary" @click="toggleMetrics(index)" :aria-expanded="metricsExpanded[index]">
+            <span v-if="msg.metrics.tokensPerSecond != null" class="metrics-speed">
+              ⚡ {{ msg.metrics.tokensPerSecond.toFixed(1) }} tok/s
+            </span>
+            <span v-if="msg.metrics.outputTokens != null" class="metrics-tokens">
+              {{ msg.metrics.outputTokens }} tokens
+            </span>
+            <span v-if="msg.metrics.totalMs != null" class="metrics-time">
+              {{ (msg.metrics.totalMs / 1000).toFixed(1) }} s
+            </span>
+            <span class="metrics-caret">{{ metricsExpanded[index] ? '▾' : '▸' }}</span>
+          </button>
+
+          <dl v-if="metricsExpanded[index]" class="metrics-detail">
+            <template v-if="msg.metrics.inputTokens != null">
+              <dt>Tokens de entrada</dt><dd>{{ msg.metrics.inputTokens }}</dd>
+            </template>
+            <template v-if="msg.metrics.outputTokens != null">
+              <dt>Tokens de saída</dt><dd>{{ msg.metrics.outputTokens }}</dd>
+            </template>
+            <template v-if="msg.metrics.totalTokens != null">
+              <dt>Tokens totais</dt><dd>{{ msg.metrics.totalTokens }}</dd>
+            </template>
+            <template v-if="msg.metrics.ttftMs != null">
+              <dt>TTFT</dt><dd>{{ (msg.metrics.ttftMs / 1000).toFixed(2) }} s</dd>
+            </template>
+            <template v-if="msg.metrics.generationMs != null">
+              <dt>Tempo de geração</dt><dd>{{ (msg.metrics.generationMs / 1000).toFixed(2) }} s</dd>
+            </template>
+            <template v-if="msg.metrics.totalMs != null">
+              <dt>Tempo total</dt><dd>{{ (msg.metrics.totalMs / 1000).toFixed(2) }} s</dd>
+            </template>
+            <template v-if="msg.metrics.notesUsed != null">
+              <dt>Notas usadas (RAG)</dt><dd>{{ msg.metrics.notesUsed }}</dd>
+            </template>
+            <template v-if="msg.metrics.toolCalls != null">
+              <dt>Chamadas de ferramenta</dt><dd>{{ msg.metrics.toolCalls }}</dd>
+            </template>
+          </dl>
+        </div>
       </div>
 
       <div v-if="notesStore.loading" class="message-wrapper assistant">
@@ -234,7 +281,7 @@ onUpdated(scrollToBottom);
     </div>
 
     <!-- Modal Histórico de Conversas -->
-    <div v-if="showHistoryModal" class="modal-overlay" @click.self="showHistoryModal = false">
+    <div v-if="showHistoryModal" class="modal-overlay">
       <div class="modal-content history-modal">
         <h3>Histórico de Conversas</h3>
         <p v-if="!notesStore.chatSessions.length" class="empty-sessions">Nenhuma conversa salva ainda.</p>
@@ -264,6 +311,58 @@ onUpdated(scrollToBottom);
 </template>
 
 <style scoped>
+/* Métricas: deliberadamente discretas — não devem competir com a resposta. */
+.metrics {
+  margin: 2px 0 10px;
+  max-width: 560px;
+}
+
+.metrics-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  cursor: pointer;
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.metrics-summary:hover {
+  opacity: 1;
+}
+
+.metrics-caret {
+  font-size: 0.6rem;
+  opacity: 0.7;
+}
+
+.metrics-detail {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+}
+
+.metrics-detail dt {
+  opacity: 0.8;
+}
+
+.metrics-detail dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
 .chat-container {
   display: flex;
   flex-direction: column;

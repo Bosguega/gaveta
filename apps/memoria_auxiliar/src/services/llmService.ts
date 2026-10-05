@@ -1,6 +1,8 @@
 import { createLlamaClient } from '@bosguega/llama-cpp';
+import type { ChatTimings, ChatUsage } from '@bosguega/llama-cpp';
 import { getChatConfig } from './tauriStore';
 import type { SearchResult } from '../types';
+import type { ChatMetrics } from '../types';
 import { logger } from '../utils/logger';
 
 const MAX_NOTE_LENGTH = 5000;
@@ -18,19 +20,33 @@ const DANGEROUS_TOKENS = [
   'override',
 ];
 
-async function generateText(prompt: string): Promise<string> {
+/** Resultado interno de uma geração: texto + métricas do servidor. */
+interface TextResult {
+  content: string;
+  usage?: ChatUsage;
+  timings?: ChatTimings;
+  elapsedMs?: number;
+}
+
+async function generateText(prompt: string): Promise<TextResult> {
   const { baseUrl, model } = await getChatConfig();
   const client = createLlamaClient({ baseUrl, defaultModel: model });
 
   logger.log('LLM', `Gerando texto via llama-server em ${client.baseUrl} (${model})`);
 
-  const { content } = await client.chat({
+  const startedAt = Date.now();
+  const result = await client.chat({
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.7,
     maxTokens: 2048,
   });
 
-  return content;
+  return {
+    content: result.content,
+    usage: result.usage,
+    timings: result.timings,
+    elapsedMs: Date.now() - startedAt,
+  };
 }
 
 function sanitizePromptInput(text: string, maxLength: number): string {
@@ -64,9 +80,10 @@ export async function summarizeResults(results: SearchResult[]): Promise<string>
     .map((note, index) => `${index + 1}. ${note}`)
     .join('\n');
 
-  const summary = (await generateText(
+  const { content } = await generateText(
     `Resuma ou organize as informacoes abaixo de forma clara. Use apenas os dados fornecidos.\n\n${notes}`
-  )).trim();
+  );
+  const summary = content.trim();
   if (!summary) {
     throw new Error('O llama-server nao retornou resumo.');
   }
@@ -96,7 +113,10 @@ export function sanitizeQuestion(question: string): string {
   return sanitizePromptInput(question, MAX_QUESTION_LENGTH);
 }
 
-export async function generateAnswer(question: string, results: SearchResult[]): Promise<{ answer: string; usedIds: number[] }> {
+export async function generateAnswer(
+  question: string,
+  results: SearchResult[],
+): Promise<{ answer: string; usedIds: number[]; metrics?: ChatMetrics }> {
   if (!question.trim()) {
     throw new Error('Pergunta vazia nao pode gerar resposta.');
   }
@@ -125,7 +145,20 @@ Agora, responda a pergunta. Depois de responder, na linha final, informe SOMENTE
 USED_IDS: [id1, id2, id3]
 `;
 
-  return parseUsedIds(await generateText(prompt));
+  const { content, usage, timings, elapsedMs } = await generateText(prompt);
+  const parsed = parseUsedIds(content);
+
+  return {
+    ...parsed,
+    metrics: {
+      inputTokens: usage?.promptTokens,
+      outputTokens: usage?.completionTokens,
+      totalTokens: usage?.totalTokens,
+      tokensPerSecond: timings?.predictedPerSecond,
+      generationMs: timings?.predictedMs,
+      totalMs: elapsedMs,
+    },
+  };
 }
 
 /**

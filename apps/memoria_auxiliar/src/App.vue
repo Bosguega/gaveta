@@ -247,11 +247,11 @@ async function answerQuestion(question: string, results: SearchResult[]) {
     const { baseUrl, model } = await getChatConfig()
     const client = createLlamaClient({ baseUrl, defaultModel: model })
 
-    const { answer, usedIds } = await askWithTools(question, client, {
+    const { answer, usedIds, metrics } = await askWithTools(question, client, {
         notesContext: buildNotesContext(results),
     })
 
-    return { answer, usedIds }
+    return { answer, usedIds, metrics }
 }
 
 async function askAI(question: string) {
@@ -269,7 +269,7 @@ async function askAI(question: string) {
             retrievedResults = textMatches.map(note => ({ note, score: 0 }))
         }
 
-        const { answer, usedIds } = await answerQuestion(question, retrievedResults)
+        const { answer, usedIds, metrics } = await answerQuestion(question, retrievedResults)
         const usedSources = retrievedResults.filter(r => usedIds.includes(r.note.id))
 
         notesStore.messages.push({
@@ -278,6 +278,11 @@ async function askAI(question: string) {
             usedSources,
             retrievedSources: retrievedResults,
             usedIds,
+            metrics: {
+                ...metrics,
+                notesUsed: usedSources.length,
+                toolCalls: metrics?.toolCalls ?? 0,
+            },
         })
     }, 'Pensando na resposta...')
 }

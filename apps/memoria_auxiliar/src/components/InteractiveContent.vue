@@ -126,7 +126,7 @@ const segments = computed(() => parseInteractiveContent(props.text));
 
   <!-- Modal de confirmação para executáveis -->
   <Teleport to="body">
-    <div v-if="showConfirm" class="confirm-overlay" @click.self="cancelConfirm">
+    <div v-if="showConfirm" class="confirm-overlay">
       <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
         <p id="confirm-title" class="confirm-title">Deseja abrir este aplicativo?</p>
         <div class="confirm-details">

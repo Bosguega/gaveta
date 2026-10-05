@@ -10,7 +10,33 @@ import {
   getEmbeddingCommand,
   setChatCommand,
   setEmbeddingCommand,
+  withMcpServersConfig,
 } from './tauriStore';
+
+describe('withMcpServersConfig', () => {
+  beforeEach(() => {
+    invoke.mockReset();
+  });
+
+  it('acrescenta a flag apontando para o arquivo criado pelo backend', async () => {
+    const path = 'C:\\Users\\teste\\AppData\\Roaming\\com.app\\mcp.json';
+    invoke.mockResolvedValue(path);
+
+    const result = await withMcpServersConfig('llama-server.exe -m bonsai.gguf');
+
+    expect(invoke).toHaveBeenCalledWith('ensure_mcp_config');
+    expect(result).toBe(`llama-server.exe -m bonsai.gguf --mcp-servers-config "${path}"`);
+  });
+
+  it('nao duplica a flag quando o comando ja a possui', async () => {
+    const result = await withMcpServersConfig(
+      'llama-server.exe --mcp-servers-config "C:/x/mcp.json"',
+    );
+
+    expect(result).toBe('llama-server.exe --mcp-servers-config "C:/x/mcp.json"');
+    expect(invoke).not.toHaveBeenCalled();
+  });
+});
 
 describe('persistência dos comandos dos servidores', () => {
   /** Simula o config.json: mapa chave -> valor. */
