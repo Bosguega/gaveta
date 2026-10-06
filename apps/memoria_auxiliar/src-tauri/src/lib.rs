@@ -3,11 +3,15 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::Manager;
 
-pub struct DbState(pub Mutex<Connection>);
+pub struct DbState(pub Arc<Mutex<Connection>>);
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Note {
@@ -28,6 +32,45 @@ pub struct ChatSession {
     pub messages: String,
     pub created_at: String,
     pub updated_at: String,
+}
+
+// --- Sincronização Android <-> PC (caixa de entrada do celular) ---
+//
+// Contrato: POST /memories com {"memories":[{client_id, content, tags,
+// created_at}]} responde 200 {"accepted":[{client_id, note_id}]}.
+// O client_id (UUID gerado no celular na captura) é a identidade da memória;
+// reenvios do mesmo client_id retornam o id já persistido (idempotência).
+// Só entra em "accepted" o que foi commitado no SQLite — o Android só apaga
+// do aparelho o que está nessa lista (at-least-once + idempotência).
+
+pub const SYNC_PORT_KEY: &str = "sync_port";
+pub const SYNC_TOKEN_KEY: &str = "sync_token";
+pub const SYNC_DEFAULT_PORT: u16 = 32173;
+/// Tamanho máximo do corpo aceito no POST /memories (lote de textos curtos).
+const SYNC_MAX_BODY_BYTES: usize = 1024 * 1024;
+
+#[derive(Deserialize)]
+struct SyncMemoryInput {
+    client_id: Option<String>,
+    content: Option<String>,
+    tags: Option<String>,
+    created_at: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct SyncBatchRequest {
+    memories: Option<Vec<SyncMemoryInput>>,
+}
+
+#[derive(Serialize)]
+struct SyncAcceptedItem {
+    client_id: String,
+    note_id: i64,
+}
+
+#[derive(Serialize)]
+struct SyncBatchResponse {
+    accepted: Vec<SyncAcceptedItem>,
 }
 
 const CONFIG_FILE: &str = "memoria_auxiliar_config.json";
@@ -199,6 +242,15 @@ fn open_and_migrate_database(app: &tauri::AppHandle) -> Result<Connection, Strin
     let _ = connection.execute("ALTER TABLE notes ADD COLUMN pinned INTEGER DEFAULT 0", []);
     let _ = connection.execute("ALTER TABLE notes ADD COLUMN reminder_at TEXT", []);
     let _ = connection.execute("ALTER TABLE notes ADD COLUMN updated_at TEXT", []);
+    // client_id: identidade da memória criada no celular (UUID gerado na
+    // captura). Nullable para não afetar notas antigas nem as criadas no PC;
+    // o índice único garante a idempotência dos reenvios. Sem origin,
+    // device_id ou status: depois de gravada, é só uma nota.
+    let _ = connection.execute("ALTER TABLE notes ADD COLUMN client_id TEXT", []);
+    let _ = connection.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_client_id ON notes(client_id)",
+        [],
+    );
 
     ensure_embedding_cache_schema(&connection)?;
 
@@ -350,6 +402,246 @@ fn save_note(
         created_at: created_at.clone(),
         updated_at: Some(created_at),
     })
+}
+
+/// Insere uma memória vinda do celular de forma idempotente.
+///
+/// Retorna o rowid da nota (novo ou já existente para o mesmo client_id).
+/// Cada chamada auto-commita: sem transação de lote. Se o PC cair no meio de
+/// um lote, o Android reenvia tudo e os itens já gravados respondem "já
+/// existia" — o ACK por item (não por lote) dispensa a transação.
+///
+/// embedding entra como '[]' (o createNote do frontend já tolera nota sem
+/// embedding e o reindexService cobre o preenchimento posterior); o celular
+/// nunca espera o BGE-M3 para receber o ACK.
+fn insert_synced_note(
+    conn: &Connection,
+    client_id: &str,
+    content: &str,
+    tags: &str,
+    created_at: &str,
+) -> Result<i64, String> {
+    if let Ok(existing) = conn.query_row(
+        "SELECT id FROM notes WHERE client_id = ?1",
+        params![client_id],
+        |row| row.get::<_, i64>(0),
+    ) {
+        return Ok(existing);
+    }
+
+    conn.execute(
+        "INSERT INTO notes (content, embedding, tags, pinned, reminder_at, created_at, updated_at, client_id)
+         VALUES (?1, '[]', ?2, 0, NULL, ?3, ?3, ?4)",
+        params![content, tags, created_at, client_id],
+    )
+    .map_err(|error| format!("Nao foi possivel salvar memoria sincronizada: {error}"))?;
+
+    Ok(conn.last_insert_rowid())
+}
+
+/// Valida e persiste um lote já desserializado. Itens inválidos (client_id
+/// vazio, conteúdo vazio) são ignorados sem abortar o resto — falha parcial
+/// mantém no celular só o que não foi aceito.
+///
+/// Só o que passou pelo INSERT entra em `accepted`: o chamador HTTP responde
+/// 200 apenas depois desta função retornar, então nada na resposta mente
+/// sobre a persistência.
+fn handle_sync_batch(conn: &Connection, items: Vec<SyncMemoryInput>) -> Vec<SyncAcceptedItem> {
+    let mut accepted = Vec::new();
+    for item in items {
+        let client_id = item.client_id.unwrap_or_default().trim().to_string();
+        let content = item.content.unwrap_or_default().trim().to_string();
+        if client_id.is_empty() || content.is_empty() {
+            continue;
+        }
+        let tags = item.tags.unwrap_or_default().trim().to_string();
+        let created_at = item
+            .created_at
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| Utc::now().to_rfc3339());
+        match insert_synced_note(conn, &client_id, &content, &tags, &created_at) {
+            Ok(note_id) => accepted.push(SyncAcceptedItem { client_id, note_id }),
+            Err(_) => continue,
+        }
+    }
+    accepted
+}
+
+/// Token de sincronização: usa o configurado (sync_token) ou gera um na
+/// primeira vez e persiste. Comparação simples de igualdade basta para a
+/// LAN de um único usuário — nada de framework de auth.
+fn ensure_sync_token(config: &mut HashMap<String, String>) -> String {
+    if let Some(token) = config.get(SYNC_TOKEN_KEY) {
+        if !token.trim().is_empty() {
+            return token.clone();
+        }
+    }
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let token = format!("{:x}-{:x}", nanos, std::process::id());
+    config.insert(SYNC_TOKEN_KEY.to_string(), token.clone());
+    token
+}
+
+fn sync_port_for(config: &HashMap<String, String>) -> u16 {
+    config
+        .get(SYNC_PORT_KEY)
+        .and_then(|value| value.trim().parse::<u16>().ok())
+        .unwrap_or(SYNC_DEFAULT_PORT)
+}
+
+fn sync_response(status: &str, body: &str) -> Vec<u8> {
+    format!(
+        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    )
+    .into_bytes()
+}
+
+fn read_sync_request(
+    stream: &mut std::net::TcpStream,
+) -> Option<(String, HashMap<String, String>, Vec<u8>)> {
+    let mut buffer = Vec::new();
+    let mut chunk = [0u8; 4096];
+    // Lê até o fim dos headers; o corpo vem em seguida pelo Content-Length.
+    loop {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => {
+                buffer.extend_from_slice(&chunk[..n]);
+                if buffer.len() > SYNC_MAX_BODY_BYTES + 8192 {
+                    return None;
+                }
+                if buffer.windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            Err(_) => return None,
+        }
+    }
+    let header_end = buffer.windows(4).position(|w| w == b"\r\n\r\n")?;
+    let header_text = String::from_utf8_lossy(&buffer[..header_end]).to_string();
+    let mut lines = header_text.lines();
+    let request_line = lines.next().unwrap_or_default().to_string();
+    let mut headers = HashMap::new();
+    for line in lines {
+        if let Some((name, value)) = line.split_once(':') {
+            headers.insert(name.trim().to_lowercase(), value.trim().to_string());
+        }
+    }
+    let content_length: usize = headers
+        .get("content-length")
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
+    if content_length > SYNC_MAX_BODY_BYTES {
+        return None;
+    }
+    let mut body = buffer[header_end + 4..].to_vec();
+    while body.len() < content_length {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => body.extend_from_slice(&chunk[..n]),
+            Err(_) => return None,
+        }
+    }
+    if body.len() != content_length {
+        return None;
+    }
+    Some((request_line, headers, body))
+}
+
+fn handle_sync_connection(
+    mut stream: std::net::TcpStream,
+    db: &Arc<Mutex<Connection>>,
+    token: &str,
+) {
+    let response = match read_sync_request(&mut stream) {
+        Some((request_line, headers, body)) => {
+            let mut parts = request_line.split_whitespace();
+            let method = parts.next().unwrap_or_default();
+            let path = parts.next().unwrap_or_default();
+            // Token no header Authorization: Bearer <token>. Resposta 401
+            // genérica para não vazar se o token existe ou não.
+            let authorized = headers
+                .get("authorization")
+                .and_then(|value| value.strip_prefix("Bearer "))
+                .map(|value| value.trim() == token)
+                .unwrap_or(false);
+            if !authorized {
+                sync_response("401 Unauthorized", r#"{"error":"unauthorized"}"#)
+            } else if method == "GET" && path == "/health" {
+                // Barato e sem superfície extra: serve ao "testar conexão"
+                // manual e à futura detecção de PC na rede. Exige o token.
+                sync_response("200 OK", r#"{"ok":true}"#)
+            } else if method == "POST" && path == "/memories" {
+                let items: Option<Vec<SyncMemoryInput>> =
+                    serde_json::from_slice::<SyncBatchRequest>(&body)
+                        .ok()
+                        .and_then(|req| req.memories);
+                match items {
+                    Some(items) => match db.lock() {
+                        Ok(conn) => {
+                            let accepted = handle_sync_batch(&conn, items);
+                            let body = serde_json::to_string(&SyncBatchResponse { accepted })
+                                .unwrap_or_else(|_| r#"{"accepted":[]}"#.to_string());
+                            sync_response("200 OK", &body)
+                        }
+                        Err(_) => {
+                            sync_response("503 Service Unavailable", r#"{"error":"database busy"}"#)
+                        }
+                    },
+                    None => sync_response("400 Bad Request", r#"{"error":"invalid body"}"#),
+                }
+            } else {
+                sync_response("404 Not Found", r#"{"error":"not found"}"#)
+            }
+        }
+        None => sync_response("400 Bad Request", r#"{"error":"invalid request"}"#),
+    };
+    let _ = stream.write_all(&response);
+}
+
+/// Servidor HTTP de sincronização: std::net puro, sem dependência nova.
+///
+/// Por que sem biblioteca (reqwest já existe, mas é cliente; nada no
+/// Cargo.toml serve HTTP): o contrato é um POST + um GET com Bearer. Um
+/// framework (axum/actix) traria um runtime async só para isso — o projeto
+/// já usa thread dedicada + TcpListener para os llama-servers, então o
+/// padrão é este. Conexões sequenciais: o único cliente é o celular do
+/// próprio usuário, sem concorrência real.
+///
+/// Roda em thread dedicada com a conexão compartilhada (DbState agora é
+/// Arc<Mutex<...>>). Limitação consciente: sync funciona com o app
+/// desktop aberto.
+fn spawn_sync_server(db: Arc<Mutex<Connection>>, port: u16, token: String) {
+    thread::spawn(move || {
+        let listener = match bind_sync_listener(port) {
+            Ok(listener) => listener,
+            Err(error) => {
+                eprintln!("[sync] nao foi possivel escutar na porta {port}: {error}");
+                return;
+            }
+        };
+        println!("[sync] servidor de sincronizacao escutando em 0.0.0.0:{port}");
+        serve_sync_connections(listener, &db, &token);
+    });
+}
+
+fn bind_sync_listener(port: u16) -> std::io::Result<TcpListener> {
+    TcpListener::bind(("0.0.0.0", port))
+}
+
+fn serve_sync_connections(listener: TcpListener, db: &Arc<Mutex<Connection>>, token: &str) {
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => handle_sync_connection(stream, db, token),
+            Err(error) => eprintln!("[sync] erro de conexao: {error}"),
+        }
+    }
 }
 
 #[tauri::command]
@@ -877,22 +1169,89 @@ fn start_llama_server(
     Ok(true)
 }
 
+/// Timeouts do ciclo Parar: processo sumir e porta liberar.
+const STOP_PROCESS_TIMEOUT_SECS: u64 = 15;
+const STOP_PORT_TIMEOUT_SECS: u64 = 10;
+const STOP_POLL_MS: u64 = 100;
+
+/// A porta esta livre? Um bind bem-sucedido significa que ninguem escuta nela.
+fn port_is_free(port: u16) -> bool {
+    TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
+/// Encerra o processo e so conclui quando o PID desapareceu E a porta liberou.
+///
+/// `TerminateProcess` e assincrono: um novo start precisa esperar a saida real
+/// para nao disputar VRAM com o processo que ainda esta finalizando.
+/// Sem `port`, apenas a saida do processo e confirmada.
+fn terminate_and_wait(child: &mut std::process::Child, port: Option<u16>) -> Result<(), String> {
+    // Processo ja finalizado nao precisa de kill; a espera abaixo confirma a saida.
+    if !matches!(child.try_wait(), Ok(Some(_))) {
+        child
+            .kill()
+            .map_err(|error| format!("Nao foi possivel encerrar o processo: {error}"))?;
+    }
+
+    let deadline = Instant::now() + Duration::from_secs(STOP_PROCESS_TIMEOUT_SECS);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    return Err(format!(
+                        "O processo nao encerrou em {STOP_PROCESS_TIMEOUT_SECS}s. \
+                         Feche a janela de console ou encerre o processo manualmente e tente de novo."
+                    ));
+                }
+                thread::sleep(Duration::from_millis(STOP_POLL_MS));
+            }
+            Err(error) => return Err(format!("Falha ao confirmar a saida do processo: {error}")),
+        }
+    }
+
+    if let Some(port) = port {
+        let deadline = Instant::now() + Duration::from_secs(STOP_PORT_TIMEOUT_SECS);
+        while !port_is_free(port) {
+            if Instant::now() >= deadline {
+                return Err(format!(
+                    "O processo encerrou, mas a porta {port} continua em uso por outro processo."
+                ));
+            }
+            thread::sleep(Duration::from_millis(STOP_POLL_MS));
+        }
+    }
+
+    Ok(())
+}
+
 /// Encerra apenas o processo iniciado pela propria aplicacao.
 ///
 /// Retorna false quando o app nao e dono do processo (servidor previamente
 /// iniciado pelo usuario) — nesse caso nada e encerrado.
+/// O comando so resolve depois da confirmacao de saida (e da porta livre),
+/// para que um novo start nunca crie um segundo llama-server por cima do antigo.
 #[tauri::command]
-fn stop_llama_server(state: tauri::State<ServerState>, kind: String) -> Result<bool, String> {
+fn stop_llama_server(
+    state: tauri::State<ServerState>,
+    kind: String,
+    port: Option<u16>,
+) -> Result<bool, String> {
     let key = normalize_server_kind(&kind)?;
 
     let mut servers = state.0.lock().map_err(|e| e.to_string())?;
     let Some(mut child) = servers.remove(&key) else {
         return Ok(false);
     };
+    // Solta o lock durante a espera: outros comandos nao podem ficar bloqueados.
+    drop(servers);
 
-    child
-        .kill()
-        .map_err(|error| format!("Nao foi possivel encerrar o processo: {error}"))?;
+    let result = terminate_and_wait(&mut child, port);
+    if result.is_err() {
+        // Devolve o handle para que o usuario possa tentar parar de novo.
+        let mut servers = state.0.lock().map_err(|e| e.to_string())?;
+        servers.insert(key, child);
+    }
+    result?;
 
     Ok(true)
 }
@@ -911,8 +1270,19 @@ pub fn run() {
         .setup(|app| {
             let conn = open_and_migrate_database(app.handle())
                 .expect("Falha ao abrir e migrar SQLite");
-            app.manage(DbState(Mutex::new(conn)));
+            let db = Arc::new(Mutex::new(conn));
+            app.manage(DbState(db.clone()));
             app.manage(ServerState::default());
+            // Servidor de sincronização Android: token gerado na primeira vez
+            // (ou o configurado via sync_token) e porta via sync_port.
+            let mut config = load_config(app.handle());
+            let token = ensure_sync_token(&mut config);
+            let port = sync_port_for(&config);
+            if save_config(app.handle(), &config).is_ok() {
+                spawn_sync_server(db, port, token);
+            } else {
+                eprintln!("[sync] nao foi possivel persistir o token; servidor nao iniciado");
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -983,6 +1353,15 @@ mod tests {
     fn collapses_extra_whitespace() {
         let parts = parse_command_line("  llama-server.exe   -ngl 99  ").unwrap();
         assert_eq!(parts, vec!["llama-server.exe", "-ngl", "99"]);
+    }
+
+    #[test]
+    fn port_is_free_detects_listener() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(!port_is_free(port));
+        drop(listener);
+        assert!(port_is_free(port));
     }
 
     #[test]
@@ -1125,5 +1504,257 @@ mod tests {
         prune_orphan_cache_entry(&conn, None, "qualquer").unwrap();
 
         assert_eq!(cache_row_count(&conn, "key-x"), 1);
+    }
+
+    // --- Sincronização Android <-> PC ---
+
+    fn sync_test_connection() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE notes (
+                id INTEGER PRIMARY KEY,
+                content TEXT NOT NULL,
+                embedding TEXT NOT NULL,
+                tags TEXT NOT NULL DEFAULT '',
+                pinned INTEGER NOT NULL DEFAULT 0,
+                reminder_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT,
+                client_id TEXT
+            );
+            CREATE UNIQUE INDEX idx_notes_client_id ON notes(client_id);
+            ",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn sync_note_count(conn: &Connection) -> i64 {
+        conn.query_row("SELECT COUNT(*) FROM notes", [], |row| row.get(0))
+            .unwrap()
+    }
+
+    fn sync_item(client_id: &str, content: &str) -> SyncMemoryInput {
+        SyncMemoryInput {
+            client_id: Some(client_id.to_string()),
+            content: Some(content.to_string()),
+            tags: Some("celular".to_string()),
+            created_at: Some("2026-10-06T12:00:00Z".to_string()),
+        }
+    }
+
+    #[test]
+    fn sync_accepts_new_memory_with_cell_capture_timestamp() {
+        let conn = sync_test_connection();
+        let accepted = handle_sync_batch(&conn, vec![sync_item("uuid-1", "comprar pão")]);
+
+        assert_eq!(accepted.len(), 1);
+        assert_eq!(accepted[0].client_id, "uuid-1");
+        assert_eq!(sync_note_count(&conn), 1);
+        let (created_at, embedding): (String, String) = conn
+            .query_row(
+                "SELECT created_at, embedding FROM notes WHERE client_id = 'uuid-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        // created_at da captura é preservado (não o horário do recebimento);
+        // embedding fica vazio para o reindex posterior no PC.
+        assert_eq!(created_at, "2026-10-06T12:00:00Z");
+        assert_eq!(embedding, "[]");
+    }
+
+    #[test]
+    fn sync_resend_after_timeout_does_not_duplicate() {
+        // Timeout clássico: o PC gravou mas a resposta se perdeu; o Android
+        // reenvia o mesmo lote. O reenvio retorna "já existia" como aceito,
+        // permitindo ao celular apagar sem duplicar.
+        let conn = sync_test_connection();
+        let first = handle_sync_batch(&conn, vec![sync_item("uuid-timeout", "ligar para o banco")]);
+        let second =
+            handle_sync_batch(&conn, vec![sync_item("uuid-timeout", "ligar para o banco")]);
+
+        assert_eq!(first.len(), 1);
+        assert_eq!(second.len(), 1);
+        assert_eq!(first[0].note_id, second[0].note_id);
+        assert_eq!(sync_note_count(&conn), 1);
+    }
+
+    #[test]
+    fn sync_partial_failure_accepts_only_valid_items() {
+        // Falha parcial: itens inválidos são ignorados sem abortar o resto;
+        // o celular mantém apenas o que não foi aceito.
+        let conn = sync_test_connection();
+        let accepted = handle_sync_batch(
+            &conn,
+            vec![
+                sync_item("uuid-ok", "memória válida"),
+                sync_item("", "sem client_id"),
+                SyncMemoryInput {
+                    client_id: Some("uuid-vazio".to_string()),
+                    content: Some("   ".to_string()),
+                    tags: None,
+                    created_at: None,
+                },
+            ],
+        );
+
+        assert_eq!(accepted.len(), 1);
+        assert_eq!(accepted[0].client_id, "uuid-ok");
+        assert_eq!(sync_note_count(&conn), 1);
+    }
+
+    #[test]
+    fn sync_same_text_twice_creates_two_notes() {
+        // Mesmo texto capturado duas vezes tem UUIDs diferentes: são duas
+        // capturas legítimas, não duplicatas (o app já tem fluxo de "quase
+        // duplicadas" para o humano decidir).
+        let conn = sync_test_connection();
+        let accepted = handle_sync_batch(
+            &conn,
+            vec![
+                sync_item("uuid-a", "mesmo texto"),
+                sync_item("uuid-b", "mesmo texto"),
+            ],
+        );
+
+        assert_eq!(accepted.len(), 2);
+        assert_ne!(accepted[0].note_id, accepted[1].note_id);
+        assert_eq!(sync_note_count(&conn), 2);
+    }
+
+    #[test]
+    fn sync_port_defaults_and_token_is_generated_once() {
+        let empty: HashMap<String, String> = HashMap::new();
+        assert_eq!(sync_port_for(&empty), SYNC_DEFAULT_PORT);
+
+        let mut custom = HashMap::new();
+        custom.insert(SYNC_PORT_KEY.to_string(), "not-a-port".to_string());
+        assert_eq!(sync_port_for(&custom), SYNC_DEFAULT_PORT);
+
+        let mut config = HashMap::new();
+        let first = ensure_sync_token(&mut config);
+        assert!(!first.trim().is_empty());
+        let second = ensure_sync_token(&mut config);
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn sync_response_has_matching_content_length() {
+        let bytes = sync_response("200 OK", r#"{"accepted":[]}"#);
+        let text = String::from_utf8(bytes).unwrap();
+        let declared: usize = text
+            .lines()
+            .find(|line| line.to_lowercase().starts_with("content-length:"))
+            .and_then(|line| line.split(':').nth(1))
+            .and_then(|value| value.trim().parse().ok())
+            .unwrap();
+        let body = text.split("\r\n\r\n").nth(1).unwrap();
+        assert_eq!(declared, body.len());
+    }
+
+    // --- HTTP de ponta a ponta (TCP real, porta efêmera) ---
+
+    fn sync_e2e_server() -> (std::net::SocketAddr, Arc<Mutex<Connection>>, String) {
+        let conn = sync_test_connection();
+        let db = Arc::new(Mutex::new(conn));
+        let token = "token-teste-e2e".to_string();
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let thread_db = db.clone();
+        let thread_token = token.clone();
+        thread::spawn(move || serve_sync_connections(listener, &thread_db, &thread_token));
+        (addr, db, token)
+    }
+
+    fn sync_e2e_post(addr: &std::net::SocketAddr, token: &str, body: &str) -> String {
+        use std::io::{Read, Write};
+        let mut stream = std::net::TcpStream::connect(addr).unwrap();
+        let request = format!(
+            "POST /memories HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        stream.write_all(request.as_bytes()).unwrap();
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).unwrap();
+        String::from_utf8(response).unwrap()
+    }
+
+    fn sync_e2e_get(addr: &std::net::SocketAddr, path: &str, token: Option<&str>) -> String {
+        use std::io::{Read, Write};
+        let mut stream = std::net::TcpStream::connect(addr).unwrap();
+        let auth = token
+            .map(|t| format!("Authorization: Bearer {t}\r\n"))
+            .unwrap_or_default();
+        let request =
+            format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n{auth}Connection: close\r\n\r\n");
+        stream.write_all(request.as_bytes()).unwrap();
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).unwrap();
+        String::from_utf8(response).unwrap()
+    }
+
+    #[test]
+    fn sync_e2e_rejects_missing_token() {
+        let (addr, _, _) = sync_e2e_server();
+        let response = sync_e2e_post(&addr, "token-errado", r#"{"memories":[]}"#);
+        assert!(response.starts_with("HTTP/1.1 401"));
+        // Sem token nenhum também é 401.
+        let response = sync_e2e_get(&addr, "/health", None);
+        assert!(response.starts_with("HTTP/1.1 401"));
+    }
+
+    #[test]
+    fn sync_e2e_health_accepts_valid_token() {
+        let (addr, _, token) = sync_e2e_server();
+        let response = sync_e2e_get(&addr, "/health", Some(&token));
+        assert!(response.starts_with("HTTP/1.1 200"));
+        assert!(response.ends_with(r#"{"ok":true}"#));
+    }
+
+    #[test]
+    fn sync_e2e_post_persists_and_acks_after_commit() {
+        // Prova do contrato ACK: a resposta 200 só sai depois do INSERT, e o
+        // corpo lista exatamente o que foi commitado.
+        let (addr, db, token) = sync_e2e_server();
+        let body = r#"{"memories":[{"client_id":"e2e-1","content":"memória do celular","tags":"compras","created_at":"2026-10-06T12:00:00Z"}]}"#;
+        let response = sync_e2e_post(&addr, &token, body);
+
+        assert!(response.starts_with("HTTP/1.1 200"));
+        let response_body = response.split("\r\n\r\n").nth(1).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(response_body).unwrap();
+        assert_eq!(parsed["accepted"][0]["client_id"], "e2e-1");
+        assert_eq!(parsed["accepted"][0]["note_id"], 1);
+
+        // Persistido de verdade: consulta pela conexão compartilhada.
+        {
+            let conn = db.lock().unwrap();
+            let (content, client_id): (String, String) = conn
+                .query_row(
+                    "SELECT content, client_id FROM notes WHERE id = 1",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .unwrap();
+            assert_eq!(content, "memória do celular");
+            assert_eq!(client_id, "e2e-1");
+        }
+
+        // Reenvio (timeout simulado): não duplica e o ACK repete o mesmo id.
+        let retry = sync_e2e_post(&addr, &token, body);
+        let retry_body = retry.split("\r\n\r\n").nth(1).unwrap();
+        let retry_parsed: serde_json::Value = serde_json::from_str(retry_body).unwrap();
+        assert_eq!(retry_parsed["accepted"][0]["note_id"], 1);
+        assert_eq!(sync_note_count(&db.lock().unwrap()), 1);
+    }
+
+    #[test]
+    fn sync_e2e_rejects_invalid_body_without_persisting() {
+        let (addr, db, token) = sync_e2e_server();
+        let response = sync_e2e_post(&addr, &token, "isto não é json {");
+        assert!(response.starts_with("HTTP/1.1 400"));
+        let conn = db.lock().unwrap();
+        assert_eq!(sync_note_count(&conn), 0);
     }
 }

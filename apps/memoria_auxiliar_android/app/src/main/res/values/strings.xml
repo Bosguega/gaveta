@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Memória Auxiliar</string>
+    <string name="pending_count">Pendentes de sincronizar (%1$d)</string>
+    <string name="widget_label">Memória Auxiliar — captura rápida</string>
+    <string name="widget_description">Toque para capturar uma memória rapidamente.</string>
+</resources>

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Necessária apenas pelo POST /memories para o PC na rede local. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:label="@string/app_name"
+        android:theme="@android:style/Theme.Material.Light.DarkActionBar"
+        android:usesCleartextTraffic="true">
+
+        <!-- HTTP puro na LAN: o PC expõe o servidor de sync sem TLS (rede local,
+             token Bearer). Sem isso o Android 9+ bloquearia o POST. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Captura rápida do widget: tema de diálogo, invisível ao launcher,
+             não exportada (só o nosso widget a abre via PendingIntent). -->
+        <activity
+            android:name=".QuickCaptureActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Material.Light.Dialog" />
+
+        <receiver
+            android:name=".MemoryWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/memory_widget_info" />
+        </receiver>
+    </application>
+
+</manifest>
