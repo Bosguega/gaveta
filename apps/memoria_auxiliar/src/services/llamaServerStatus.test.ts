@@ -8,11 +8,12 @@ import {
   type LlamaServerStatus,
 } from './llamaServerStatus';
 
-const ALL_STATUSES: LlamaServerStatus[] = ['parado', 'iniciando', 'executando', 'erro'];
+const ALL_STATUSES: LlamaServerStatus[] = ['parado', 'encerrando', 'iniciando', 'executando', 'erro'];
 
 describe('SERVER_STATUS_LABELS', () => {
-  it('exposes the four required states', () => {
+  it('exposes the required states', () => {
     expect(SERVER_STATUS_LABELS.parado).toBe('Parado');
+    expect(SERVER_STATUS_LABELS.encerrando).toBe('Encerrando...');
     expect(SERVER_STATUS_LABELS.iniciando).toBe('Iniciando...');
     expect(SERVER_STATUS_LABELS.executando).toBe('Em execução');
     expect(SERVER_STATUS_LABELS.erro).toBe('Erro');
@@ -26,6 +27,10 @@ describe('shouldLaunchServer', () => {
 
   it('does not launch a second process while one is starting', () => {
     expect(shouldLaunchServer('iniciando')).toBe(false);
+  });
+
+  it('does not launch while the server is stopping', () => {
+    expect(shouldLaunchServer('encerrando')).toBe(false);
   });
 
   it('launches when stopped or in error', () => {

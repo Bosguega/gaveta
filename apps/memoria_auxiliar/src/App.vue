@@ -5,6 +5,7 @@ import { notesStore, updateStreak, resetStats, initStats, initTheme, showToast, 
 import { listNotes, saveNote, updateNote, deleteNote, deleteAllNotes, togglePinNote, searchNotesText } from './services/databaseService'
 import { getEmbedding, resolveEmbeddingCacheKey } from './services/embeddingService'
 import { createLlamaClient } from '@bosguega/llama-cpp'
+import { listen } from '@tauri-apps/api/event'
 import { buildNotesContext, generateAnswer, summarizeResults } from './services/llmService'
 import { askWithTools } from './services/toolChat'
 import { isWebSearchRequested } from './utils/webIntent'
@@ -30,6 +31,11 @@ const isDev = import.meta.env.DEV
 const noteFormRef = ref<InstanceType<typeof NoteForm> | null>(null)
 const searchBoxRef = ref<InstanceType<typeof SearchBox> | null>(null)
 const { resolvedMode } = useDeviceUI()
+// Guarda o recarregamento disparado pelo evento `memories-updated` (notas que
+// chegam pelo servidor de sync do Android): impede que um reload lento
+// sobrescreva uma ação mais recente do usuário.
+const reloadNotesGate = createLatestRequestGate()
+let syncUnlisten: (() => void) | null = null
 
 const isDesktop = computed(() => resolvedMode.value === 'desktop' || resolvedMode.value === 'tablet')
 
@@ -220,6 +226,33 @@ async function clearAllNotes() {
         }, 'Excluindo todas as notas...')
     })
 }
+
+onMounted(async () => {
+    await initTheme()
+    await initStats()
+    await loadNotes()
+    // Notas que chegam pelo servidor de sync do Android (POST /memories):
+    // recarrega a lista sem mexer em filtros, busca ativa ou edição em curso.
+    const unlistenSync = await listen<number>('memories-updated', async (event) => {
+        // Mesmo padrão das buscas: se outra ação começar no meio do reload,
+        // o resultado antigo é descartado em vez de sobrescrever o mais novo.
+        const token = reloadNotesGate.begin()
+        const fresh = await listNotes()
+        if (!reloadNotesGate.isCurrent(token)) return
+        notesStore.notes = fresh
+        const count = typeof event.payload === 'number' ? event.payload : 0
+        showToast(
+            count > 0 ? `${count} memória(s) recebida(s) do celular.` : 'Memórias recebidas do celular.',
+            'info',
+        )
+    })
+    syncUnlisten = unlistenSync
+})
+
+onUnmounted(() => {
+    syncUnlisten?.()
+    syncUnlisten = null
+})
 
 async function generateSummary() {
     // displayedResults já é exatamente o que o usuário está vendo: resultados da

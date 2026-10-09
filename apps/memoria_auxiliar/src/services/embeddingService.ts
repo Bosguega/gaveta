@@ -4,7 +4,7 @@
  * Usa o segundo processo llama-server (bge-m3) via @bosguega/llama-cpp.
  * O endpoint de embeddings é independente do endpoint de chat.
  */
-import { createLlamaClient, normalizeBaseUrl } from '@bosguega/llama-cpp';
+import { createLlamaClient, normalizeBaseUrl, DEFAULT_EMBED_TIMEOUT_MS } from '@bosguega/llama-cpp';
 import { getCachedEmbedding, saveCachedEmbedding } from './databaseService';
 import {
   buildEmbeddingCacheKey,
@@ -72,7 +72,11 @@ async function requestEmbedding(
   text: string,
   profile: EmbeddingProfile,
 ): Promise<number[]> {
-  const client = createLlamaClient({ baseUrl, defaultModel: model });
+  const client = createLlamaClient({
+    baseUrl,
+    defaultModel: model,
+    embedTimeoutMs: DEFAULT_EMBED_TIMEOUT_MS,
+  });
   const endpoint = client.baseUrl;
 
   logger.log('Embedding', `Gerando embedding ${model} em ${endpoint}...`);

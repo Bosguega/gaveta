@@ -314,6 +314,12 @@ medido chegou a **20.962 tokens** — folga confortável, sem erro de contexto.
 Aumentar esse teto não tem custo de latência perceptível: o contexto maior só é
 "pago" quando é usado.
 
+O KV cache roda em quantização `q8_0` (`-ctk q8_0 -ctv q8_0`), com metade do
+tamanho do fp16 e perda imperceptível de qualidade. Junto com a ausência de
+`--mmproj` (o chat é textual e não envia imagens), isso mantém a demanda de
+VRAM do chat + embeddings abaixo dos 12 GB da RTX 3060, evitando a paginação
+para a memória compartilhada que derrubava a taxa de geração.
+
 ### Como o fluxo funciona
 
 ```text

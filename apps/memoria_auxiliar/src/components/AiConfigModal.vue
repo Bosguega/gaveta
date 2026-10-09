@@ -9,6 +9,7 @@ import { ref, onMounted, watch } from 'vue';
 import {
   detectServerStatus,
   isServerOwned,
+  portFromUrl,
   startServer,
   startServers,
   stopServer,
@@ -17,6 +18,7 @@ import { testEmbeddingConnection, type ConnectionTestResult } from '../services/
 import { probeServer } from '../services/llamaServerControl';
 import {
   SERVER_STATUS_LABELS,
+  shouldLaunchServer,
   type LlamaServerKind,
   type LlamaServerStatus,
 } from '../services/llamaServerStatus';
@@ -53,6 +55,9 @@ const chatStatus = ref<LlamaServerStatus>('parado');
 const embeddingStatus = ref<LlamaServerStatus>('parado');
 const chatError = ref('');
 const embeddingError = ref('');
+// Aviso não-bloqueante (ex.: servidor na porta não é o configurado)
+const chatWarning = ref('');
+const embeddingWarning = ref('');
 const chatOwned = ref(false);
 const embeddingOwned = ref(false);
 
@@ -134,8 +139,13 @@ async function launch(kind: LlamaServerKind): Promise<void> {
   const command = isChat ? await withMcpServersConfig(rawCommand) : rawCommand;
   const currentStatus = isChat ? chatStatus.value : embeddingStatus.value;
 
-  if (isChat) chatStatus.value = 'iniciando';
-  else embeddingStatus.value = 'iniciando';
+  if (isChat) {
+    chatStatus.value = 'iniciando';
+    chatWarning.value = '';
+  } else {
+    embeddingStatus.value = 'iniciando';
+    embeddingWarning.value = '';
+  }
   busy.value = true;
 
   try {
@@ -150,10 +160,12 @@ async function launch(kind: LlamaServerKind): Promise<void> {
     if (isChat) {
       chatStatus.value = result.status;
       chatError.value = result.error ?? '';
+      chatWarning.value = result.warning ?? '';
       chatOwned.value = await isServerOwned('chat');
     } else {
       embeddingStatus.value = result.status;
       embeddingError.value = result.error ?? '';
+      embeddingWarning.value = result.warning ?? '';
       embeddingOwned.value = await isServerOwned('embedding');
     }
   } catch (err) {
@@ -171,9 +183,18 @@ async function launch(kind: LlamaServerKind): Promise<void> {
 }
 
 async function launchAll(): Promise<void> {
+  const currentChatStatus = chatStatus.value;
+  const currentEmbeddingStatus = embeddingStatus.value;
+
   busy.value = true;
-  chatStatus.value = 'iniciando';
-  embeddingStatus.value = 'iniciando';
+  if (shouldLaunchServer(currentChatStatus)) {
+    chatStatus.value = 'iniciando';
+    chatWarning.value = '';
+  }
+  if (shouldLaunchServer(currentEmbeddingStatus)) {
+    embeddingStatus.value = 'iniciando';
+    embeddingWarning.value = '';
+  }
 
   try {
     const results = await startServers([
@@ -181,22 +202,34 @@ async function launchAll(): Promise<void> {
         kind: 'chat',
         baseUrl: chatBaseUrl.value,
         command: await withMcpServersConfig(chatCommand.value),
-        status: chatStatus.value,
+        status: currentChatStatus,
         embeddingModel: embeddingModel.value,
       },
       {
         kind: 'embedding',
         baseUrl: embeddingBaseUrl.value,
         command: embeddingCommand.value,
-        status: embeddingStatus.value,
+        status: currentEmbeddingStatus,
         embeddingModel: embeddingModel.value,
       },
     ]);
 
     chatStatus.value = results.chat.status;
     chatError.value = results.chat.error ?? '';
+    chatWarning.value = results.chat.warning ?? '';
     embeddingStatus.value = results.embedding.status;
     embeddingError.value = results.embedding.error ?? '';
+    embeddingWarning.value = results.embedding.warning ?? '';
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (shouldLaunchServer(currentChatStatus)) {
+      chatStatus.value = 'erro';
+      chatError.value = message;
+    }
+    if (shouldLaunchServer(currentEmbeddingStatus)) {
+      embeddingStatus.value = 'erro';
+      embeddingError.value = message;
+    }
   } finally {
     busy.value = false;
   }
@@ -208,19 +241,56 @@ async function launchAll(): Promise<void> {
 /* ── Parar servidor ────────────────────────────────────────────────── */
 
 async function stop(kind: LlamaServerKind): Promise<void> {
-  const stopped = await stopServer(kind);
-  if (!stopped) return;
+  const isChat = kind === 'chat';
+  const previousStatus = isChat ? chatStatus.value : embeddingStatus.value;
+  const url = isChat ? chatBaseUrl.value : embeddingBaseUrl.value;
 
-  if (kind === 'chat') {
-    chatStatus.value = 'parado';
+  // Estado intermediário: impede um novo start enquanto o processo ainda está saindo.
+  busy.value = true;
+  if (isChat) {
+    chatStatus.value = 'encerrando';
     chatError.value = '';
-    chatOwned.value = false;
-    chatTestResult.value = '';
+    chatWarning.value = '';
   } else {
-    embeddingStatus.value = 'parado';
+    embeddingStatus.value = 'encerrando';
     embeddingError.value = '';
-    embeddingOwned.value = false;
-    embeddingTestResult.value = '';
+    embeddingWarning.value = '';
+  }
+
+  try {
+    // O backend só responde depois de confirmar: processo morto + porta livre.
+    const stopped = await stopServer(kind, portFromUrl(url));
+    if (!stopped) {
+      // Processo não é desta sessão (ou já saiu): mantém o estado anterior.
+      if (isChat) chatStatus.value = previousStatus;
+      else embeddingStatus.value = previousStatus;
+      return;
+    }
+
+    if (isChat) {
+      chatStatus.value = 'parado';
+      chatError.value = '';
+      chatOwned.value = false;
+      chatTestResult.value = '';
+    } else {
+      embeddingStatus.value = 'parado';
+      embeddingError.value = '';
+      embeddingOwned.value = false;
+      embeddingTestResult.value = '';
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (isChat) {
+      chatStatus.value = 'erro';
+      chatError.value = message;
+      chatOwned.value = await isServerOwned('chat');
+    } else {
+      embeddingStatus.value = 'erro';
+      embeddingError.value = message;
+      embeddingOwned.value = await isServerOwned('embedding');
+    }
+  } finally {
+    busy.value = false;
   }
 }
 
@@ -320,6 +390,7 @@ function handleClose() {
 
             <p v-if="chatTestResult" class="test-success">{{ chatTestResult }}</p>
             <p v-if="chatError" class="server-error">{{ chatError }}</p>
+            <p v-if="chatWarning" class="server-warning">{{ chatWarning }}</p>
 
             <div class="action-row">
               <button
@@ -368,6 +439,7 @@ function handleClose() {
 
             <p v-if="embeddingTestResult" class="test-success">{{ embeddingTestResult }}</p>
             <p v-if="embeddingError" class="server-error">{{ embeddingError }}</p>
+            <p v-if="embeddingWarning" class="server-warning">{{ embeddingWarning }}</p>
 
             <div class="action-row">
               <button
@@ -536,7 +608,8 @@ function handleClose() {
   color: var(--text-secondary);
 }
 
-.server-status.iniciando {
+.server-status.iniciando,
+.server-status.encerrando {
   color: #f59e0b;
 }
 
@@ -585,6 +658,18 @@ function handleClose() {
   border: 1px solid rgba(239, 68, 68, 0.3);
   border-radius: 8px;
   color: #fca5a5;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.server-warning {
+  margin: 0;
+  padding: 8px 10px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+  color: #fcd34d;
   font-size: 0.75rem;
   line-height: 1.4;
   white-space: pre-wrap;

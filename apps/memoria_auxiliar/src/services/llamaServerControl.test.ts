@@ -65,6 +65,12 @@ describe('llamaServerControl', () => {
       await expect(stopServer('embedding')).resolves.toBe(false);
       expect(invoke).toHaveBeenCalledWith('stop_llama_server', { kind: 'embedding' });
     });
+
+    it('passes the port so the backend can confirm it was released', async () => {
+      invoke.mockResolvedValue(true);
+      await expect(stopServer('chat', 8080)).resolves.toBe(true);
+      expect(invoke).toHaveBeenCalledWith('stop_llama_server', { kind: 'chat', port: 8080 });
+    });
   });
 
   describe('detectServerStatus', () => {
@@ -136,6 +142,21 @@ describe('llamaServerControl', () => {
       );
 
       expect(result.status).toBe('iniciando');
+      expect(invoke).not.toHaveBeenCalled();
+    });
+
+    it('does not spawn a process while the previous one is still stopping', async () => {
+      invoke.mockClear();
+
+      const result = await startServer(
+        'chat',
+        'http://127.0.0.1:8080',
+        DEFAULT_CHAT_COMMAND,
+        'encerrando',
+        'bge-m3',
+      );
+
+      expect(result.status).toBe('encerrando');
       expect(invoke).not.toHaveBeenCalled();
     });
 
@@ -216,6 +237,72 @@ describe('llamaServerControl', () => {
         command: DEFAULT_CHAT_COMMAND,
       });
       expect(result.status).toBe('executando');
+    });
+  });
+
+  describe('reuso do servidor existente na porta', () => {
+    /** Servidor no ar que anuncia `modelId` em /v1/models (ou nada, se null). */
+    function healthyWithModels(modelId: string | null) {
+      globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+        if (url.endsWith('/health')) {
+          return new Response('OK', { status: 200 });
+        }
+        if (url.endsWith('/v1/models') && modelId !== null) {
+          return new Response(
+            JSON.stringify({ object: 'list', data: [{ id: modelId }] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response('', { status: 500 });
+      });
+    }
+
+    it('warns when the running model does not match the configured command', async () => {
+      healthyWithModels('C:\\outro\\outro-modelo.gguf');
+      invoke.mockClear();
+
+      const result = await startServer(
+        'chat',
+        'http://127.0.0.1:8080',
+        DEFAULT_CHAT_COMMAND,
+        'parado',
+        'bge-m3',
+      );
+
+      expect(result.status).toBe('executando');
+      expect(result.warning).toContain('outro-modelo.gguf');
+      expect(result.warning).toContain('Ternary-Bonsai-2-27B-PQ2_0.gguf');
+      expect(invoke).not.toHaveBeenCalledWith('start_llama_server', expect.anything());
+    });
+
+    it('reuses silently when the running model matches the command', async () => {
+      healthyWithModels('C:\\Trabalhos\\Modelos\\Ternary-Bonsai-2-27B-PQ2_0.gguf');
+
+      const result = await startServer(
+        'chat',
+        'http://127.0.0.1:8080',
+        DEFAULT_CHAT_COMMAND,
+        'parado',
+        'bge-m3',
+      );
+
+      expect(result.status).toBe('executando');
+      expect(result.warning).toBeUndefined();
+    });
+
+    it('reuses without warning when identification is not possible', async () => {
+      healthyWithModels(null);
+
+      const result = await startServer(
+        'chat',
+        'http://127.0.0.1:8080',
+        DEFAULT_CHAT_COMMAND,
+        'parado',
+        'bge-m3',
+      );
+
+      expect(result.status).toBe('executando');
+      expect(result.warning).toBeUndefined();
     });
   });
 
@@ -318,6 +405,92 @@ describe('llamaServerControl', () => {
 
       expect(results.embedding.status).toBe('executando');
       expect(results.chat.status).toBe('executando');
+    });
+
+    it('starts both servers in parallel when both are stopped', async () => {
+      let chatUp = false;
+      let embeddingUp = false;
+      globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+        if (url.endsWith('/health')) {
+          const up = (url.includes('8080') && chatUp) || (url.includes('8081') && embeddingUp);
+          return up ? new Response('OK', { status: 200 }) : new Response('', { status: 503 });
+        }
+        return embeddingResponse(1024);
+      });
+      invoke.mockImplementation(async (command: string, args: { kind: string }) => {
+        if (command === 'start_llama_server') {
+          if (args.kind === 'chat') chatUp = true;
+          if (args.kind === 'embedding') embeddingUp = true;
+        }
+        return true;
+      });
+
+      const results = await startServers([
+        {
+          kind: 'chat',
+          baseUrl: 'http://127.0.0.1:8080',
+          command: DEFAULT_CHAT_COMMAND,
+          status: 'parado',
+          embeddingModel: 'bge-m3',
+        },
+        {
+          kind: 'embedding',
+          baseUrl: 'http://127.0.0.1:8081',
+          command: 'llama-server.exe -m bge-m3.gguf',
+          status: 'parado',
+          embeddingModel: 'bge-m3',
+        },
+      ]);
+
+      const startedKinds = invoke.mock.calls
+        .filter((call) => call[0] === 'start_llama_server')
+        .map((call) => (call[1] as { kind: string }).kind)
+        .sort();
+
+      expect(startedKinds).toEqual(['chat', 'embedding']);
+      expect(results.chat.status).toBe('executando');
+      expect(results.embedding.status).toBe('executando');
+    });
+
+    it('handles unexpected launch rejection without blocking other servers', async () => {
+      let embeddingUp = false;
+      globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+        if (url.endsWith('/health')) {
+          const up = url.includes('8081') && embeddingUp;
+          return up ? new Response('OK', { status: 200 }) : new Response('', { status: 503 });
+        }
+        return embeddingResponse(1024);
+      });
+      invoke.mockImplementation(async (command: string, args: { kind: string }) => {
+        if (command === 'start_llama_server' && args.kind === 'chat') {
+          throw new Error('Falha no spawn de chat');
+        }
+        if (command === 'start_llama_server' && args.kind === 'embedding') {
+          embeddingUp = true;
+        }
+        return true;
+      });
+
+      const results = await startServers([
+        {
+          kind: 'chat',
+          baseUrl: 'http://127.0.0.1:8080',
+          command: DEFAULT_CHAT_COMMAND,
+          status: 'parado',
+          embeddingModel: 'bge-m3',
+        },
+        {
+          kind: 'embedding',
+          baseUrl: 'http://127.0.0.1:8081',
+          command: 'llama-server.exe -m bge-m3.gguf',
+          status: 'parado',
+          embeddingModel: 'bge-m3',
+        },
+      ]);
+
+      expect(results.chat.status).toBe('erro');
+      expect(results.chat.error).toContain('Falha no spawn de chat');
+      expect(results.embedding.status).toBe('executando');
     });
   });
 });

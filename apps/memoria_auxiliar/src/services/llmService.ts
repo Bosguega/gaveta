@@ -1,4 +1,4 @@
-import { createLlamaClient } from '@bosguega/llama-cpp';
+import { createLlamaClient, type ChatMessage } from '@bosguega/llama-cpp';
 import type { ChatTimings, ChatUsage } from '@bosguega/llama-cpp';
 import { getChatConfig } from './tauriStore';
 import type { SearchResult } from '../types';
@@ -28,15 +28,21 @@ interface TextResult {
   elapsedMs?: number;
 }
 
-async function generateText(prompt: string): Promise<TextResult> {
+async function generateText(prompt: string, systemPrompt?: string): Promise<TextResult> {
   const { baseUrl, model } = await getChatConfig();
   const client = createLlamaClient({ baseUrl, defaultModel: model });
 
   logger.log('LLM', `Gerando texto via llama-server em ${client.baseUrl} (${model})`);
 
+  const messages: ChatMessage[] = [];
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt });
+  }
+  messages.push({ role: 'user', content: prompt });
+
   const startedAt = Date.now();
   const result = await client.chat({
-    messages: [{ role: 'user', content: prompt }],
+    messages,
     temperature: 0.7,
     maxTokens: 2048,
   });
@@ -49,7 +55,11 @@ async function generateText(prompt: string): Promise<TextResult> {
   };
 }
 
-function sanitizePromptInput(text: string, maxLength: number): string {
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function sanitizePromptInput(text: string, maxLength: number): string {
   let sanitized = Array.from(text)
     .filter((char) => {
       if (char === '\n' || char === '\r' || char === '\t') {
@@ -60,11 +70,8 @@ function sanitizePromptInput(text: string, maxLength: number): string {
     })
     .join('');
 
-  const lower = sanitized.toLowerCase();
   for (const token of DANGEROUS_TOKENS) {
-    if (lower.includes(token)) {
-      sanitized = sanitized.split(token).join('[redacted]');
-    }
+    sanitized = sanitized.replace(new RegExp(escapeRegex(token), 'gi'), '[redacted]');
   }
 
   return Array.from(sanitized).slice(0, maxLength).join('');
@@ -113,6 +120,20 @@ export function sanitizeQuestion(question: string): string {
   return sanitizePromptInput(question, MAX_QUESTION_LENGTH);
 }
 
+export const LOCAL_SYSTEM_PROMPT = `Voce e uma memoria auxiliar pessoal.
+
+Sua funcao e responder APENAS com base nas memorias fornecidas abaixo.
+
+REGRAS IMPORTANTES:
+- Nao invente informacoes.
+- Nao use conhecimento externo.
+- Se nao encontrar a resposta nas memorias, diga: "Nao encontrei isso nas memorias."
+- Nem toda memoria enviada precisa ser usada.
+- Use apenas as memorias realmente relevantes.
+
+Depois de responder, na linha final, informe SOMENTE os IDs das memorias realmente utilizadas neste formato exato:
+USED_IDS: [id1, id2, id3]`;
+
 export async function generateAnswer(
   question: string,
   results: SearchResult[],
@@ -124,28 +145,16 @@ export async function generateAnswer(
   const context = buildNotesContext(results);
   const sanitizedQuestion = sanitizeQuestion(question);
 
-  const prompt = `Voce e uma memoria auxiliar pessoal.
-
-Sua funcao e responder APENAS com base nas memorias fornecidas abaixo.
-
-REGRAS IMPORTANTES:
-- Nao invente informacoes.
-- Nao use conhecimento externo.
-- Se nao encontrar a resposta nas memorias, diga: "Nao encontrei isso nas memorias."
-- Nem toda memoria enviada precisa ser usada.
-- Use apenas as memorias realmente relevantes.
-
-MEMORIAS:
+  const userContent = `MEMORIAS:
 ${context}
 
 PERGUNTA:
-${sanitizedQuestion}
+${sanitizedQuestion}`;
 
-Agora, responda a pergunta. Depois de responder, na linha final, informe SOMENTE os IDs das memorias realmente utilizadas neste formato exato:
-USED_IDS: [id1, id2, id3]
-`;
-
-  const { content, usage, timings, elapsedMs } = await generateText(prompt);
+  const { content, usage, timings, elapsedMs } = await generateText(
+    userContent,
+    LOCAL_SYSTEM_PROMPT,
+  );
   const parsed = parseUsedIds(content);
 
   return {

@@ -30,6 +30,11 @@ function sleep(ms: number): Promise<void> {
 export interface LaunchResult {
   status: LlamaServerStatus;
   error?: string;
+  /**
+   * Aviso não-bloqueante (ex.: o servidor que já responde na porta não
+   * corresponde ao comando configurado).
+   */
+  warning?: string;
 }
 
 /** Health check real contra a URL configurada. */
@@ -47,9 +52,60 @@ export async function isServerOwned(kind: LlamaServerKind): Promise<boolean> {
   return invoke<boolean>('is_llama_server_owned', { kind });
 }
 
+/**
+ * Extrai a porta de uma baseUrl tipo `http://127.0.0.1:8080`.
+ * Indefinida quando a URL não tem porta explícita ou é inválida.
+ */
+export function portFromUrl(baseUrl: string): number | undefined {
+  try {
+    const port = new URL(baseUrl).port;
+    return port ? Number(port) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Detecta quando o servidor que já responde na porta não corresponde ao comando
+ * configurado (principalmente o modelo). Best-effort: compara o `-m` do comando
+ * com os ids de `/v1/models` e devolve `undefined` quando a identificação não é
+ * possível — nesse caso o reaproveitamento continua acontecendo como antes.
+ */
+async function detectRunningServerMismatch(
+  baseUrl: string,
+  command: string,
+): Promise<string | undefined> {
+  const modelArg = command.match(/-m\s+(?:"([^"]+)"|(\S+))/);
+  const modelPath = modelArg?.[1] ?? modelArg?.[2];
+  const fileName = modelPath?.split(/[\\/]/).pop()?.trim();
+  if (!fileName) return undefined;
+
+  try {
+    const models = await createLlamaClient({ baseUrl }).listModels();
+    if (models.length === 0) return undefined;
+
+    const expected = fileName.toLowerCase();
+    const matches = models.some((id) => {
+      const current = id.toLowerCase();
+      return current.includes(expected) || expected.includes(current);
+    });
+    if (matches) return undefined;
+
+    return (
+      `A porta responde com o modelo "${models[0]}", mas o comando configurado usa "${fileName}".\n` +
+      'O servidor em execução não é o configurado — pare o processo antigo ' +
+      '(janela de console ou Gerenciador de Tarefas) e inicie de novo para aplicar.'
+    );
+  } catch {
+    // Identificação não confiável: não avisa e não bloqueia.
+    return undefined;
+  }
+}
+
 /** Encerra apenas processos iniciados pela própria aplicação. */
-export async function stopServer(kind: LlamaServerKind): Promise<boolean> {
-  return invoke<boolean>('stop_llama_server', { kind });
+export async function stopServer(kind: LlamaServerKind, port?: number): Promise<boolean> {
+  // O backend aguarda o processo sumir e a porta liberar antes de responder.
+  return invoke<boolean>('stop_llama_server', port === undefined ? { kind } : { kind, port });
 }
 
 async function launchProcess(kind: LlamaServerKind, command: string): Promise<string | null> {
@@ -135,7 +191,14 @@ export async function startServer(
 
   if (await probeServer(url)) {
     // Outro processo já está atendendo esta URL: não duplicamos.
-    return detectServerStatus(kind, url, embeddingModel);
+    const existing = await detectServerStatus(kind, url, embeddingModel);
+    if (existing.status === 'executando') {
+      const warning = await detectRunningServerMismatch(url, command);
+      if (warning) {
+        return { ...existing, warning };
+      }
+    }
+    return existing;
   }
 
   const launchError = await launchProcess(kind, command);
@@ -167,17 +230,30 @@ export async function startServers(
     embeddingModel: string;
   }>,
 ): Promise<Record<LlamaServerKind, LaunchResult>> {
-  const results = {} as Record<LlamaServerKind, LaunchResult>;
+  // Os processos são independentes e iniciados em paralelo: a falha de um não impede o outro.
+  const settled = await Promise.allSettled(
+    targets.map((target) =>
+      startServer(
+        target.kind,
+        target.baseUrl,
+        target.command,
+        target.status,
+        target.embeddingModel,
+      ),
+    ),
+  );
 
-  // Os dois processos são independentes: a falha de um não impede o outro.
-  for (const target of targets) {
-    results[target.kind] = await startServer(
-      target.kind,
-      target.baseUrl,
-      target.command,
-      target.status,
-      target.embeddingModel,
-    );
+  const results = {} as Record<LlamaServerKind, LaunchResult>;
+  for (let i = 0; i < targets.length; i++) {
+    const outcome = settled[i];
+    if (outcome.status === 'fulfilled') {
+      results[targets[i].kind] = outcome.value;
+    } else {
+      results[targets[i].kind] = {
+        status: 'erro',
+        error: outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason),
+      };
+    }
   }
 
   return results;

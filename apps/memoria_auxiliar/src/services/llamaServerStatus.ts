@@ -2,10 +2,11 @@
  * Estado de um servidor llama-server, determinado sempre pela comunicacao
  * real com a URL configurada — nunca apenas pelo fato de o processo existir.
  */
-export type LlamaServerStatus = 'parado' | 'iniciando' | 'executando' | 'erro';
+export type LlamaServerStatus = 'parado' | 'encerrando' | 'iniciando' | 'executando' | 'erro';
 
 export const SERVER_STATUS_LABELS: Record<LlamaServerStatus, string> = {
   parado: 'Parado',
+  encerrando: 'Encerrando...',
   iniciando: 'Iniciando...',
   executando: 'Em execução',
   erro: 'Erro',

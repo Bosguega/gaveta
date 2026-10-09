@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::Manager;
+use tauri::{AppHandle, Emitter, Manager};
 
 pub struct DbState(pub Arc<Mutex<Connection>>);
 
@@ -406,7 +406,10 @@ fn save_note(
 
 /// Insere uma memória vinda do celular de forma idempotente.
 ///
-/// Retorna o rowid da nota (novo ou já existente para o mesmo client_id).
+/// Retorna `(rowid, inserida)`: o rowid da nota (novo ou já existente para o
+/// mesmo client_id) e se houve inserção real. Reenvios idempotentes retornam
+/// `inserida = false` — o chamador pode usá-lo para decidir se precisa
+/// notificar a interface (não há nota nova para mostrar).
 /// Cada chamada auto-commita: sem transação de lote. Se o PC cair no meio de
 /// um lote, o Android reenvia tudo e os itens já gravados respondem "já
 /// existia" — o ACK por item (não por lote) dispensa a transação.
@@ -420,13 +423,13 @@ fn insert_synced_note(
     content: &str,
     tags: &str,
     created_at: &str,
-) -> Result<i64, String> {
+) -> Result<(i64, bool), String> {
     if let Ok(existing) = conn.query_row(
         "SELECT id FROM notes WHERE client_id = ?1",
         params![client_id],
         |row| row.get::<_, i64>(0),
     ) {
-        return Ok(existing);
+        return Ok((existing, false));
     }
 
     conn.execute(
@@ -436,18 +439,24 @@ fn insert_synced_note(
     )
     .map_err(|error| format!("Nao foi possivel salvar memoria sincronizada: {error}"))?;
 
-    Ok(conn.last_insert_rowid())
+    Ok((conn.last_insert_rowid(), true))
 }
 
 /// Valida e persiste um lote já desserializado. Itens inválidos (client_id
 /// vazio, conteúdo vazio) são ignorados sem abortar o resto — falha parcial
 /// mantém no celular só o que não foi aceito.
 ///
-/// Só o que passou pelo INSERT entra em `accepted`: o chamador HTTP responde
-/// 200 apenas depois desta função retornar, então nada na resposta mente
-/// sobre a persistência.
-fn handle_sync_batch(conn: &Connection, items: Vec<SyncMemoryInput>) -> Vec<SyncAcceptedItem> {
+/// Retorna `(accepted, inseridas)`: os itens para o ACK e quantas notas foram
+/// inseridas de verdade (excluindo reenvios idempotentes). Só o que passou
+/// pelo INSERT entra em `accepted`: o chamador HTTP responde 200 apenas
+/// depois desta função retornar, então nada na resposta mente sobre a
+/// persistência.
+fn handle_sync_batch(
+    conn: &Connection,
+    items: Vec<SyncMemoryInput>,
+) -> (Vec<SyncAcceptedItem>, usize) {
     let mut accepted = Vec::new();
+    let mut inserted = 0usize;
     for item in items {
         let client_id = item.client_id.unwrap_or_default().trim().to_string();
         let content = item.content.unwrap_or_default().trim().to_string();
@@ -461,11 +470,15 @@ fn handle_sync_batch(conn: &Connection, items: Vec<SyncMemoryInput>) -> Vec<Sync
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| Utc::now().to_rfc3339());
         match insert_synced_note(conn, &client_id, &content, &tags, &created_at) {
-            Ok(note_id) => accepted.push(SyncAcceptedItem { client_id, note_id }),
+            Ok((note_id, true)) => {
+                inserted += 1;
+                accepted.push(SyncAcceptedItem { client_id, note_id })
+            }
+            Ok((note_id, false)) => accepted.push(SyncAcceptedItem { client_id, note_id }),
             Err(_) => continue,
         }
     }
-    accepted
+    (accepted, inserted)
 }
 
 /// Token de sincronização: usa o configurado (sync_token) ou gera um na
@@ -554,10 +567,19 @@ fn read_sync_request(
     Some((request_line, headers, body))
 }
 
+/// Nome do evento Tauri emitido quando o sync insere notas novas. O frontend
+/// escuta e recarrega a lista — sem polling, sem mudar o contrato /memories.
+pub const SYNC_UPDATED_EVENT: &str = "memories-updated";
+
+/// Callback de notificação da interface, compartilhável entre threads.
+/// Em produção é o `app.emit`; em testes, um contador observável.
+pub type SyncNotifier = Arc<dyn Fn(usize) + Send + Sync>;
+
 fn handle_sync_connection(
     mut stream: std::net::TcpStream,
     db: &Arc<Mutex<Connection>>,
     token: &str,
+    notify_new_notes: &SyncNotifier,
 ) {
     let response = match read_sync_request(&mut stream) {
         Some((request_line, headers, body)) => {
@@ -585,7 +607,14 @@ fn handle_sync_connection(
                 match items {
                     Some(items) => match db.lock() {
                         Ok(conn) => {
-                            let accepted = handle_sync_batch(&conn, items);
+                            let (accepted, inserted) = handle_sync_batch(&conn, items);
+                            // Evento só quando houve inserção real: reenvios
+                            // idempotentes já estão na lista e não mudam nada.
+                            // Chamado após o commit, antes do ACK — a resposta
+                            // nunca mente sobre a persistência.
+                            if inserted > 0 {
+                                notify_new_notes(inserted);
+                            }
                             let body = serde_json::to_string(&SyncBatchResponse { accepted })
                                 .unwrap_or_else(|_| r#"{"accepted":[]}"#.to_string());
                             sync_response("200 OK", &body)
@@ -615,9 +644,16 @@ fn handle_sync_connection(
 /// próprio usuário, sem concorrência real.
 ///
 /// Roda em thread dedicada com a conexão compartilhada (DbState agora é
-/// Arc<Mutex<...>>). Limitação consciente: sync funciona com o app
-/// desktop aberto.
-fn spawn_sync_server(db: Arc<Mutex<Connection>>, port: u16, token: String) {
+/// Arc<Mutex<...>>) e um clone do AppHandle para emitir `memories-updated`.
+/// AppHandle é Send + Sync por desenho do Tauri (padrão já usado no monorepo:
+/// comfyui-scanner e midi_mp3_converter emitem de threads de trabalho).
+/// Limitação consciente: sync funciona com o app desktop aberto.
+fn spawn_sync_server(
+    db: Arc<Mutex<Connection>>,
+    port: u16,
+    token: String,
+    app: AppHandle,
+) {
     thread::spawn(move || {
         let listener = match bind_sync_listener(port) {
             Ok(listener) => listener,
@@ -627,7 +663,10 @@ fn spawn_sync_server(db: Arc<Mutex<Connection>>, port: u16, token: String) {
             }
         };
         println!("[sync] servidor de sincronizacao escutando em 0.0.0.0:{port}");
-        serve_sync_connections(listener, &db, &token);
+        let notify: SyncNotifier = Arc::new(move |inserted: usize| {
+            let _ = app.emit(SYNC_UPDATED_EVENT, inserted);
+        });
+        serve_sync_connections(listener, &db, &token, &notify);
     });
 }
 
@@ -635,10 +674,15 @@ fn bind_sync_listener(port: u16) -> std::io::Result<TcpListener> {
     TcpListener::bind(("0.0.0.0", port))
 }
 
-fn serve_sync_connections(listener: TcpListener, db: &Arc<Mutex<Connection>>, token: &str) {
+fn serve_sync_connections(
+    listener: TcpListener,
+    db: &Arc<Mutex<Connection>>,
+    token: &str,
+    notify_new_notes: &SyncNotifier,
+) {
     for stream in listener.incoming() {
         match stream {
-            Ok(stream) => handle_sync_connection(stream, db, token),
+            Ok(stream) => handle_sync_connection(stream, db, token, notify_new_notes),
             Err(error) => eprintln!("[sync] erro de conexao: {error}"),
         }
     }
@@ -1279,7 +1323,7 @@ pub fn run() {
             let token = ensure_sync_token(&mut config);
             let port = sync_port_for(&config);
             if save_config(app.handle(), &config).is_ok() {
-                spawn_sync_server(db, port, token);
+                spawn_sync_server(db, port, token, app.handle().clone());
             } else {
                 eprintln!("[sync] nao foi possivel persistir o token; servidor nao iniciado");
             }
@@ -1547,9 +1591,11 @@ mod tests {
     #[test]
     fn sync_accepts_new_memory_with_cell_capture_timestamp() {
         let conn = sync_test_connection();
-        let accepted = handle_sync_batch(&conn, vec![sync_item("uuid-1", "comprar pão")]);
+        let (accepted, inserted) =
+            handle_sync_batch(&conn, vec![sync_item("uuid-1", "comprar pão")]);
 
         assert_eq!(accepted.len(), 1);
+        assert_eq!(inserted, 1);
         assert_eq!(accepted[0].client_id, "uuid-1");
         assert_eq!(sync_note_count(&conn), 1);
         let (created_at, embedding): (String, String) = conn
@@ -1571,12 +1617,17 @@ mod tests {
         // reenvia o mesmo lote. O reenvio retorna "já existia" como aceito,
         // permitindo ao celular apagar sem duplicar.
         let conn = sync_test_connection();
-        let first = handle_sync_batch(&conn, vec![sync_item("uuid-timeout", "ligar para o banco")]);
-        let second =
+        let (first, first_inserted) =
+            handle_sync_batch(&conn, vec![sync_item("uuid-timeout", "ligar para o banco")]);
+        let (second, second_inserted) =
             handle_sync_batch(&conn, vec![sync_item("uuid-timeout", "ligar para o banco")]);
 
         assert_eq!(first.len(), 1);
         assert_eq!(second.len(), 1);
+        assert_eq!(first_inserted, 1);
+        // Reenvio idempotente é aceito no ACK mas não conta como inserção nova
+        // — é o que evita notificar a interface à toa.
+        assert_eq!(second_inserted, 0);
         assert_eq!(first[0].note_id, second[0].note_id);
         assert_eq!(sync_note_count(&conn), 1);
     }
@@ -1586,7 +1637,7 @@ mod tests {
         // Falha parcial: itens inválidos são ignorados sem abortar o resto;
         // o celular mantém apenas o que não foi aceito.
         let conn = sync_test_connection();
-        let accepted = handle_sync_batch(
+        let (accepted, inserted) = handle_sync_batch(
             &conn,
             vec![
                 sync_item("uuid-ok", "memória válida"),
@@ -1601,6 +1652,7 @@ mod tests {
         );
 
         assert_eq!(accepted.len(), 1);
+        assert_eq!(inserted, 1);
         assert_eq!(accepted[0].client_id, "uuid-ok");
         assert_eq!(sync_note_count(&conn), 1);
     }
@@ -1611,7 +1663,7 @@ mod tests {
         // capturas legítimas, não duplicatas (o app já tem fluxo de "quase
         // duplicadas" para o humano decidir).
         let conn = sync_test_connection();
-        let accepted = handle_sync_batch(
+        let (accepted, inserted) = handle_sync_batch(
             &conn,
             vec![
                 sync_item("uuid-a", "mesmo texto"),
@@ -1620,6 +1672,7 @@ mod tests {
         );
 
         assert_eq!(accepted.len(), 2);
+        assert_eq!(inserted, 2);
         assert_ne!(accepted[0].note_id, accepted[1].note_id);
         assert_eq!(sync_note_count(&conn), 2);
     }
@@ -1657,6 +1710,15 @@ mod tests {
     // --- HTTP de ponta a ponta (TCP real, porta efêmera) ---
 
     fn sync_e2e_server() -> (std::net::SocketAddr, Arc<Mutex<Connection>>, String) {
+        let notify: SyncNotifier = Arc::new(|_| {});
+        sync_e2e_server_with_notify(notify)
+    }
+
+    /// Variante com callback de notificação observável: prova que o evento da
+    /// interface só dispara quando há inserção real no SQLite.
+    fn sync_e2e_server_with_notify(
+        notify: SyncNotifier,
+    ) -> (std::net::SocketAddr, Arc<Mutex<Connection>>, String) {
         let conn = sync_test_connection();
         let db = Arc::new(Mutex::new(conn));
         let token = "token-teste-e2e".to_string();
@@ -1664,7 +1726,9 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         let thread_db = db.clone();
         let thread_token = token.clone();
-        thread::spawn(move || serve_sync_connections(listener, &thread_db, &thread_token));
+        thread::spawn(move || {
+            serve_sync_connections(listener, &thread_db, &thread_token, &notify)
+        });
         (addr, db, token)
     }
 
@@ -1756,5 +1820,39 @@ mod tests {
         assert!(response.starts_with("HTTP/1.1 400"));
         let conn = db.lock().unwrap();
         assert_eq!(sync_note_count(&conn), 0);
+    }
+
+    #[test]
+    fn sync_e2e_notifies_interface_only_on_real_insert() {
+        // Prova da integração interface: POST novo notifica com a contagem de
+        // inserções; reenvio idempotente responde ACK mas NÃO notifica (a nota
+        // já está na lista — recarregar seria trabalho inútil).
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static NOTIFY_CALLS: AtomicUsize = AtomicUsize::new(0);
+        static NOTIFY_TOTAL: AtomicUsize = AtomicUsize::new(0);
+        static NOTIFY: fn(usize) = |inserted| {
+            NOTIFY_CALLS.fetch_add(1, Ordering::SeqCst);
+            NOTIFY_TOTAL.fetch_add(inserted, Ordering::SeqCst);
+        };
+        NOTIFY_CALLS.store(0, Ordering::SeqCst);
+        NOTIFY_TOTAL.store(0, Ordering::SeqCst);
+
+        let (addr, db, token) = sync_e2e_server_with_notify(Arc::new(NOTIFY));
+        let body = r#"{"memories":[{"client_id":"notify-1","content":"nota que avisa a interface","tags":"","created_at":"2026-10-06T12:00:00Z"}]}"#;
+
+        let response = sync_e2e_post(&addr, &token, body);
+        assert!(response.starts_with("HTTP/1.1 200"));
+        // Dá um respiro para a thread HTTP processar antes de afirmar.
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        assert_eq!(NOTIFY_CALLS.load(Ordering::SeqCst), 1);
+        assert_eq!(NOTIFY_TOTAL.load(Ordering::SeqCst), 1);
+
+        // Reenvio: ACK repete o id, mas nenhuma notificação nova.
+        let retry = sync_e2e_post(&addr, &token, body);
+        assert!(retry.starts_with("HTTP/1.1 200"));
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        assert_eq!(NOTIFY_CALLS.load(Ordering::SeqCst), 1);
+        assert_eq!(sync_note_count(&db.lock().unwrap()), 1);
     }
 }
