@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Círculo de destaque do ícone: âmbar suave sobre o fundo escuro, para o 🧠
+  "acender" sem foto nem biblioteca de ícones (emoji renderiza em qualquer
+  launcher; vetor próprio seria um asset a manter à toa nesta etapa).
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+
+    <solid android:color="#F59E0B" />
+
+</shape>

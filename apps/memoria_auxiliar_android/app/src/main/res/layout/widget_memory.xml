@@ -1,24 +1,62 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cartão do widget: caixa sólida arredondada com ícone em destaque,
+  rótulo em duas linhas e botão "+". Tudo com views básicas permitidas
+  em RemoteViews (LinearLayout/TextView) — sem dependências, sem código.
+
+  A raiz continua sendo o alvo do toque (widgetRoot), então a área
+  clicável é o cartão inteiro, não só o botão.
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widgetRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:gravity="center"
+    android:background="@drawable/widget_memory_bg"
+    android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:padding="8dp">
+    android:padding="10dp">
 
     <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="@drawable/widget_memory_icon_bg"
+        android:gravity="center"
         android:text="🧠"
         android:textSize="22sp" />
 
-    <TextView
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Memória Auxiliar"
+            android:textColor="#F8FAFC"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Toque para anotar"
+            android:textColor="#94A3B8"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="32dp"
+        android:layout_height="32dp"
         android:layout_marginStart="8dp"
-        android:text="+ Memória"
-        android:textSize="16sp"
+        android:gravity="center"
+        android:text="+"
+        android:textColor="#F59E0B"
+        android:textSize="22sp"
         android:textStyle="bold" />
 
 </LinearLayout>
+

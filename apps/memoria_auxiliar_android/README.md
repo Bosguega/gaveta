@@ -87,6 +87,51 @@ via `10.0.2.2`). mDNS/NSD automático é decisão futura (v2).
 
 ---
 
+## Ideia futura: sincronização híbrida Android ↔ PC (NÃO implementar por enquanto)
+
+Atualmente o Android mantém as memórias pendentes localmente e sincroniza
+diretamente com o PC quando o servidor do Memória Auxiliar está disponível.
+
+Como evolução futura, avaliar uma **caixa postal temporária no Supabase**
+para armazenar notas quando o PC estiver indisponível, permitindo que o
+aplicativo desktop as receba posteriormente.
+
+**Não implementar por enquanto.** A sincronização direta atende ao uso
+individual atual. Reavaliar somente se a necessidade de sincronizar com o
+PC indisponível se tornar frequente.
+
+Se implementada, preservar:
+
+- SQLite do PC como armazenamento definitivo das memórias;
+- `client_id` e idempotência existentes (a caixa postal transporta os mesmos
+  `client_id`s — o PC continua descartando duplicatas do mesmo jeito);
+- remoção das pendências somente após confirmação segura de recebimento
+  pelo PC (o ACK continuaria vindo do PC, não do Supabase — a caixa postal
+  é transporte, não destino);
+- separação entre sincronização de memórias e sistema de lembretes.
+
+Ponderações para quando (e se) essa hora chegar:
+
+- **A caixa postal não substitui a caixa de entrada local**: o Android
+  continuaria guardando as pendentes em `PendingMemoryStore` e só as
+  apagaria após o ACK do PC. O Supabase seria um *retransmissor*, nunca
+  o lugar onde a memória "mora".
+- **Ordem de tentativa**: direto primeiro (LAN, sem custo nem dependência
+  externa), caixa postal como fallback quando o PC não responde — não o
+  contrário.
+- **Não colocar as memórias no Supabase apenas para facilitar a
+  sincronização**: a motivação legítima seria cobrir o caso "PC
+  indisponível", não conveniência de implementação.
+- **Expiração**: itens na caixa postal deveriam ter TTL curto (dias, não
+  meses) — é trânsito, não arquivo. Sem expiração, vira uma segunda base
+  de dados para administrar.
+- **Custo de superfície**: autenticação, regras de acesso por usuário,
+  limpeza de itens já entregues e depuração de "foi entregue ou não?"
+  são complexidade real para um uso individual — por isso a reavaliação
+  deve ser por necessidade observada, não por antecipação.
+
+---
+
 ## Estrutura
 
 ```text

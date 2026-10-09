@@ -9,7 +9,8 @@ import android.os.Build
 import android.widget.RemoteViews
 
 /**
- * Widget compacto "🧠 + Memória": apenas um botão.
+ * Widget "Memória Auxiliar": cartão sólido com ícone em destaque, rótulo e
+ * botão "+" — apenas um botão.
  *
  * RemoteViews não aceita EditText em nenhum launcher — por isso o toque abre
  * a QuickCaptureActivity (diálogo de captura) em vez de expandir no próprio
