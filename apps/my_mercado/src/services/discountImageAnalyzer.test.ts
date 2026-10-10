@@ -106,6 +106,114 @@ describe("analyzeDiscountsFromImage", () => {
     expect(result.confidence).toBe("baixa");
   });
 
+  it("deriva o preço unitário a partir de paid_total (itens por kg)", async () => {
+    // 1,5 kg x R$ 10,00 = R$ 15,00 cheio; desconto de R$ 3,00 na LINHA -> pago R$ 12,00.
+    const kgItems: ReceiptItem[] = [
+      { id: "k1", name: "BANANA", quantity: 1.5, unit: "kg", price: 10, total: 15 },
+    ];
+    const payload = JSON.stringify({
+      confidence: "alta",
+      suggestions: [{ index: 0, paid_total: 12 }],
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => geminiResponse(payload)));
+
+    const result = await analyzeDiscountsFromImage(makeFile(), kgItems);
+
+    // paid_price = 12 / 1,5 = R$ 8,00/kg (desconto no preço final, não por kg).
+    expect(result.suggestions).toEqual([{ itemIndex: 0, paidPrice: 8 }]);
+  });
+
+  it("descarta paid_total sem desconto real (>= total cheio da linha)", async () => {
+    const kgItems: ReceiptItem[] = [
+      { id: "k1", name: "BANANA", quantity: 1.5, unit: "kg", price: 10, total: 15 },
+    ];
+    const payload = JSON.stringify({
+      confidence: "media",
+      suggestions: [
+        { index: 0, paid_total: 15 }, // igual ao total cheio -> descarta
+        { index: 0, paid_total: 20 }, // maior que o total cheio -> descarta
+      ],
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => geminiResponse(payload)));
+
+    const result = await analyzeDiscountsFromImage(makeFile(), kgItems);
+
+    expect(result.suggestions).toEqual([]);
+  });
+
+  it("prefere paid_total quando a IA envia os dois campos", async () => {
+    // paid_price incorreto (desconto aplicado no/kg), paid_total correto.
+    const kgItems: ReceiptItem[] = [
+      { id: "k1", name: "BANANA", quantity: 1.5, unit: "kg", price: 10, total: 15 },
+    ];
+    const payload = JSON.stringify({
+      confidence: "alta",
+      suggestions: [{ index: 0, paid_price: 7, paid_total: 12 }],
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => geminiResponse(payload)));
+
+    const result = await analyzeDiscountsFromImage(makeFile(), kgItems);
+
+    expect(result.suggestions).toEqual([{ itemIndex: 0, paidPrice: 8 }]);
+  });
+
+  it("calcula o valor pago a partir do desconto IMPRESSO (caso chuchu 0,765 kg)", async () => {
+    // Nota real: CHUCHU 0,765 KG x 6,98 = 5,34; "Desconto Item-09: -3,06".
+    // O app deve calcular 5,34 - 3,06 = 2,28 -> paid_price = 2,28 / 0,765.
+    const kgItems: ReceiptItem[] = [
+      { id: "c1", name: "CHUCHU Kg", quantity: 0.765, unit: "kg", price: 6.98, total: 5.34 },
+    ];
+    const payload = JSON.stringify({
+      confidence: "alta",
+      suggestions: [{ index: 0, discount: 3.06 }],
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => geminiResponse(payload)));
+
+    const result = await analyzeDiscountsFromImage(makeFile(), kgItems);
+
+    expect(result.suggestions).toHaveLength(1);
+    const paidPrice = result.suggestions[0].paidPrice;
+    // 2,28 / 0,765 = 2,98039... — o total pago reconstruído é 2,28 (não 2,34).
+    expect(paidPrice * 0.765).toBeCloseTo(2.28, 2);
+    expect(paidPrice * 0.765).not.toBeCloseTo(2.34, 2);
+  });
+
+  it("descarta desconto inválido (zero, negativo ou >= total cheio)", async () => {
+    const kgItems: ReceiptItem[] = [
+      { id: "c1", name: "CHUCHU Kg", quantity: 0.765, unit: "kg", price: 6.98, total: 5.34 },
+    ];
+    const payload = JSON.stringify({
+      confidence: "media",
+      suggestions: [
+        { index: 0, discount: 0 },     // zero -> descarta
+        { index: 0, discount: -3.06 }, // negativo -> descarta
+        { index: 0, discount: 5.34 },  // igual ao total cheio -> descarta
+        { index: 0, discount: 99 },    // maior que o total cheio -> descarta
+      ],
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => geminiResponse(payload)));
+
+    const result = await analyzeDiscountsFromImage(makeFile(), kgItems);
+
+    expect(result.suggestions).toEqual([]);
+  });
+
+  it("prefere discount quando a IA envia vários campos", async () => {
+    const kgItems: ReceiptItem[] = [
+      { id: "c1", name: "CHUCHU Kg", quantity: 0.765, unit: "kg", price: 6.98, total: 5.34 },
+    ];
+    const payload = JSON.stringify({
+      confidence: "alta",
+      suggestions: [{ index: 0, discount: 3.06, paid_total: 3.0, paid_price: 4.5 }],
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => geminiResponse(payload)));
+
+    const result = await analyzeDiscountsFromImage(makeFile(), kgItems);
+
+    // discount vence: (5,34 - 3,06) / 0,765, não 3,0/0,765 nem 4,5.
+    expect(result.suggestions[0].paidPrice * 0.765).toBeCloseTo(2.28, 2);
+  });
+
   it("lança erro quando a resposta da API falha", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 500, text: async () => "err" })));
 

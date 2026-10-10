@@ -291,6 +291,17 @@ export function DiscountFromPhotoModal({ isOpen, items, onClose }: DiscountFromP
                                                         onChange={(e) => editRowPrice(index, e.target.value)}
                                                         aria-label={`Preço pago de ${name}`}
                                                     />
+                                                    {(() => {
+                                                        const parsedPaid = parseBRL(row.paidPrice);
+                                                        const paidLineTotal =
+                                                            (Number.isFinite(parsedPaid) ? parsedPaid : 0) *
+                                                            (row.item.quantity || 1);
+                                                        return (
+                                                            <div className="text-[0.7rem] text-slate-500 mt-1 text-right">
+                                                                = R$ {formatBRL(paidLineTotal)}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
                                             </div>
                                         );

@@ -113,6 +113,26 @@ describe("DiscountFromPhotoModal", () => {
     await waitFor(() => expect(screen.getByText(/Confiança baixa/)).toBeInTheDocument());
   });
 
+  it("exibe o total pago da linha para verificação (itens por kg)", async () => {
+    analyzeMock.mockResolvedValue({
+      suggestions: [{ itemIndex: 0, paidPrice: 8 }],
+      confidence: "alta",
+      rawJson: "{}",
+    });
+
+    const kgItems: ReceiptItem[] = [
+      { id: "k1", name: "BANANA", quantity: 1.5, unit: "kg", price: 10, total: 15 },
+    ];
+    const onClose = vi.fn();
+    render(<DiscountFromPhotoModal isOpen items={kgItems} onClose={onClose} />);
+
+    const input = screen.getByLabelText("Escolher da galeria") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [makeFile()] } });
+
+    // 8,00/kg x 1,5 kg = R$ 12,00 — o desconto foi aplicado no preço final da linha.
+    await waitFor(() => expect(screen.getByText("= R$ 12,00")).toBeInTheDocument());
+  });
+
   it("informa quando não há itens editáveis (sem id)", () => {
     const onClose = vi.fn();
     render(

@@ -2,10 +2,10 @@
  * Analisador de descontos a partir de imagem.
  *
  * Complementa uma nota já importada (ex.: via QR Code) identificando, por
- * foto, os preços efetivamente pagos (descontos por item). NÃO faz nova
- * extração completa nem cria nota: apenas sugere `paid_price` por item para
- * resolver descontos pendentes, relacionando cada produto ao item já
- * registrado na nota.
+ * foto, o VALOR DO DESCONTO impresso por item. NÃO faz nova extração completa
+ * nem cria nota: lê o desconto de cada item e calcula o `paid_price`
+ * correspondente (desconto aplicado sobre o total cheio da linha, como na
+ * nota), relacionando cada produto ao item já registrado.
  *
  * Reaproveita o padrão do imageReceiptParser (fileToBase64, chamada ao Gemini
  * e avaliação de confiança "alta|media|baixa").
@@ -57,8 +57,11 @@ function fileToBase64(file: File): Promise<string> {
 
 /**
  * Analisa a imagem e retorna sugestões de `paid_price` relacionadas aos itens
- * da nota. Só sugere quando há correspondência confiável com um item existente
- * e quando o valor pago é estritamente menor que o preço cheio (desconto real).
+ * da nota. A IA informa APENAS o desconto impresso por item ("discount"); o
+ * valor pago é calculado pelo app sobre o total cheio da linha (ex.: chuchu
+ * 0,765 kg x 6,98 = 5,34 com desconto 3,06 -> paid 2,28). Só sugere quando há
+ * correspondência confiável com um item existente e quando o desconto é real
+ * (menor que o total cheio da linha).
  */
 export async function analyzeDiscountsFromImage(
     file: File,
@@ -79,7 +82,9 @@ export async function analyzeDiscountsFromImage(
         .map((item, index) => {
             const name = item.normalized_name || item.name;
             const unit = item.unit || "un";
-            return `${index}. "${name}" | unidade: ${unit} | qtd: ${item.quantity} | preço unitário cheio: R$ ${item.price}`;
+            const fullTotal =
+                typeof item.total === "number" && item.total > 0 ? item.total : item.price * (item.quantity || 1);
+            return `${index}. "${name}" | unidade: ${unit} | qtd: ${item.quantity} | preço unitário cheio: R$ ${item.price} | total cheio da linha: R$ ${fullTotal}`;
         })
         .join("\n");
 
@@ -90,15 +95,15 @@ A imagem mostra a parte da nota com os itens e seus preços (possivelmente com d
 Abaixo estão os produtos JÁ REGISTRADOS nesta nota (com índice, nome, unidade, quantidade e preço unitário CHEIO):
 ${productList}
 
-Sua tarefa: para CADA produto da lista acima, tente identificar na imagem o preço unitário EFETIVAMENTE PAGO (após desconto).
+Sua tarefa: para CADA produto da lista acima, identifique na imagem o VALOR DO DESCONTO impresso para a linha daquele item (em reais).
 
 REGRAS IMPORTANTES:
-- Use o campo "index" da lista acima para indicar a qual produto cada valor se refere.
-- "paid_price" é o preço UNITÁRIO pago (já com desconto), em reais.
-- Só inclua um item se você tiver CERTEZA de que aquele valor pago pertence àquele produto (correspondência confiável pelo nome).
-- Se um produto NÃO teve desconto (preço pago == preço cheio), OMITA-o.
-- Se não conseguir identificar um valor com segurança, OMITA-o. NUNCA invente valores.
-- Não repita o preço cheio como se fosse desconto.
+- Use o campo "index" da lista acima para indicar a qual produto cada desconto se refere.
+- "discount" é APENAS o valor do desconto daquele item, exatamente como impresso na nota (em reais). Exemplo: a linha "Desconto Item-09: -3.06" corresponde a "discount": 3.06 para o produto de índice 8 da lista.
+- NÃO faça subtrações nem cálculos. Leia SOMENTE o número do desconto que está impresso e informe-o em "discount". O cálculo do valor pago será feito pelo aplicativo.
+- Em notas que imprimem "Desconto Item-XX", relacione cada desconto ao item correto pelo NOME do produto (o XX é o número da linha na nota, use o "index" da lista acima).
+- Se um produto NÃO teve desconto impresso, OMITA-o.
+- Se não conseguir ler o desconto com segurança, OMITA-o. NUNCA invente valores.
 - Se a imagem estiver ilegível ou não der para relacionar os produtos, retorne uma lista vazia.
 
 AVALIE a qualidade/legibilidade e classifique a confiança:
@@ -111,7 +116,7 @@ Responda APENAS com o JSON abaixo, sem explicações:
 {
   "confidence": "alta|media|baixa",
   "suggestions": [
-    { "index": 0, "paid_price": 9.90 }
+    { "index": 0, "discount": 3.06 }
   ]
 }
 
@@ -165,7 +170,7 @@ Se não houver nenhum desconto identificável, retorne "suggestions": [].`;
 
     let parsed: {
         confidence?: string;
-        suggestions?: Array<{ index?: number; paid_price?: number }>;
+        suggestions?: Array<{ index?: number; discount?: number; paid_total?: number; paid_price?: number }>;
     };
 
     try {
@@ -184,13 +189,31 @@ Se não houver nenhum desconto identificável, retorne "suggestions": [].`;
     for (const raw of parsed.suggestions || []) {
         if (typeof raw.index !== "number" || !Number.isInteger(raw.index)) continue;
         if (raw.index < 0 || raw.index >= items.length) continue;
-        if (typeof raw.paid_price !== "number" || !Number.isFinite(raw.paid_price) || raw.paid_price < 0) continue;
-
         const item = items[raw.index];
-        // Só considera desconto real (pago estritamente menor que o preço cheio).
-        if (raw.paid_price >= item.price) continue;
+        const quantity = item.quantity > 0 ? item.quantity : 1;
+        const fullTotal =
+            typeof item.total === "number" && item.total > 0 ? item.total : item.price * quantity;
 
-        suggestions.push({ itemIndex: raw.index, paidPrice: raw.paid_price });
+        let paidPrice: number | undefined;
+        if (typeof raw.discount === "number" && Number.isFinite(raw.discount) && raw.discount > 0) {
+            // Campo principal: a IA LÊ o desconto impresso (ex.: "Desconto Item-09:
+            // -3.06") e o cálculo do valor pago é feito AQUI, deterministicamente.
+            // Assim não dependemos da aritmética da IA (que errava 5,34 - 3,06).
+            if (raw.discount >= fullTotal) continue; // desconto impossível
+            const paidTotal = Math.round((fullTotal - raw.discount) * 100) / 100; // evita erro de float
+            paidPrice = paidTotal / quantity;
+        } else if (typeof raw.paid_total === "number" && Number.isFinite(raw.paid_total) && raw.paid_total >= 0) {
+            // Fallback: total pago da linha informado diretamente pela IA.
+            if (raw.paid_total >= fullTotal) continue; // sem desconto real
+            paidPrice = raw.paid_total / quantity;
+        } else if (typeof raw.paid_price === "number" && Number.isFinite(raw.paid_price) && raw.paid_price >= 0) {
+            // Último fallback: preço unitário pago informado diretamente pela IA.
+            if (raw.paid_price >= item.price) continue; // sem desconto real
+            paidPrice = raw.paid_price;
+        }
+
+        if (paidPrice === undefined) continue;
+        suggestions.push({ itemIndex: raw.index, paidPrice });
     }
 
     return { suggestions, confidence, rawJson: jsonStr };
