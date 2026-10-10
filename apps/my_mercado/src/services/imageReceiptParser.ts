@@ -67,12 +67,11 @@ Com base nisso, classifique a confiança como:
 REGRAS DE PREÇOS (fundamentais):
 - Separe SEMPRE o preço de ETIQUETA (cheio) do preço EFETIVAMENTE PAGO.
 - "price" é o preço UNITÁRIO CHEIO (de etiqueta), antes de qualquer desconto.
-- "total" é o valor total do item NO PREÇO CHEIO (price * quantity), antes de qualquer desconto.
-- "paid_price" é o preço UNITÁRIO efetivamente pago, já com o desconto daquele item aplicado.
-- "paid_total" é o valor total efetivamente pago daquele item (paid_price * quantity).
-- Se um item NÃO teve desconto, OMITA "paid_price" e "paid_total" (não repita o valor cheio neles).
-- Se um item teve desconto, calcule paid_price = paid_total / quantity quando necessário.
-- "total_discount" é o desconto GERAL da nota (campo "Descontos R$ X"), se visível. Se não houver, use 0.
+- "total" é o VALOR IMPRESSO na coluna TOTAL da linha do item (preço cheio, antes de desconto). Leia o valor impresso; NÃO faça multiplicações. Se não estiver legível, omita.
+- "discount" é APENAS o valor do desconto IMPRESSO para aquele item (ex.: a linha "Desconto Item-09: -3.06" corresponde a "discount": 3.06 para o item correspondente). NÃO faça subtrações nem cálculos — informe somente o número lido.
+- Se a nota imprimir o valor já com desconto, você pode informar "paid_total" (valor pago da linha) ou "paid_price" (unitário pago). Caso contrário OMITA-os — o aplicativo calcula a partir de "discount".
+- Se um item NÃO teve desconto, OMITA "discount", "paid_price" e "paid_total" (não repita o valor cheio neles).
+- "total_discount" é o desconto GERAL da nota (campo "Descontos R$ X"), se visível. Leia o valor impresso; NÃO some descontos de itens. Se não houver, use 0.
 - NÃO invente valores. Se algo estiver ilegível ou ambíguo, use o que estiver legível, omita os campos de desconto incertos e rebaixe a "confidence".
 
 Responda APENAS com o JSON abaixo, sem explicações adicionais:
@@ -88,8 +87,7 @@ Responda APENAS com o JSON abaixo, sem explicações adicionais:
       "quantity": 1,
       "price": 10.50,
       "total": 10.50,
-      "paid_price": 9.90,
-      "paid_total": 9.90
+      "discount": 0.60
     }
   ]
 }
@@ -97,7 +95,7 @@ Responda APENAS com o JSON abaixo, sem explicações adicionais:
 Regras adicionais:
 - O campo "name" deve ser o nome completo do produto como aparece na nota
 - "quantity" é um número (ex: 2, 1, 0.5)
-- "price" e "total" usam o PREÇO CHEIO; "paid_price" e "paid_total" usam o valor com desconto
+- "price" e "total" usam o PREÇO CHEIO; "discount" é o desconto IMPRESSO do item (sem cálculos)
 - Para "date", use o formato DD/MM/AAAA HH:mm:ss. Se não houver horário visível, use apenas a data com 00:00:00
 - Se não conseguir identificar o estabelecimento, use "Imagem de Nota"
 - Se não houver data visível, use a data atual
@@ -166,6 +164,7 @@ Regras adicionais:
             quantity?: number;
             price?: number;
             total?: number;
+            discount?: number;
             paid_price?: number;
             paid_total?: number;
         }>;
@@ -213,19 +212,26 @@ Regras adicionais:
         const fullTotal =
             typeof item.total === "number" && item.total >= 0 ? item.total : fullPrice * quantity;
 
-        // Desconto por item: só consideramos quando houver um valor pago
-        // finito E estritamente menor que o preço cheio. Caso contrário, o item
-        // é tratado como sem desconto (paid_price ausente).
+        // Desconto por item: a IA informa o desconto IMPRESSO ("discount"); o
+        // valor pago é calculado AQUI, deterministicamente, sobre o total cheio
+        // da linha (mesmo padrão do discountImageAnalyzer — a IA não calcula).
+        // Fallbacks: paid_total/paid_price direto da IA, se enviados.
         let paidPrice: number | undefined;
-        if (typeof item.paid_price === "number" && Number.isFinite(item.paid_price) && item.paid_price >= 0) {
-            paidPrice = item.paid_price;
+        const discount =
+            typeof item.discount === "number" && Number.isFinite(item.discount) ? item.discount : undefined;
+
+        if (discount !== undefined && discount > 0 && discount < fullTotal) {
+            const paidTotal = Math.round((fullTotal - discount) * 100) / 100; // evita erro de float
+            paidPrice = paidTotal / quantity;
         } else if (
             typeof item.paid_total === "number" &&
             Number.isFinite(item.paid_total) &&
             item.paid_total >= 0 &&
-            quantity > 0
+            item.paid_total < fullTotal
         ) {
             paidPrice = item.paid_total / quantity;
+        } else if (typeof item.paid_price === "number" && Number.isFinite(item.paid_price) && item.paid_price >= 0) {
+            paidPrice = item.paid_price;
         }
 
         if (paidPrice !== undefined && fullPrice > 0 && paidPrice >= fullPrice) {
