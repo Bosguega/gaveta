@@ -13,6 +13,12 @@ export interface RawReceiptItem {
   unit: string;
   unitPrice: string;
   total: string;
+  /**
+   * Preço unitário efetivamente pago (após desconto por item), em formato BR.
+   * Opcional: só a extração via galeria (IA) o preenche. Os demais fluxos
+   * deixam este campo ausente, preservando o comportamento atual.
+   */
+  paidPrice?: string;
 }
 
 /**
@@ -33,6 +39,13 @@ export interface ReceiptItem {
 }
 
 /**
+ * Origem da extração de uma nota. Usado apenas no fluxo do scanner (estado
+ * em memória) para habilitar recursos específicos — ex.: edição completa de
+ * itens na galeria. Não é persistido no banco nem no backup.
+ */
+export type ReceiptSource = "qr" | "gallery" | "text" | "manual";
+
+/**
  * Receipt (nota fiscal)
  */
 export interface Receipt {
@@ -44,6 +57,8 @@ export interface Receipt {
   created_at?: string;
   total_discount?: number;
   nfce_qr_url?: string;
+  /** Discriminador explícito da origem da extração (não persistido). */
+  source?: ReceiptSource;
 }
 
 /**

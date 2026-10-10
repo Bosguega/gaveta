@@ -80,4 +80,22 @@ describe("analytics aggregate", () => {
     // receipt 1: 35, receipt 2: 3 * 5 = 15 => total 50
     expect(calculateTotalSpent(receipts, parseBRL)).toBe(50);
   });
+
+  it("nao contabiliza total_discount no gasto (marcador informativo)", () => {
+    // Nota com desconto global e desconto por item ao mesmo tempo.
+    // O gasto deve considerar apenas paid_price/total dos itens.
+    const receipt: Receipt = {
+      id: "3",
+      establishment: "Mercado C",
+      date: "2026-03-03",
+      total_discount: 5, // nao deve ser somado
+      items: [
+        { name: "Item com desconto", quantity: 2, price: 10, paid_price: 8, total: 20 }, // 16
+        { name: "Item cheio", quantity: 1, price: 7, total: 7 }, // 7
+      ],
+    };
+
+    // 8*2 + 7 = 23; o total_discount (5) NAO entra na conta.
+    expect(calculateReceiptTotal(receipt, parseBRL)).toBe(23);
+  });
 });

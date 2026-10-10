@@ -17,11 +17,22 @@ const isDev = import.meta.env.DEV;
 
 /**
  * Converte RawReceiptItem (parser output) para ReceiptItem (DB format)
+ *
+ * Preserva `paid_price` apenas quando o campo opcional `paidPrice` vier
+ * preenchido (extração via galeria). Nos demais fluxos o campo é ausente e o
+ * item resultante não tem `paid_price`, mantendo o comportamento atual em que
+ * o gasto é derivado de `total`/`price`.
  */
 function rawToProcessed(item: RawReceiptItem): ReceiptItem {
   const quantity = parseQuantity(item.qty, 1);
   const unitPrice = toNumber(item.unitPrice, 0);
   const totalValue = toNumber(item.total, 0);
+
+  const hasPaidPrice =
+    item.paidPrice !== undefined &&
+    item.paidPrice !== null &&
+    String(item.paidPrice).trim() !== "";
+  const paidPrice = hasPaidPrice ? toNumber(item.paidPrice as string, unitPrice) : undefined;
 
   return {
     name: item.name,
@@ -29,6 +40,7 @@ function rawToProcessed(item: RawReceiptItem): ReceiptItem {
     unit: item.unit || "UN",
     price: unitPrice,
     total: totalValue,
+    ...(paidPrice !== undefined ? { paid_price: paidPrice } : {}),
   };
 }
 
@@ -127,7 +139,7 @@ export async function processItemsPipeline(
   const finalItems: ReceiptItem[] = itemsWithKey.map((item) => {
     const dictEntry = dictionary[item.normalized_key] || aiMap[item.normalized_key];
 
-    const { quantity, price, total } = rawToProcessed(item);
+    const { quantity, price, total, paid_price } = rawToProcessed(item);
 
     return {
       id: item.id,
@@ -139,6 +151,9 @@ export async function processItemsPipeline(
       unit: item.unit || "UN",
       price,
       total,
+      // Preserva o desconto por item quando a galeria o fornecer; caso
+      // contrário o campo permanece ausente (comportamento dos demais fluxos).
+      ...(paid_price !== undefined ? { paid_price } : {}),
     };
   });
 

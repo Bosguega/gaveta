@@ -13,6 +13,7 @@ interface ScanSlice {
   scanning: boolean;
   error: string | null;
   duplicateReceipt: Receipt | null;
+  duplicateMatchLevel: "exact" | "probable" | null;
   isSaving: boolean;
 }
 
@@ -25,6 +26,7 @@ interface ScanActions {
   setScanning: (value: boolean) => void;
   setError: (value: string | null) => void;
   setDuplicateReceipt: (value: Receipt | null) => void;
+  setDuplicateMatchLevel: (value: "exact" | "probable" | null) => void;
   setIsSaving: (value: boolean) => void;
 }
 
@@ -90,6 +92,7 @@ const initialScanState: ScanSlice = {
   scanning: false,
   error: null,
   duplicateReceipt: null,
+  duplicateMatchLevel: null,
   isSaving: false,
 };
 
@@ -131,6 +134,7 @@ export const useScannerStore = create<ScannerState>()((set) => ({
   setScanning: (value) => set({ scanning: value }),
   setError: (value) => set({ error: value }),
   setDuplicateReceipt: (value) => set({ duplicateReceipt: value }),
+  setDuplicateMatchLevel: (value) => set({ duplicateMatchLevel: value }),
   setIsSaving: (value) => set({ isSaving: value }),
 
   // Camera Slice

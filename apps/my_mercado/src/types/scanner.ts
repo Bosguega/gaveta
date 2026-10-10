@@ -44,7 +44,7 @@ export const LOADING_STEP_LABELS: Record<LoadingStep, string> = {
  * Resposta ao salvar um receipt
  */
 export type SaveReceiptResponse =
-  | { duplicate: true; existingReceipt: Receipt }
+  | { duplicate: true; existingReceipt: Receipt; contentMatchLevel?: "exact" | "probable" }
   | { success: true; receipt: Receipt }
   | { success: false; error: unknown };
 
@@ -156,6 +156,13 @@ export interface DuplicateModalProps {
   duplicateReceipt: Receipt;
   onCancel: () => void;
   onForceSave: () => void;
+  /**
+   * Grau de confiança da correspondência. "exact" (padrão) mantém o texto
+   * atual; "probable" indica correspondência por conteúdo entre fontes e exibe
+   * aviso de que pode não ser a mesma compra. Opcional — QR/texto/manual não
+   * passam este campo e preservam o comportamento anterior.
+   */
+  matchLevel?: "exact" | "probable";
 }
 
 /**

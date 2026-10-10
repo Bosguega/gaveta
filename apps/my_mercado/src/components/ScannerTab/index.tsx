@@ -28,6 +28,7 @@ function ScannerTab() {
   const isSaving = useScannerStore((state) => state.isSaving);
   const setCurrentReceipt = useScannerStore((state) => state.setCurrentReceipt);
   const setDuplicateReceipt = useScannerStore((state) => state.setDuplicateReceipt);
+  const duplicateMatchLevel = useScannerStore((state) => state.duplicateMatchLevel);
   const { data: establishmentEntries = [] } = useEstablishmentDictionaryQuery();
   const upsertEstablishment = useUpsertEstablishmentDictionaryEntry();
   const establishmentKeys = useRef(new Set(establishmentEntries.map((e) => normalizeKey(e.establishment))));
@@ -62,7 +63,11 @@ function ScannerTab() {
       });
 
       if ("duplicate" in result && result.duplicate) {
-        return { duplicate: true, existingReceipt: result.existingReceipt };
+        return {
+          duplicate: true,
+          existingReceipt: result.existingReceipt,
+          contentMatchLevel: result.contentMatchLevel,
+        };
       }
       if ("success" in result && result.success) {
         return { success: true, receipt: result.receipt };
@@ -173,7 +178,11 @@ function ScannerTab() {
           qty: item.quantity.toString().replace('.', ','),
           unit: item.unit || 'UN',
           unitPrice: item.price.toString().replace('.', ','),
-          total: (item.total ?? item.price * item.quantity).toString().replace('.', ',')
+          total: (item.total ?? item.price * item.quantity).toString().replace('.', ','),
+          // Repasse do desconto por item identificado pela IA (quando houver).
+          ...(item.paid_price !== undefined && item.paid_price !== null
+            ? { paidPrice: item.paid_price.toString().replace('.', ',') }
+            : {}),
         }));
 
         const processedItems = await processItemsPipeline(rawItemsForPipeline);
@@ -367,6 +376,7 @@ function ScannerTab() {
           duplicateReceipt={duplicateReceipt}
           onCancel={() => handleSetDuplicateReceipt(null)}
           onForceSave={handleForceSaveDuplicate}
+          matchLevel={duplicateMatchLevel ?? "exact"}
         />
       )}
 

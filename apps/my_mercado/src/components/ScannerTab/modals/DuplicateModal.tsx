@@ -1,6 +1,8 @@
 import type { DuplicateModalProps } from "../../../types/scanner";
 
-export function DuplicateModal({ duplicateReceipt, onCancel, onForceSave }: DuplicateModalProps) {
+export function DuplicateModal({ duplicateReceipt, onCancel, onForceSave, matchLevel = "exact" }: DuplicateModalProps) {
+  const isProbable = matchLevel === "probable";
+
   return (
     <div className="duplicate-modal-overlay z-[3000]">
       <div className="glass-card duplicate-modal-card">
@@ -8,12 +10,23 @@ export function DuplicateModal({ duplicateReceipt, onCancel, onForceSave }: Dupl
           <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center">
             <span className="text-2xl">⚠️</span>
           </div>
-          <h2 className="text-white text-xl">Nota Já Existente</h2>
+          <h2 className="text-white text-xl">
+            {isProbable ? "Possível Nota Duplicada" : "Nota Já Existente"}
+          </h2>
         </div>
-
         <p className="text-slate-400 text-[0.95rem] mb-6 leading-relaxed">
-          Esta nota fiscal já está no seu histórico desde{" "}
-          <strong className="text-amber-400">{duplicateReceipt.date}</strong>.
+          {isProbable ? (
+            <>
+              Encontramos uma nota que pode representar a mesma compra, registrada por outro método
+              em <strong className="text-amber-400">{duplicateReceipt.date}</strong>. Atualizar irá
+              substituir essa nota.
+            </>
+          ) : (
+            <>
+              Esta nota fiscal já está no seu histórico desde{" "}
+              <strong className="text-amber-400">{duplicateReceipt.date}</strong>.
+            </>
+          )}
         </p>
 
         <div className="grid grid-cols-2 gap-3">
@@ -24,12 +37,14 @@ export function DuplicateModal({ duplicateReceipt, onCancel, onForceSave }: Dupl
             Cancelar
           </button>
           <button className="btn btn-success" onClick={onForceSave}>
-            Atualizar Nota
+            {isProbable ? "Substituir Nota" : "Atualizar Nota"}
           </button>
         </div>
 
         <p className="text-slate-500 text-sm mt-4 text-center">
-          Isso substituirá a nota anterior
+          {isProbable
+            ? "Se não for a mesma compra, escolha Cancelar para manter ambas."
+            : "Isso substituirá a nota anterior"}
         </p>
       </div>
     </div>

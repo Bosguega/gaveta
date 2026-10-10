@@ -1,4 +1,4 @@
-import { CheckCircle, ChevronDown, ChevronUp, XCircle, Loader2, Tag, Pencil } from "lucide-react";
+import { CheckCircle, ChevronDown, ChevronUp, XCircle, Loader2, Tag, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import { formatBRL, parseBRL } from "../../../utils/currency";
 import { formatQuantity, parseQuantity } from "../../../utils/format";
@@ -7,6 +7,7 @@ import type { ReceiptItem } from "../../../types/domain";
 import type { ReceiptResultProps } from "../../../types/scanner";
 import { useScannerStore } from "../../../stores/useScannerStore";
 import { PriceEditModal } from "../../PriceEditModal";
+import { ItemEditModal, type ItemEditChanges } from "../../ItemEditModal";
 
 export function ResultScreen({
   currentReceipt,
@@ -17,12 +18,21 @@ export function ResultScreen({
 }: ReceiptResultProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [fullEditIndex, setFullEditIndex] = useState<number | null>(null);
   const setCurrentReceipt = useScannerStore((state) => state.setCurrentReceipt);
+
+  // Edição completa (nome/qtd/preço) e adicionar/remover são exclusivos da galeria.
+  const isGallery = currentReceipt.source === "gallery";
 
   const editingItem = useMemo(() => {
     if (editingIndex === null || !currentReceipt?.items) return null;
     return currentReceipt.items[editingIndex] || null;
   }, [editingIndex, currentReceipt?.items]);
+
+  const fullEditingItem = useMemo(() => {
+    if (fullEditIndex === null || !currentReceipt?.items) return null;
+    return currentReceipt.items[fullEditIndex] || null;
+  }, [fullEditIndex, currentReceipt?.items]);
 
   const displayEstablishment = useMemo(() => {
     return currentReceipt.establishment_display || currentReceipt.establishment;
@@ -87,6 +97,83 @@ export function ResultScreen({
 
     setEditingIndex(null);
   }, [editingIndex, setCurrentReceipt]);
+
+  const handleStartFullEdit = useCallback((e: React.MouseEvent, index: number) => {
+    e.stopPropagation();
+    setFullEditIndex(index);
+  }, []);
+
+  const handleCancelFullEdit = useCallback(() => {
+    setFullEditIndex(null);
+  }, []);
+
+  /**
+   * Salva a edição completa de um item (nome, quantidade, preço cheio).
+   *
+   * Recalcula os valores dependentes e mantém o desconto por item apenas
+   * quando ele continua coerente com o novo preço cheio. Se o `paid_price`
+   * passar a ser >= o novo `price`, ele é descartado (evita paid_price
+   * incompatível). O `total` é sempre recalculado como preço cheio * qtd.
+   */
+  const handleSaveFullEdit = useCallback((changes: ItemEditChanges) => {
+    if (fullEditIndex === null) return;
+
+    setCurrentReceipt((prev) => {
+      if (!prev) return null;
+      const updatedItems = prev.items.map((item, idx) => {
+        if (idx !== fullEditIndex) return item;
+
+        const newPrice = changes.price;
+        const newQuantity = changes.quantity;
+        const newTotal = newPrice * newQuantity;
+
+        const next: ReceiptItem = {
+          ...item,
+          name: changes.name,
+          quantity: newQuantity,
+          price: newPrice,
+          total: newTotal,
+        };
+
+        if (item.paid_price !== undefined && item.paid_price !== null) {
+          // Preserva o desconto só se ainda fizer sentido (paid < preço cheio).
+          if (item.paid_price < newPrice) {
+            next.paid_price = item.paid_price;
+          } else {
+            delete next.paid_price;
+          }
+        }
+
+        return next;
+      });
+      return { ...prev, items: updatedItems };
+    });
+
+    setFullEditIndex(null);
+  }, [fullEditIndex, setCurrentReceipt]);
+
+  const handleRemoveItem = useCallback((e: React.MouseEvent, index: number) => {
+    e.stopPropagation();
+    setCurrentReceipt((prev) => {
+      if (!prev) return null;
+      if (prev.items.length <= 1) return prev;
+      return { ...prev, items: prev.items.filter((_, i) => i !== index) };
+    });
+  }, [setCurrentReceipt]);
+
+  const handleAddItem = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCurrentReceipt((prev) => {
+      if (!prev) return prev;
+      const newItem: ReceiptItem = {
+        name: "Novo item",
+        quantity: 1,
+        price: 0,
+        total: 0,
+      };
+      return { ...prev, items: [...prev.items, newItem] };
+    });
+  }, [setCurrentReceipt]);
 
   const totalDiscount = currentReceipt.total_discount;
   const hasDiscount = totalDiscount !== undefined && totalDiscount > 0.005;
@@ -191,12 +278,43 @@ export function ResultScreen({
                   >
                     <Pencil size={10} />
                   </button>
+                  {isGallery && (
+                    <>
+                      <button
+                        onClick={(e) => handleStartFullEdit(e, idx)}
+                        className="bg-slate-700/50 border-none rounded w-5 h-5 flex items-center justify-center text-slate-400 cursor-pointer hover:text-slate-200 hover:bg-slate-700 flex-shrink-0"
+                        title="Editar item (nome, quantidade, preço)"
+                      >
+                        <Pencil size={10} />
+                      </button>
+                      <button
+                        onClick={(e) => handleRemoveItem(e, idx)}
+                        className="bg-red-500/10 border-none rounded w-5 h-5 flex items-center justify-center text-red-400 cursor-pointer hover:bg-red-500/20 hover:text-red-300 flex-shrink-0"
+                        title="Remover item"
+                      >
+                        <Trash2 size={10} />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Adicionar item — exclusivo da galeria */}
+      {isGallery && (
+        <div className="px-4 pb-3">
+          <button
+            onClick={handleAddItem}
+            className="btn w-full p-3 text-sm bg-white/5 border border-[var(--card-border)] text-slate-300 hover:text-white"
+          >
+            <Plus size={16} className="mr-2 inline" />
+            Adicionar item
+          </button>
+        </div>
+      )}
 
       {/* Total e Botões de ação */}
       <div className="p-5 border-t border-white/5 bg-slate-900/30">
@@ -244,6 +362,16 @@ export function ResultScreen({
           isOpen={true}
           onCancel={handleCancelEdit}
           onSavePaidPrice={handleSavePaidPrice}
+        />
+      )}
+
+      {/* Modal de edição completa do item — exclusivo da galeria */}
+      {isGallery && fullEditIndex !== null && fullEditingItem && (
+        <ItemEditModal
+          item={fullEditingItem}
+          isOpen={true}
+          onCancel={handleCancelFullEdit}
+          onSave={handleSaveFullEdit}
         />
       )}
     </div>

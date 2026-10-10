@@ -9,6 +9,7 @@ import { useEstablishmentPrefillStore } from "../stores/useEstablishmentPrefillS
 import { useUiStore } from "../stores/useUiStore";
 import { useUpdateItemPaidPrice } from "../hooks/queries/useUpdateItemPaidPrice";
 import { PriceEditModal } from "./PriceEditModal";
+import { DiscountFromPhotoModal } from "./DiscountFromPhotoModal";
 
 interface ReceiptCardProps {
     receipt: Receipt;
@@ -145,6 +146,15 @@ export const ReceiptCard = React.memo(function ReceiptCard({
         [receipt.id, onDelete],
     );
 
+    const [discountModalOpen, setDiscountModalOpen] = useState(false);
+    const handleOpenDiscountModal = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation();
+        setDiscountModalOpen(true);
+    }, []);
+    const handleCloseDiscountModal = useCallback(() => {
+        setDiscountModalOpen(false);
+    }, []);
+
     return (
         <div className="glass-card animated-item p-0 overflow-hidden mb-0">
             {/* Header */}
@@ -188,13 +198,14 @@ export const ReceiptCard = React.memo(function ReceiptCard({
                     </div>
                     <div className="flex items-center gap-3">
                         {pendingDiscount > 0 && (
-                            <span
-                                className="flex items-center bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full text-xs whitespace-nowrap"
-                                title={`Desconto de R$ ${pendingDiscount.toFixed(2).replace(".", ",")} ainda não inserido — edite o preço pago dos itens`}
+                            <button
+                                onClick={handleOpenDiscountModal}
+                                className="flex items-center bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full text-xs whitespace-nowrap cursor-pointer hover:bg-amber-500/30 transition-colors"
+                                title={`Desconto de R$ ${pendingDiscount.toFixed(2).replace(".", ",")} ainda não inserido — clique para conferir pela foto`}
                             >
                                 <Tag size={12} className="mr-1" />
                                 R$ {pendingDiscount.toFixed(2).replace(".", ",")}
-                            </span>
+                            </button>
                         )}
                         <span className="text-[var(--success)] font-bold text-[1.1rem] whitespace-nowrap">
                             R$ {total.toFixed(2).replace(".", ",")}
@@ -248,6 +259,13 @@ export const ReceiptCard = React.memo(function ReceiptCard({
                     ))}
                 </div>
             )}
+
+            {/* Modal de conferência de descontos pela foto */}
+            <DiscountFromPhotoModal
+                isOpen={discountModalOpen}
+                items={receipt.items}
+                onClose={handleCloseDiscountModal}
+            />
         </div>
     );
 });

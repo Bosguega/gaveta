@@ -8,6 +8,7 @@
 
 import { getApiKey, getApiModel } from "../utils/ai/aiConfig";
 import { logger } from "../utils/logger";
+import { generateGalleryReceiptId } from "../utils/receiptId";
 import type { Receipt } from "../types/domain";
 
 export interface ImageParseResult {
@@ -63,27 +64,40 @@ Com base nisso, classifique a confiança como:
 - "media" -> texto razoavelmente legível mas alguns caracteres podem estar errados
 - "baixa" -> imagem ruim, texto ilegível, muitos dados podem estar incorretos
 
+REGRAS DE PREÇOS (fundamentais):
+- Separe SEMPRE o preço de ETIQUETA (cheio) do preço EFETIVAMENTE PAGO.
+- "price" é o preço UNITÁRIO CHEIO (de etiqueta), antes de qualquer desconto.
+- "total" é o valor total do item NO PREÇO CHEIO (price * quantity), antes de qualquer desconto.
+- "paid_price" é o preço UNITÁRIO efetivamente pago, já com o desconto daquele item aplicado.
+- "paid_total" é o valor total efetivamente pago daquele item (paid_price * quantity).
+- Se um item NÃO teve desconto, OMITA "paid_price" e "paid_total" (não repita o valor cheio neles).
+- Se um item teve desconto, calcule paid_price = paid_total / quantity quando necessário.
+- "total_discount" é o desconto GERAL da nota (campo "Descontos R$ X"), se visível. Se não houver, use 0.
+- NÃO invente valores. Se algo estiver ilegível ou ambíguo, use o que estiver legível, omita os campos de desconto incertos e rebaixe a "confidence".
+
 Responda APENAS com o JSON abaixo, sem explicações adicionais:
 
 {
   "confidence": "alta|media|baixa",
   "establishment": "Nome completo do estabelecimento/mercado",
   "date": "DD/MM/AAAA HH:mm:ss",
+  "total_discount": 0.00,
   "items": [
     {
       "name": "Nome do produto",
       "quantity": 1,
       "price": 10.50,
-      "total": 10.50
+      "total": 10.50,
+      "paid_price": 9.90,
+      "paid_total": 9.90
     }
   ]
 }
 
-Regras:
+Regras adicionais:
 - O campo "name" deve ser o nome completo do produto como aparece na nota
 - "quantity" é um número (ex: 2, 1, 0.5)
-- "price" é o preço unitário em reais
-- "total" é o valor total do item em reais
+- "price" e "total" usam o PREÇO CHEIO; "paid_price" e "paid_total" usam o valor com desconto
 - Para "date", use o formato DD/MM/AAAA HH:mm:ss. Se não houver horário visível, use apenas a data com 00:00:00
 - Se não conseguir identificar o estabelecimento, use "Imagem de Nota"
 - Se não houver data visível, use a data atual
@@ -146,7 +160,15 @@ Regras:
         confidence?: string;
         establishment?: string;
         date?: string;
-        items?: Array<{ name?: string; quantity?: number; price?: number; total?: number }>;
+        total_discount?: number;
+        items?: Array<{
+            name?: string;
+            quantity?: number;
+            price?: number;
+            total?: number;
+            paid_price?: number;
+            paid_total?: number;
+        }>;
     };
 
     try {
@@ -161,11 +183,8 @@ Regras:
         ? parsed.confidence
         : "baixa";
 
-    // Gerar ID único para o receipt
+    // Data de referência (usada como fallback quando a IA não informa)
     const now = new Date();
-    const timestamp = now.getTime().toString(36);
-    const random = Math.random().toString(36).slice(2, 6);
-    const receiptId = `img-${timestamp}-${random}`;
 
     const establishment = parsed.establishment?.trim() || "Imagem de Nota";
 
@@ -181,25 +200,68 @@ Regras:
         date = `${dd}/${mm}/${yyyy} ${hh}:${min}:${ss}`;
     }
 
+    // Desconto geral da nota (marcador informativo, não entra no gasto).
+    const totalDiscount =
+        typeof parsed.total_discount === "number" && Number.isFinite(parsed.total_discount) && parsed.total_discount > 0.005
+            ? parsed.total_discount
+            : undefined;
+
     // Itens
-    const items = (parsed.items || []).map((item) => ({
-        name: item.name?.trim() || "Item não identificado",
-        quantity: typeof item.quantity === "number" ? item.quantity : 1,
-        price: typeof item.price === "number" ? item.price : 0,
-        total: typeof item.total === "number" ? item.total : (typeof item.price === "number" ? item.price : 0),
+    const items = (parsed.items || []).map((item) => {
+        const quantity = typeof item.quantity === "number" && item.quantity > 0 ? item.quantity : 1;
+        const fullPrice = typeof item.price === "number" && item.price >= 0 ? item.price : 0;
+        const fullTotal =
+            typeof item.total === "number" && item.total >= 0 ? item.total : fullPrice * quantity;
+
+        // Desconto por item: só consideramos quando houver um valor pago
+        // finito E estritamente menor que o preço cheio. Caso contrário, o item
+        // é tratado como sem desconto (paid_price ausente).
+        let paidPrice: number | undefined;
+        if (typeof item.paid_price === "number" && Number.isFinite(item.paid_price) && item.paid_price >= 0) {
+            paidPrice = item.paid_price;
+        } else if (
+            typeof item.paid_total === "number" &&
+            Number.isFinite(item.paid_total) &&
+            item.paid_total >= 0 &&
+            quantity > 0
+        ) {
+            paidPrice = item.paid_total / quantity;
+        }
+
+        if (paidPrice !== undefined && fullPrice > 0 && paidPrice >= fullPrice) {
+            // Sem desconto efetivo: não polui o modelo com paid_price == price.
+            paidPrice = undefined;
+        }
+
+        return {
+            name: item.name?.trim() || "Item não identificado",
+            quantity,
+            price: fullPrice,
+            total: fullTotal,
+            paid_price: paidPrice,
+        };
+    });
+
+    const receiptItems = items.map((item) => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price,
+        total: item.total,
+        // Preserva o desconto por item apenas quando existir.
+        ...(item.paid_price !== undefined ? { paid_price: item.paid_price } : {}),
     }));
+
+    // ID determinístico (fingerprint) — permite detectar re-escaneamento da
+    // mesma imagem, como nos fluxos de QR/texto.
+    const receiptId = await generateGalleryReceiptId(establishment, date, receiptItems);
 
     const receipt: Receipt = {
         id: receiptId,
         establishment,
         date,
-        items: items.map((item) => ({
-            name: item.name,
-            quantity: item.quantity,
-            price: item.price,
-            paid_price: item.price,
-            total: item.total,
-        })),
+        source: "gallery",
+        items: receiptItems,
+        ...(totalDiscount !== undefined ? { total_discount: totalDiscount } : {}),
     };
 
     return { receipt, confidence, rawJson: jsonStr };

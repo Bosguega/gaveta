@@ -86,7 +86,6 @@
 ### Tipo de Documentação
 
 - [ ] README
-- [ ] ARCHITECTURE.md
 - [ ] QWEN.md
 - [ ] Código (JSDoc/comments)
 - [ ] Outro: ____

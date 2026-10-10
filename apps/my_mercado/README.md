@@ -87,13 +87,6 @@ npm run dev
 
 ---
 
-## 📖 Documentação Técnica
-
-Para desenvolvedores e contribuidores, consulte:
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Arquitetura detalhada do projeto
-
----
-
 ## 🛠️ Tecnologias
 
 - **Frontend**: React, TypeScript, Vite
@@ -107,7 +100,6 @@ Para desenvolvedores e contribuidores, consulte:
 ## 📞 Suporte
 
 - **Issues**: [GitHub Issues](https://github.com/Bosguega/my_mercado/issues)
-- **Documentação**: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ---
 

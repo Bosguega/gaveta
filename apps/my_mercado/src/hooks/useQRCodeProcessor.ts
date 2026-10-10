@@ -8,7 +8,7 @@ import type { Receipt } from '../types/domain';
 import type { LoadingStep } from '../types/scanner';
 
 type SaveReceiptResponse =
-  | { duplicate: true; existingReceipt: Receipt }
+  | { duplicate: true; existingReceipt: Receipt; contentMatchLevel?: "exact" | "probable" }
   | { success: true; receipt: Receipt }
   | { success: false; error: unknown };
 
@@ -16,7 +16,7 @@ type SaveReceiptFn = (receipt: Receipt, forceReplace?: boolean) => Promise<SaveR
 
 function isDuplicateResult(
   result: SaveReceiptResponse,
-): result is { duplicate: true; existingReceipt: Receipt } {
+): result is { duplicate: true; existingReceipt: Receipt; contentMatchLevel?: "exact" | "probable" } {
   return 'duplicate' in result && result.duplicate === true;
 }
 
@@ -42,6 +42,7 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
   const setLoading = useScannerStore((state) => state.setLoading);
   const setCurrentReceipt = useScannerStore((state) => state.setCurrentReceipt);
   const setDuplicateReceipt = useScannerStore((state) => state.setDuplicateReceipt);
+  const setDuplicateMatchLevel = useScannerStore((state) => state.setDuplicateMatchLevel);
   const setError = useScannerStore((state) => state.setError);
 
   /**
@@ -56,6 +57,7 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
         if (isDuplicateResult(result)) {
           logger.info('QRProcessor', 'Nota duplicada detectada');
           setDuplicateReceipt(receipt);
+          setDuplicateMatchLevel(result.contentMatchLevel ?? 'exact');
           notify.nfceDuplicate(result.existingReceipt.date.split(' ')[0]);
         } else if (isSuccessResult(result)) {
           logger.info('QRProcessor', 'Nota salva com sucesso!', result.receipt.id);
@@ -75,7 +77,7 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
         // O loading é desligado externamente
       }
     },
-    [saveReceipt, setCurrentReceipt, setDuplicateReceipt, setError],
+    [saveReceipt, setCurrentReceipt, setDuplicateReceipt, setDuplicateMatchLevel, setError],
   );
 
   const processQRCode = useCallback(

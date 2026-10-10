@@ -5,7 +5,7 @@ import {
     deleteReceiptFromDB
 } from "../../services";
 
-import { getReceiptIdCandidates, toUserScopedReceiptId } from "../../utils/receiptId";
+import { getReceiptIdCandidates, toUserScopedReceiptId, findContentMatch } from "../../utils/receiptId";
 import { logger } from "../../utils/logger";
 import type { Receipt } from "../../types/domain";
 
@@ -48,15 +48,44 @@ export function useSaveReceiptMutation() {
             );
             const existing = currentReceipts.find((r: Receipt) => idCandidates.has(String(r.id)));
 
+            // Cruzamento entre fontes (apenas para novas notas da galeria).
+            // Serve tanto para sinalizar duplicata (quando !forceReplace) quanto
+            // para saber qual nota substituir (quando forceReplace), pois as
+            // fontes diferentes usam IDs distintos e o match por ID não basta.
+            // Não altera o comportamento de QR/texto/manual.
+            let crossSourceExisting: Receipt | undefined;
+            if (!existing && receipt.source === "gallery") {
+                const contentMatch = findContentMatch(receipt, currentReceipts);
+                if (contentMatch) {
+                    crossSourceExisting = contentMatch.receipt;
+                    if (!forceReplace) {
+                        logger.info('SaveReceipt', 'Nota da galeria corresponde a nota existente de outra fonte', {
+                            level: contentMatch.level,
+                            existingId: contentMatch.receipt.id,
+                        });
+                        // Deixa o DuplicateModal decidir — nunca sobrescreve sozinho.
+                        return {
+                            duplicate: true,
+                            existingReceipt: contentMatch.receipt,
+                            contentMatchLevel: contentMatch.level,
+                        };
+                    }
+                }
+            }
+
             if (existing && !forceReplace) {
                 logger.info('SaveReceipt', 'Nota duplicada detectada');
                 return { duplicate: true, existingReceipt: existing };
             }
 
-            // Se existe e forceReplace, deletar o antigo primeiro
-            if (existing && forceReplace && existing.id !== receiptId) {
-                logger.info('SaveReceipt', 'Deletando nota antiga para substituir');
-                await deleteReceiptFromDB(existing.id);
+            // forceReplace: remover a nota antiga (por ID ou por conteúdo) antes
+            // de salvar a nova, para não deixar duplicata no histórico.
+            if (forceReplace) {
+                const toReplace = existing ?? crossSourceExisting;
+                if (toReplace && toReplace.id !== receiptId) {
+                    logger.info('SaveReceipt', 'Deletando nota antiga para substituir', toReplace.id);
+                    await deleteReceiptFromDB(toReplace.id);
+                }
             }
 
             // Os itens já vêm processados do useQRCodeProcessor
@@ -74,7 +103,14 @@ export function useSaveReceiptMutation() {
                 date: persistedReceipt?.date || fullReceipt.date,
             };
 
-            return { success: true, receipt: receiptForUi, existingId: existing?.id };
+            // existingId cobre match por ID; replacedId cobre cruzamento entre
+            // fontes — ambos são removidos do cache otimista abaixo.
+            return {
+                success: true,
+                receipt: receiptForUi,
+                existingId: existing?.id,
+                replacedId: crossSourceExisting?.id,
+            };
         },
         onSuccess: (result) => {
             if ('duplicate' in result && result.duplicate) {
@@ -89,6 +125,7 @@ export function useSaveReceiptMutation() {
 
                     const idsToReplace = new Set<string>();
                     if (result.existingId) idsToReplace.add(String(result.existingId));
+                    if (result.replacedId) idsToReplace.add(String(result.replacedId));
 
                     const filtered = old.filter((r: Receipt) => !idsToReplace.has(String(r.id)));
                     const newList = [result.receipt, ...filtered];
