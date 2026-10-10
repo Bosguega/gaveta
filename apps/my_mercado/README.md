@@ -8,8 +8,14 @@ O **My Mercado** é seu assistente pessoal para compras de supermercado. Escanei
 
 ### 📸 Escanear Notas Fiscais
 - Aponte a câmera para o QR Code da nota
-- Ou faça upload de uma foto
+- Ou fotografe a nota para extração por IA
+- Ou cole o texto / digite manualmente
 - Os dados são extraídos automaticamente
+
+### 🏷️ Conferir Descontos
+- Notas com desconto mostram um indicador pendente
+- Fotografe a nota e a IA sugere o preço pago por item
+- Você revisa e confirma antes de aplicar
 
 ### 📊 Acompanhar Seus Gastos
 - Veja todo o histórico de compras
@@ -35,19 +41,25 @@ O **My Mercado** é seu assistente pessoal para compras de supermercado. Escanei
 
 ## 🚀 Como Começar
 
-### 1. Instale o App
+### 1. Instale as Dependências
+
+Na raiz do monorepo:
+
 ```bash
-npm install
+pnpm install
 ```
 
 ### 2. Configure o Banco
 - Crie uma conta no [Supabase](https://supabase.com/)
-- Execute o script `supabase_schema.sql` no painel do Supabase
+- Aplique as migrations em `supabase/migrations` (na raiz do monorepo) no painel do Supabase
 - Configure as variáveis de ambiente (veja `.env.example`)
 
 ### 3. Execute
+
+Na raiz do monorepo (compila o pacote interno `ai-core`, do qual o app depende):
+
 ```bash
-npm run dev
+pnpm dev
 ```
 
 ### 4. Use no Celular
@@ -61,11 +73,12 @@ npm run dev
 
 | Funcionalidade | Descrição |
 |----------------|-----------|
-| **Scanner** | Escaneie QR Code de NFC-e com a câmera |
+| **Scanner** | Escaneie QR Code de NFC-e com a câmera, fotografe a nota (IA), cole o texto ou digite manualmente |
+| **Descontos** | Confira descontos pendentes fotografando a nota; a IA sugere o preço pago para revisão |
 | **Histórico** | Veja todas as suas compras organizadas |
 | **Busca** | Encontre produtos e compare preços |
 | **Dicionário** | Gerencie categorias e normalização |
-| **Produtos** | Agrupe produtos similares |
+| **Listas de compras** | Crie listas, compartilhe por link e acompanhe o histórico de preços |
 | **Backup** | Exporte e importe seus dados |
 
 ---
@@ -74,8 +87,7 @@ npm run dev
 
 - **Design Moderno**: Glassmorphism e animações suaves
 - **Mobile-First**: Otimizado para celular
-- **PWA**: Instale como app nativo
-- **Offline**: Funciona sem internet (com cache)
+- **PWA**: Instalável, com cache para melhor experiência
 
 ---
 
@@ -93,19 +105,32 @@ npm run dev
 - **Banco**: Supabase (PostgreSQL)
 - **Cache**: React Query
 - **Estado**: Zustand
-- **UI**: Framer Motion, Recharts, Lucide Icons
+- **UI**: Tailwind CSS, Recharts, Lucide Icons
+- **PWA**: vite-plugin-pwa (instalável e com cache offline)
 
 ---
 
 ## 📞 Suporte
 
-- **Issues**: [GitHub Issues](https://github.com/Bosguega/my_mercado/issues)
+- **Issues**: [GitHub Issues](https://github.com/Bosguega/gaveta/issues)
 
 ---
 
-## 📄 Licença
+## ✅ Verificações
 
-MIT License - Veja [LICENSE](LICENSE) para detalhes.
+Dentro de `apps/my_mercado`:
+
+```bash
+pnpm typecheck   # TypeScript
+pnpm lint        # ESLint
+pnpm test:run    # Vitest
+```
+
+Também disponível na raiz do monorepo:
+
+```bash
+pnpm ci:local
+```
 
 ---
 
