@@ -44,6 +44,45 @@ describe("ReceiptCard — indicador de desconto pendente", () => {
     );
   });
 
+  it("expande a nota automaticamente ao clicar na tag com o card colapsado", async () => {
+    const onToggle = vi.fn();
+    render(
+      <ReceiptCard
+        receipt={receiptWithPendingDiscount}
+        isExpanded={false}
+        onToggle={onToggle}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle(/ainda não inserido/));
+
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(onToggle).toHaveBeenCalledWith("r1");
+    await waitFor(() =>
+      expect(screen.getByText("Conferir descontos pela foto")).toBeInTheDocument(),
+    );
+  });
+
+  it("não alterna o colapso ao clicar na tag com a nota já expandida", async () => {
+    const onToggle = vi.fn();
+    render(
+      <ReceiptCard
+        receipt={receiptWithPendingDiscount}
+        isExpanded={true}
+        onToggle={onToggle}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle(/ainda não inserido/));
+
+    expect(onToggle).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.getByText("Conferir descontos pela foto")).toBeInTheDocument(),
+    );
+  });
+
   it("não exibe o indicador quando não há desconto pendente", () => {
     const noDiscount: Receipt = { ...receiptWithPendingDiscount, total_discount: undefined };
     render(

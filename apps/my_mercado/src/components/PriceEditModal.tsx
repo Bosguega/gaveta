@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useCallback, useState } from "react";
-import { X } from "lucide-react";
+import { Modal } from "./ui/Modal";
 import { formatBRL, parseBRL } from "../utils/currency";
 import { formatQuantity } from "../utils/format";
 import type { ReceiptItem } from "../types/domain";
@@ -16,20 +16,23 @@ type EditedField = "paidPrice" | "total";
 
 /**
  * Creates a key-down handler for an input that saves on Enter and cancels on Escape.
+ * Escape respects `cancelDisabled` (ex.: busy) so it never bypasses the
+ * shared Modal's busy protection.
  */
-function useInputKeyDown(handler: () => void, cancel: () => void, disabled: boolean) {
+function useInputKeyDown(handler: () => void, cancel: () => void, disabled: boolean, cancelDisabled = false) {
   return useCallback(
     (event: React.KeyboardEvent) => {
       if (event.key === "Enter" && !disabled) {
         event.preventDefault();
         handler();
       }
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && !cancelDisabled) {
         event.preventDefault();
+        event.stopPropagation();
         cancel();
       }
     },
-    [handler, cancel, disabled]
+    [handler, cancel, disabled, cancelDisabled]
   );
 }
 
@@ -123,35 +126,22 @@ export function PriceEditModal({
     onSavePaidPrice(nextPaidPrice);
   }, [onSavePaidPrice, nextPaidPrice]);
 
-  const paidPriceKeyDown = useInputKeyDown(handleSave, onCancel, busy || isInvalid);
-  const totalKeyDown = useInputKeyDown(handleSave, onCancel, busy || isInvalid);
-
-  if (!isOpen) return null;
+  const paidPriceKeyDown = useInputKeyDown(handleSave, onCancel, busy || isInvalid, busy);
+  const totalKeyDown = useInputKeyDown(handleSave, onCancel, busy || isInvalid, busy);
 
   return (
-    <div className="duplicate-modal-overlay z-[4600]" onClick={onCancel}>
-      <div
-        className="glass-card duplicate-modal-card"
-        style={{ maxWidth: "420px" }}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div className="min-w-0">
-            <h3 className="text-white text-lg font-semibold mb-1">Editar preço</h3>
+    <Modal
+      open={isOpen}
+      onClose={onCancel}
+      title="Editar preço"
+      maxWidth="420px"
+      busy={busy}
+    >
+        <div className="mb-4">
             <p className="text-slate-300 text-sm font-medium truncate">{productName}</p>
             <p className="text-slate-500 text-xs">
               {formatQuantity(quantity)} {unit}
             </p>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={busy}
-            className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 inline-flex items-center justify-center flex-shrink-0"
-            aria-label="Fechar"
-          >
-            <X size={16} />
-          </button>
         </div>
 
         {/* Original values */}
@@ -244,7 +234,6 @@ export function PriceEditModal({
             {busy ? "Salvando..." : "Salvar"}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

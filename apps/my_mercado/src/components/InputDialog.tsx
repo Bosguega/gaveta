@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { Modal } from "./ui/Modal";
 
 type InputDialogProps = {
   isOpen: boolean;
@@ -35,12 +36,15 @@ export default function InputDialog({
     }
   }, [isOpen, initialValue]);
 
-  if (!isOpen) return null;
-
   return (
-    <div className="duplicate-modal-overlay z-[4600]">
-      <div className="glass-card duplicate-modal-card shopping-input-dialog-card">
-        <h3 className="text-white mb-3">{title}</h3>
+    <Modal
+      open={isOpen}
+      onClose={onCancel}
+      title={title}
+      maxWidth="460px"
+      busy={busy}
+      closeOnEscape={false}
+    >
         {message && (
           <p className="text-slate-400 leading-relaxed mb-[0.85rem]">{message}</p>
         )}
@@ -79,7 +83,6 @@ export default function InputDialog({
             {busy ? "Salvando..." : confirmText}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

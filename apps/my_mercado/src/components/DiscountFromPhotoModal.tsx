@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Camera, Image as ImageIcon, Loader2, RefreshCw, X, CheckCircle, AlertTriangle } from "lucide-react";
+import { Camera, Image as ImageIcon, Loader2, RefreshCw, CheckCircle, AlertTriangle } from "lucide-react";
+import { Modal } from "./ui/Modal";
 import { formatBRL, parseBRL } from "../utils/currency";
 import { formatQuantity } from "../utils/format";
 import { notify } from "../utils/notifications";
@@ -108,48 +109,42 @@ export function DiscountFromPhotoModal({ isOpen, items, onClose }: DiscountFromP
     }, []);
 
     const selectedCount = rows.filter((r) => r.selected).length;
+    const busy = step === "analyzing" || updatePaidPrice.isPending;
 
     const handleApply = useCallback(() => {
         const toApply = rows.filter((r) => r.selected && r.item.id);
         if (toApply.length === 0) return;
 
+        // Revalida contra os itens atuais: a nota pode ter mudado via outra
+        // via enquanto o modal estava minimizado. Usa o preço cheio atual
+        // para decidir se há desconto real, em vez do snapshot da análise.
+        let applied = 0;
         for (const row of toApply) {
+            const current = items.find((item) => item.id === row.item.id) ?? row.item;
             const parsed = parseBRL(row.paidPrice);
-            if (Number.isFinite(parsed) && parsed >= 0 && parsed < row.item.price) {
+            if (Number.isFinite(parsed) && parsed >= 0 && parsed < current.price) {
                 updatePaidPrice.mutate({ itemId: row.item.id as string, paidPrice: parsed });
+                applied += 1;
             }
         }
 
-        notify.success(`${toApply.length} desconto(s) aplicado(s)!`);
+        notify.success(`${applied} desconto(s) aplicado(s)!`);
         handleClose();
-    }, [rows, updatePaidPrice, handleClose]);
-
-    if (!isOpen) return null;
+    }, [rows, items, updatePaidPrice, handleClose]);
 
     return (
-        <div className="duplicate-modal-overlay z-[4600]" onClick={handleClose}>
-            <div
-                className="glass-card duplicate-modal-card"
-                style={{ maxWidth: "480px" }}
-                onClick={(event) => event.stopPropagation()}
-            >
-                {/* Header */}
-                <div className="flex items-start justify-between gap-3 mb-4">
-                    <div className="min-w-0">
-                        <h3 className="text-white text-lg font-semibold mb-1">Conferir descontos pela foto</h3>
-                        <p className="text-slate-500 text-xs">
-                            Fotografe a parte da nota com os itens e preços para identificar os descontos.
-                        </p>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={handleClose}
-                        className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 inline-flex items-center justify-center flex-shrink-0"
-                        aria-label="Fechar"
-                    >
-                        <X size={16} />
-                    </button>
-                </div>
+        <Modal
+            open={isOpen}
+            onClose={handleClose}
+            title="Conferir descontos pela foto"
+            maxWidth="480px"
+            busy={busy}
+            minimizable
+            minimizeLabel="Conferir descontos"
+        >
+            <p className="text-slate-500 text-xs -mt-3 mb-4">
+                Fotografe a parte da nota com os itens e preços para identificar os descontos.
+            </p>
 
                 {/* Escolher imagem */}
                 {step === "choose" && (
@@ -335,7 +330,6 @@ export function DiscountFromPhotoModal({ isOpen, items, onClose }: DiscountFromP
                         )}
                     </div>
                 )}
-            </div>
-        </div>
+        </Modal>
     );
 }

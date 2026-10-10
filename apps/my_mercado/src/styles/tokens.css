@@ -51,6 +51,10 @@
     --shadow-nav: 0 12px 40px rgba(0, 0, 0, 0.5);
     --shadow-btn: 0 4px 12px var(--primary-glow);
 
+    /* ── Z-index ── */
+    --z-modal: 4600;
+    --z-modal-restore: 4601;
+
     /* ── Animation ── */
     --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
     --duration-fast: 0.2s;

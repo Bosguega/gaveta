@@ -1,3 +1,4 @@
+import { Modal } from "./ui/Modal";
 import type { ConfirmDialogProps } from "../types/ui";
 
 export default function ConfirmDialog({
@@ -11,12 +12,15 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  if (!isOpen) return null;
-
   return (
-    <div className="duplicate-modal-overlay" style={{ zIndex: 4500 }}>
-      <div className="glass-card duplicate-modal-card" style={{ maxWidth: "460px" }}>
-        <h3 style={{ color: "#fff", marginBottom: "0.75rem" }}>{title}</h3>
+    <Modal
+      open={isOpen}
+      onClose={onCancel ?? (() => {})}
+      title={title}
+      maxWidth="460px"
+      busy={busy}
+      closeOnEscape={false}
+    >
         <p style={{ color: "#94a3b8", lineHeight: "1.5", marginBottom: "1.25rem" }}>{message}</p>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
@@ -45,7 +49,6 @@ export default function ConfirmDialog({
             {busy ? "Processando..." : confirmText}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
-import { X } from "lucide-react";
+import { Modal } from "./ui/Modal";
 import { formatBRL, parseBRL } from "../utils/currency";
 import type { ReceiptItem } from "../types/domain";
 
@@ -71,30 +71,17 @@ export function ItemEditModal({
     onSave({ name: name.trim(), quantity: parsedQuantity, price: parsedPrice });
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="duplicate-modal-overlay z-[4600]" onClick={onCancel}>
-      <div
-        className="glass-card duplicate-modal-card"
-        style={{ maxWidth: "420px" }}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div className="min-w-0">
-            <h3 className="text-white text-lg font-semibold mb-1">Editar item</h3>
-            <p className="text-slate-500 text-xs">Corrija os dados extraídos da imagem</p>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={busy}
-            className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 inline-flex items-center justify-center flex-shrink-0"
-            aria-label="Fechar"
-          >
-            <X size={16} />
-          </button>
-        </div>
+    <Modal
+      open={isOpen}
+      onClose={onCancel}
+      title="Editar item"
+      maxWidth="420px"
+      busy={busy}
+      minimizable
+      minimizeLabel="Editar item"
+    >
+        <p className="text-slate-500 text-xs -mt-3 mb-4">Corrija os dados extraídos da imagem</p>
 
         <div className="space-y-3 mb-4">
           <div>
@@ -112,10 +99,7 @@ export function ItemEditModal({
                   event.preventDefault();
                   handleSave();
                 }
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  onCancel();
-                }
+                // Escape é tratado pelo Modal base (respeita busy).
               }}
             />
           </div>
@@ -175,7 +159,6 @@ export function ItemEditModal({
             {busy ? "Salvando..." : "Salvar"}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

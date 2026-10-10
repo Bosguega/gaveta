@@ -1,19 +1,17 @@
+import { Modal } from "../../ui/Modal";
 import type { DuplicateModalProps } from "../../../types/scanner";
 
 export function DuplicateModal({ duplicateReceipt, onCancel, onForceSave, matchLevel = "exact" }: DuplicateModalProps) {
   const isProbable = matchLevel === "probable";
 
   return (
-    <div className="duplicate-modal-overlay z-[3000]">
-      <div className="glass-card duplicate-modal-card">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center">
-            <span className="text-2xl">⚠️</span>
-          </div>
-          <h2 className="text-white text-xl">
-            {isProbable ? "Possível Nota Duplicada" : "Nota Já Existente"}
-          </h2>
-        </div>
+    <Modal
+      open
+      onClose={onCancel}
+      title={isProbable ? "Possível Nota Duplicada" : "Nota Já Existente"}
+      noClose
+      closeOnEscape={false}
+    >
         <p className="text-slate-400 text-[0.95rem] mb-6 leading-relaxed">
           {isProbable ? (
             <>
@@ -46,7 +44,6 @@ export function DuplicateModal({ duplicateReceipt, onCancel, onForceSave, matchL
             ? "Se não for a mesma compra, escolha Cancelar para manter ambas."
             : "Isso substituirá a nota anterior"}
         </p>
-      </div>
-    </div>
+    </Modal>
   );
 }

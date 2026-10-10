@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { X, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
+import { Modal } from "../ui/Modal";
 import { publishList, unpublishList, updateSharedListItems, getSharedListsByOwner } from "../../services/sharedListService.ts";
 import { normalizeKey } from "../../utils/normalize";
 import { notify } from "../../utils/notifications.ts";
@@ -74,7 +75,7 @@ export function ShareListModal({
         }
     }, [isOpen, ownerId]);
 
-    if (!isOpen) return null;
+    const modalBusy = publishing || unpublishing || updating || deletingId !== null;
 
     const baseUrl = window.location.origin + window.location.pathname.replace(/\/$/, "");
     const shareLink = code ? `${baseUrl}/s/${code}` : null;
@@ -156,20 +157,22 @@ export function ShareListModal({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="glass-card max-w-md w-full p-6 relative max-h-[90vh] overflow-y-auto">
-                {/* Close */}
-                <button
-                    onClick={onClose}
-                    className="absolute top-4 right-4 bg-white/5 border-none rounded-full w-8 h-8 flex items-center justify-center text-slate-400 hover:bg-white/10 cursor-pointer"
-                >
-                    <X size={18} />
-                </button>
-
-                <h2 className="text-lg font-bold text-slate-50 mb-1">Compartilhar Lista</h2>
-                <p className="text-slate-400 text-sm mb-4">
-                    Qualquer pessoa com o link pode ver e editar esta lista.
-                </p>
+        <Modal
+            open={isOpen}
+            onClose={onClose}
+            title={(
+                <>
+                    Compartilhar &ldquo;{listName}&rdquo;
+                    <span className="block text-xs font-normal text-slate-500 mt-0.5">
+                        Qualquer pessoa com o link pode ver e editar esta lista.
+                    </span>
+                </>
+            )}
+            maxWidth="480px"
+            busy={modalBusy}
+            minimizable
+            minimizeLabel="Compartilhar lista"
+        >
 
                 {code ? (
                     <>
@@ -302,7 +305,6 @@ export function ShareListModal({
                 <p className="text-center text-slate-600 text-xs mt-4">
                     Última escrita vence. Todos com o link podem editar.
                 </p>
-            </div>
-        </div>
+        </Modal>
     );
 }

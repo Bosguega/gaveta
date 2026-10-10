@@ -306,6 +306,69 @@
     margin-bottom: 0;
 }
 
+/* ── Modal base (ui/Modal) ── */
+
+/* Minimizado: fundo transparente, mas ainda bloqueando interações com o app */
+.duplicate-modal-overlay[data-minimized="true"] {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: default;
+}
+
+.modal-icon-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    border-radius: 6px;
+}
+
+.modal-icon-btn:hover:not(:disabled) {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.modal-icon-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Chip de restauração de modal minimizado */
+.modal-restore-chip {
+    position: fixed;
+    right: 1rem;
+    bottom: 5.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    max-width: calc(100vw - 2rem);
+    padding: 0.55rem 0.9rem;
+    border-radius: var(--radius-full);
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid var(--card-border);
+    color: #e2e8f0;
+    font-family: var(--font-main);
+    font-size: 0.8rem;
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    animation: fadeIn var(--duration-fast) ease-out;
+}
+
+.modal-restore-chip:hover {
+    background: rgba(30, 41, 59, 0.98);
+}
+
+.modal-restore-chip-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .shopping-input-dialog-card {
     max-width: 460px;
 }

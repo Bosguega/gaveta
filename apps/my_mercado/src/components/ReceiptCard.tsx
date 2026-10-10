@@ -149,8 +149,15 @@ export const ReceiptCard = React.memo(function ReceiptCard({
     const [discountModalOpen, setDiscountModalOpen] = useState(false);
     const handleOpenDiscountModal = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
+        // O transform persistente da animação do card (fadeInUp forwards) faz
+        // dele o containing block do overlay position:fixed — com o card
+        // colapsado, o modal fica recortado pelo overflow-hidden e invisível.
+        // Expandir garante que o modal seja exibido.
+        if (!isExpanded) {
+            handleToggle();
+        }
         setDiscountModalOpen(true);
-    }, []);
+    }, [isExpanded, handleToggle]);
     const handleCloseDiscountModal = useCallback(() => {
         setDiscountModalOpen(false);
     }, []);

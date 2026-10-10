@@ -8,7 +8,6 @@ import {
   Save,
   Server,
   ShieldCheck,
-  X,
 } from "lucide-react";
 import {
   DEFAULT_AI_BASE_URL,
@@ -27,6 +26,7 @@ import { getAiBaseUrl, getAiMode, getApiKey, getApiModel } from "../utils/ai/aiC
 import { testAiConnection, type AiConnectionStatus } from "../utils/ai";
 import { validateApiKey } from "../utils/validation";
 import { logger } from "../utils/logger";
+import { Modal } from "./ui/Modal";
 import type { ApiKeyModalProps } from "../types/ui";
 
 const CONNECTION_LABELS: Record<AiConnectionStatus, string> = {
@@ -275,35 +275,33 @@ export default function ApiKeyModal({
     }
   };
 
-  if (!isOpen) return null;
-
+  const busy = testing || fetchingModels;
   const canFetchModels = mode === "local" || !!key.trim();
   const testButtonSuccess = connectionStatus === "connected";
   const testButtonError = ["offline", "error"].includes(connectionStatus);
 
   return (
-    <div className="duplicate-modal-overlay" style={{ zIndex: 5000 }}>
-      <div
-        className="glass-card duplicate-modal-card"
-        style={{ maxWidth: "480px", border: "1px solid var(--primary)" }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            {mode === "local" ? (
-              <Server className="text-primary" size={24} color="var(--primary)" />
-            ) : (
-              <Key className="text-primary" size={24} color="var(--primary)" />
-            )}
-            <h2 style={{ color: "#fff", fontSize: "1.25rem", margin: 0 }}>
-              Configurar IA
-            </h2>
-          </div>
-          <button onClick={onClose} style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer" }}>
-            <X size={20} />
-          </button>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1rem" }}>
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title={
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "10px" }}>
+          {mode === "local" ? (
+            <Server className="text-primary" size={24} color="var(--primary)" />
+          ) : (
+            <Key className="text-primary" size={24} color="var(--primary)" />
+          )}
+          Configurar IA
+        </span>
+      }
+      maxWidth="480px"
+      zIndex={5000}
+      busy={busy}
+      minimizable
+      minimizeLabel="Configurar IA"
+      cardStyle={{ border: "1px solid var(--primary)" }}
+    >
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1rem" }}>
           <button
             className="btn"
             onClick={() => handleModeChange("online")}
@@ -468,16 +466,15 @@ export default function ApiKeyModal({
           </button>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-            <button className="btn" onClick={onClose} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.05)" }}>
+            <button className="btn" onClick={onClose} disabled={busy} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.05)" }}>
               Cancelar
             </button>
-            <button className="btn btn-success" onClick={handleSave}>
+            <button className="btn btn-success" onClick={handleSave} disabled={busy}>
               <Save size={18} />
               Salvar
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
