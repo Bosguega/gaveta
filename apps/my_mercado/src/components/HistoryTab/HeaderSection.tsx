@@ -12,17 +12,17 @@ export function HeaderSection({
   onOpenAnalysis,
 }: HeaderSectionProps) {
   return (
-    <div className="flex justify-between items-start mb-5 gap-4">
-      <div className="flex-1">
+    <div className="flex flex-col gap-3 mb-5 sm:flex-row sm:justify-between sm:items-start sm:gap-4">
+      <div className="flex-1 min-w-0">
         <h2 className="section-title mb-1">
-          <History size={20} color="var(--primary)" />
+          <History size={20} color="var(--primary)" className="shrink-0" />
           Histórico
         </h2>
         <div className="text-xs text-slate-500 ml-8">
           {filteredCount} de {totalCount} notas
         </div>
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2 sm:justify-end">
         {onOpenAnalysis && (
           <button
             onClick={onOpenAnalysis}

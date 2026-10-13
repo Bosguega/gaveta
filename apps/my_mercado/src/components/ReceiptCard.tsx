@@ -169,9 +169,9 @@ export const ReceiptCard = React.memo(function ReceiptCard({
                 onClick={handleToggle}
                 className="p-5 cursor-pointer relative"
             >
-                <div className="flex justify-between items-start mb-2">
-                    <div>
-                        <h3 className="text-slate-50 text-[1.1rem] mb-1 group">
+                <div className="flex flex-wrap justify-between items-start gap-2 mb-2">
+                    <div className="min-w-0 flex-1">
+                        <h3 className="text-slate-50 text-[1.1rem] mb-1 group break-words">
                             {displayEstablishment}
                             <button
                                 onClick={handleGoToEstablishmentDictionary}
@@ -181,7 +181,7 @@ export const ReceiptCard = React.memo(function ReceiptCard({
                                 <Edit3 size={12} />
                             </button>
                         </h3>
-                        <div className="flex gap-4 items-center">
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 items-center">
                             <span className="text-slate-400 text-xs">
                                 {displayDate}
                             </span>

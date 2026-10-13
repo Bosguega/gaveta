@@ -294,9 +294,9 @@ function EstablishmentDictionaryTab() {
     return (
         <>
             <div className="dictionary-tab">
-                <div className="flex justify-between items-center mb-5">
-                    <h2 className="section-title mb-0">
-                        <Book color="var(--primary)" size={20} />
+                <div className="flex flex-wrap justify-between items-center gap-2 mb-5">
+                    <h2 className="section-title mb-0 min-w-0 break-words">
+                        <Book color="var(--primary)" size={20} className="shrink-0" />
                         Dicionario de Estabelecimentos
                     </h2>
                     <div className="flex gap-2">
