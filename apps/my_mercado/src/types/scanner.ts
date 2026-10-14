@@ -99,9 +99,13 @@ export interface EstablishmentOption {
 
 export interface ManualReceiptFormProps {
   manualData: ManualReceiptData;
-  setManualData: (data: ManualReceiptData) => void;
+  setManualData: (
+    data: ManualReceiptData | ((prev: ManualReceiptData) => ManualReceiptData)
+  ) => void;
   manualItem: ManualReceiptItemInput;
-  setManualItem: (item: ManualReceiptItemInput) => void;
+  setManualItem: (
+    item: ManualReceiptItemInput | ((prev: ManualReceiptItemInput) => ManualReceiptItemInput)
+  ) => void;
   onAddManualItem: () => void;
   onRemoveManualItem: (index: number) => void;
   onSaveManualReceipt: () => void;

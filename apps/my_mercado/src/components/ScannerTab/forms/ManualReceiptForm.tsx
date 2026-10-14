@@ -1,29 +1,12 @@
 import { Edit3, X, Plus, Trash2, ShoppingCart } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatBRL } from "../../../utils/currency";
+import {
+  brDateToIsoDatePart,
+  isoDateToBrPreservingTime,
+} from "../../../utils/manualDate";
 import type { ReceiptItem } from "../../../types/domain";
 import type { ManualReceiptFormProps } from "../../../types/scanner";
-
-/**
- * Converte data BR (DD/MM/AAAA) para formato ISO (AAAA-MM-DD) para usar em input[type=date]
- */
-function brDateToIso(br: string): string {
-  const match = br.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-  if (!match) return new Date().toISOString().split("T")[0];
-  const [, dd, mm, yyyy] = match;
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-/**
- * Converte data ISO (AAAA-MM-DD) para formato BR (DD/MM/AAAA)
- */
-function isoToBrDate(iso: string): string {
-  if (!iso) return "";
-  const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!match) return iso;
-  const [, yyyy, mm, dd] = match;
-  return `${dd}/${mm}/${yyyy}`;
-}
 
 export function ManualReceiptForm({
   manualData,
@@ -49,13 +32,31 @@ export function ManualReceiptForm({
   );
   const itemsListRef = useRef<HTMLDivElement>(null);
 
-  const dateIso = useMemo(
-    () => brDateToIso(manualData.date),
-    [manualData.date]
+  // Rascunho local do input[type=date]: mantém o que o usuário digitou
+  // (inclusive estados intermediários vazios/inválidos) sem propagar para
+  // o store — só sincroniza quando a data digitada é válida.
+  const [dateDraftIso, setDateDraftIso] = useState(() =>
+    brDateToIsoDatePart(manualData.date)
   );
+  const lastCommittedIsoRef = useRef(dateDraftIso);
+
+  useEffect(() => {
+    const committed = brDateToIsoDatePart(manualData.date);
+    if (committed !== lastCommittedIsoRef.current) {
+      lastCommittedIsoRef.current = committed;
+      setDateDraftIso(committed);
+    }
+  }, [manualData.date]);
 
   const handleDateChange = (iso: string) => {
-    setManualData({ ...manualData, date: isoToBrDate(iso) });
+    // Edição em andamento (ex.: dia apagado): não zera o store.
+    setDateDraftIso(iso);
+    setManualData((prev) => {
+      const br = isoDateToBrPreservingTime(iso, prev.date || manualData.date);
+      if (!br) return prev;
+      lastCommittedIsoRef.current = brDateToIsoDatePart(br);
+      return { ...prev, date: br };
+    });
   };
 
   const handleEstablishmentSelect = (selected: string) => {
@@ -148,7 +149,7 @@ export function ManualReceiptForm({
           <input
             type="date"
             className="search-input"
-            value={dateIso}
+            value={dateDraftIso}
             onChange={(e) => handleDateChange(e.target.value)}
           />
           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none text-xs">

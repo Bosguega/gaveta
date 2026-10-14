@@ -60,6 +60,7 @@ export function useReceiptScanner({
     handleSaveManualReceipt,
     handleCancelManualReceipt,
     getDefaultManualData,
+    enterManualMode,
   } = useManualReceipt();
 
   const handleScanSuccess = useCallback(
@@ -126,5 +127,6 @@ export function useReceiptScanner({
     handleSaveManualReceipt,
     handleCancelManualReceipt,
     getDefaultManualData,
+    enterManualMode,
   };
 }

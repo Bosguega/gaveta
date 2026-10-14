@@ -3,6 +3,7 @@ import { notify } from '../utils/notifications';
 import { logger } from '../utils/logger';
 import { useScannerStore } from '../stores/useScannerStore';
 import { validateManualReceiptForm } from '../utils/validation';
+import { buildDefaultManualDate } from '../utils/manualDate';
 import { processItemsPipeline } from '../services/productService';
 import { generateManualReceiptId } from '../utils/receiptId';
 import type { Receipt } from '../types/domain';
@@ -22,19 +23,17 @@ export function useManualReceipt() {
   const setCurrentReceipt = useScannerStore((state) => state.setCurrentReceipt);
 
   const getDefaultManualData = useCallback((): typeof manualData => {
-    const now = new Date();
-    const dd = String(now.getDate()).padStart(2, '0');
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const yyyy = String(now.getFullYear());
-    const hh = String(now.getHours()).padStart(2, '0');
-    const min = String(now.getMinutes()).padStart(2, '0');
-    const ss = String(now.getSeconds()).padStart(2, '0');
     return {
       establishment: '',
-      date: `${dd}/${mm}/${yyyy} ${hh}:${min}:${ss}`,
+      date: buildDefaultManualDate(),
       items: [],
     };
   }, []);
+
+  const enterManualMode = useCallback(() => {
+    setManualData(getDefaultManualData());
+    setManualMode(true);
+  }, [getDefaultManualData, setManualData, setManualMode]);
 
   const handleAddManualItem = useCallback(() => {
     const qty = parseFloat(String(manualItem.qty || '1').replace(',', '.')) || 1;
@@ -191,5 +190,6 @@ export function useManualReceipt() {
     handleSaveManualReceipt,
     handleCancelManualReceipt,
     getDefaultManualData,
+    enterManualMode,
   };
 }

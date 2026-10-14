@@ -84,7 +84,6 @@ function ScannerTab() {
     error,
     duplicateReceipt,
     manualMode,
-    setManualMode,
     manualData,
     manualItem,
     setManualItem,
@@ -102,6 +101,7 @@ function ScannerTab() {
     handleRemoveManualItem,
     handleSaveManualReceipt,
     handleCancelManualReceipt,
+    enterManualMode,
   } = useReceiptScanner({ saveReceipt, tab });
 
   const productSuggestions = useProductSuggestions(manualItem.name);
@@ -344,7 +344,7 @@ function ScannerTab() {
           onStartCamera={() => startCamera('environment', handleScanSuccess)}
           onFileUpload={handleFileUpload}
           onGalleryUpload={handleGalleryUpload}
-          onManualMode={() => setManualMode(true)}
+          onManualMode={enterManualMode}
           handleUrlSubmit={handleUrlSubmit}
           handleTextSubmit={processRawText}
           isLoading={isLoading}
