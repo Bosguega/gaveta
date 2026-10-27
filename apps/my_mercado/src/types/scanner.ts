@@ -116,15 +116,34 @@ export interface ManualReceiptFormProps {
 }
 
 /**
- * Props para o componente InitialScannerScreen
+ * Propriedades para o componente InitialScannerScreen
+ *
+ * A tela de entrada está organizada em dois grupos de importação:
+ *  - "qr": leitura do QR Code (câmera, tirar foto, carregar imagem, carregar link).
+ *  - "ia": extração completa da nota por IA (enviar texto, enviar imagem).
+ *
+ * Cada grupo expõe os handlers correspondentes; o componente cuida internamente
+ * de qual método do grupo está ativo (menu inferior persistente).
  */
+export type ImportGroup = "qr" | "ia";
+
+export type QrMethod = "camera" | "photo" | "gallery" | "link";
+export type IaMethod = "text" | "image";
+export type ImportMethod = QrMethod | IaMethod;
+
 export interface InitialScannerScreenProps {
   onStartCamera: () => void;
-  onFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  onGalleryUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  /** Decodifica QR Code de uma foto tirada na hora (capture=environment). */
+  onQrPhoto: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  /** Decodifica QR Code de uma imagem selecionada na galeria. */
+  onQrGallery: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  /** Processa o link da NFC-e informado pelo usuário. */
+  onUrlSubmit: (url: string) => void;
+  /** Extrai dados da nota a partir de texto colado. */
+  onIaText: (text: string) => void;
+  /** Extrai dados completos da nota a partir de uma imagem (foto ou galeria). */
+  onIaImage: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onManualMode: () => void;
-  handleUrlSubmit: (url: string) => void;
-  handleTextSubmit: (text: string) => void;
   isLoading: boolean;
   isScanning: boolean;
   error: string | null;

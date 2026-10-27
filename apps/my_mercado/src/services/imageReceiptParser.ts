@@ -64,6 +64,12 @@ Com base nisso, classifique a confiança como:
 - "media" -> texto razoavelmente legível mas alguns caracteres podem estar errados
 - "baixa" -> imagem ruim, texto ilegível, muitos dados podem estar incorretos
 
+IMPORTANTE: Identificação do Estabelecimento:
+- A primeira linha "NFC-e" ou "DOCUMENTO AUXILIAR..." NÃO é o nome do estabelecimento.
+- O nome do estabelecimento vem APÓS essas linhas, usualmente com o nome da loja, endereço e CNPJ.
+- Se vir "Razão Social", "Nome Fantasia" ou padrão "NOME LTDA/CNPJ", esse é o estabelecimento.
+- NÃO use "NFC-e", "DOCUMENTO AUXILIAR" ou títulos de documento como nome da loja.
+
 REGRAS DE PREÇOS (fundamentais):
 - Separe SEMPRE o preço de ETIQUETA (cheio) do preço EFETIVAMENTE PAGO.
 - "price" é o preço UNITÁRIO CHEIO (de etiqueta), antes de qualquer desconto.

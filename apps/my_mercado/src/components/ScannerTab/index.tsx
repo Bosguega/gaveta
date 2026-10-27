@@ -110,8 +110,8 @@ function ScannerTab() {
   const isLoading = loading;
   const isScanning = scanning;
 
-  // Handler de foto: le QR Code de uma imagem capturada.
-  const handleFileUpload = useCallback(
+  // Handler de imagem para QR Code: decodifica o QR Code de uma foto ou imagem salva.
+  const handleQrImageUpload = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       event.target.value = "";
@@ -139,8 +139,8 @@ function ScannerTab() {
     [decodeQRFromImage, handleScanSuccess]
   );
 
-  // Handler de galeria: envia imagem da nota para OCR com IA.
-  const handleGalleryUpload = useCallback(
+  // Handler de imagem para IA: envia a imagem da nota para extração completa dos dados.
+  const handleReceiptImageUpload = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       event.target.value = "";
@@ -342,11 +342,12 @@ function ScannerTab() {
       {!manualMode && !currentReceipt && !isScanning && !isLoading && (
         <IdleScreen
           onStartCamera={() => startCamera('environment', handleScanSuccess)}
-          onFileUpload={handleFileUpload}
-          onGalleryUpload={handleGalleryUpload}
+          onQrPhoto={handleQrImageUpload}
+          onQrGallery={handleQrImageUpload}
+          onUrlSubmit={handleUrlSubmit}
+          onIaText={processRawText}
+          onIaImage={handleReceiptImageUpload}
           onManualMode={enterManualMode}
-          handleUrlSubmit={handleUrlSubmit}
-          handleTextSubmit={processRawText}
           isLoading={isLoading}
           isScanning={isScanning}
           error={error}
