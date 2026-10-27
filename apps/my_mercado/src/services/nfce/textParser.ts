@@ -11,6 +11,19 @@ function cleanProductName(name: string | null | undefined): string {
         .trim();
 }
 
+/**
+ * Extrai o desconto GERAL da nota a partir do texto colado.
+ * Usa a mesma regra do parser de HTML da NFC-e ("Descontos R$ X"),
+ * pois o texto colado costuma ser a transcrição desse mesmo conteúdo.
+ */
+function extractTotalDiscountFromText(text: string): number | undefined {
+    const discountMatch = text.match(/Descontos\s*R?\$?\s*:?\s*([\d.,]+)/i);
+    if (discountMatch) {
+        return parseFloat(discountMatch[1].replace(",", "."));
+    }
+    return undefined;
+}
+
 export function parseRawTextReceipt(text: string): Receipt {
     const lines = text.split("\n").map((l) => l.trim()).filter((l) => l !== "");
     const items: RawReceiptItem[] = [];
@@ -109,10 +122,13 @@ export function parseRawTextReceipt(text: string): Receipt {
         total: parseFloat(rawItem.total.replace(",", ".")) || 0,
     }));
 
+    const totalDiscount = extractTotalDiscountFromText(text);
+
     return {
         id: `pasted-${uniqueSuffix}`,
         establishment,
         date,
         items: parsedItems,
+        ...(totalDiscount !== undefined ? { total_discount: totalDiscount } : {}),
     };
 }
