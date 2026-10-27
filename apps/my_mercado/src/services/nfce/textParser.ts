@@ -124,7 +124,6 @@ export async function parseRawTextReceipt(text: string): Promise<Receipt> {
         quantity: parseFloat(rawItem.qty.replace(",", ".")) || 1,
         unit: rawItem.unit,
         price: parseFloat(rawItem.unitPrice.replace(",", ".")) || 0,
-        paid_price: parseFloat(rawItem.unitPrice.replace(",", ".")) || 0,
         total: parseFloat(rawItem.total.replace(",", ".")) || 0,
     }));
 

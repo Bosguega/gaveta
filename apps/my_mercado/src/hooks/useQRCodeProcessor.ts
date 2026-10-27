@@ -209,7 +209,10 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
           qty: item.quantity.toString().replace('.', ','),
           unit: item.unit || 'UN',
           unitPrice: item.price.toString().replace('.', ','),
-          total: (item.total ?? item.price * item.quantity).toString().replace('.', ',')
+          total: (item.total ?? item.price * item.quantity).toString().replace('.', ','),
+          ...(item.paid_price !== undefined && item.paid_price !== null && item.paid_price < item.price
+            ? { paidPrice: item.paid_price.toString().replace('.', ',') }
+            : {}),
         }));
 
         const processedItems = await processItemsPipeline(rawItemsForPipeline, (step: LoadingStep) => {

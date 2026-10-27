@@ -146,13 +146,11 @@ function ScannerTab() {
       event.target.value = "";
       if (!file) return;
 
-      try {
-        const toastId = notify.loading('Extraindo dados da imagem com IA...');
+      const toastId = notify.loading('Extraindo dados da imagem com IA...');
 
+      try {
         const { parseReceiptFromImage } = await import('../../services/imageReceiptParser');
         const result = await parseReceiptFromImage(file);
-
-        notify.dismiss(toastId);
 
         // Feedback de confiança
         const confidenceMessages: Record<string, string> = {
@@ -198,6 +196,8 @@ function ScannerTab() {
         const message = err instanceof Error ? err.message : 'Erro desconhecido';
         logger.error('ScannerTab', 'Erro ao processar imagem com IA', err);
         notify.error(`Erro ao processar imagem: ${message}`);
+      } finally {
+        notify.dismiss(toastId);
       }
     },
     [setCurrentReceipt]

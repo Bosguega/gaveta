@@ -344,7 +344,6 @@ export function IdleScreen({
                       <input
                         type="file"
                         accept="image/*"
-                        capture="environment"
                         onChange={handleIaImageChange}
                         disabled={disabled}
                         className="hidden"

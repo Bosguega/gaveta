@@ -275,9 +275,9 @@ export function ResultScreen({
                   <button
                     onClick={(e) => handleStartEdit(e, idx)}
                     className="bg-slate-700/50 border-none rounded w-5 h-5 flex items-center justify-center text-slate-400 cursor-pointer hover:text-slate-200 hover:bg-slate-700 flex-shrink-0"
-                    title="Editar preço pago"
+                    title="Editar preço pago (desconto)"
                   >
-                    <Pencil size={10} />
+                    <Tag size={10} />
                   </button>
                   {allowFullEdit && (
                     <>
