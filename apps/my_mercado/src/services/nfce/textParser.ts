@@ -1,5 +1,6 @@
 import type { RawReceiptItem, Receipt } from "../../types/domain";
 import { getFallbackDateAtMidnight, extractEmissionDate } from "./htmlParser";
+import { generateTextReceiptId } from "../../utils/receiptId";
 
 function cleanProductName(name: string | null | undefined): string {
     if (!name) return "";
@@ -24,7 +25,7 @@ function extractTotalDiscountFromText(text: string): number | undefined {
     return undefined;
 }
 
-export function parseRawTextReceipt(text: string): Receipt {
+export async function parseRawTextReceipt(text: string): Promise<Receipt> {
     const lines = text.split("\n").map((l) => l.trim()).filter((l) => l !== "");
     const items: RawReceiptItem[] = [];
 
@@ -92,25 +93,30 @@ export function parseRawTextReceipt(text: string): Receipt {
         throw new Error("Não foi possível encontrar itens no texto fornecido. Verifique o formato.");
     }
 
-    // 3. Tentar extrair identificadores únicos para evitar duplicatas
-    let uniqueSuffix = Date.now().toString();
+    // 3. Identificadores oficiais da NFC-e (prioritários para evitar duplicatas)
     const metaLine = lines.find(l => l.includes("Número:") && l.includes("Série:"));
     const protocolLine = lines.find(l => l.includes("Protocolo de Autorização:"));
 
+    // Itens no formato esperado pelo gerador de fingerprint (total como number)
+    const itemsForFingerprint = items.map((i) => ({
+        name: i.name,
+        total: parseFloat(i.total.replace(",", ".")) || 0,
+    }));
+
+    let receiptId: string;
     if (metaLine || protocolLine) {
         const numMatch = metaLine?.match(/Número:\s*(\d+)/i);
         const serieMatch = metaLine?.match(/Série:\s*(\d+)/i);
         const protMatch = protocolLine?.match(/Protocolo de Autorização:\s*(\d+)/i);
 
         if (numMatch || protMatch) {
-            uniqueSuffix = `${numMatch?.[1] || ""}-${serieMatch?.[1] || ""}-${protMatch?.[1] || ""}`;
+            receiptId = `pasted-${numMatch?.[1] || ""}-${serieMatch?.[1] || ""}-${protMatch?.[1] || ""}`;
+        } else {
+            receiptId = await generateTextReceiptId(establishment, date, itemsForFingerprint);
         }
     } else {
-        // Fallback: usar fingerprint de estabelecimento + data + total
-        const totalValue = items.reduce((acc, item) => {
-            return acc + (parseFloat(item.total.replace(",", ".")) || 0);
-        }, 0);
-        uniqueSuffix = `${establishment}-${date}-${totalValue.toFixed(2)}`.replace(/\s+/g, "");
+        // Sem identificador oficial: usar fingerprint determinístico
+        receiptId = await generateTextReceiptId(establishment, date, itemsForFingerprint);
     }
 
     const parsedItems = items.map((rawItem) => ({
@@ -125,9 +131,10 @@ export function parseRawTextReceipt(text: string): Receipt {
     const totalDiscount = extractTotalDiscountFromText(text);
 
     return {
-        id: `pasted-${uniqueSuffix}`,
+        id: receiptId,
         establishment,
         date,
+        source: "text",
         items: parsedItems,
         ...(totalDiscount !== undefined ? { total_discount: totalDiscount } : {}),
     };

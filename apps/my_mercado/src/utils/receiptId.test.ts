@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   generateGalleryReceiptId,
+  generateTextReceiptId,
   matchReceiptsByContent,
   findContentMatch,
 } from "./receiptId";
@@ -39,6 +40,50 @@ describe("generateGalleryReceiptId", () => {
   it("gera IDs diferentes quando os itens/totais diferem", async () => {
     const id1 = await generateGalleryReceiptId(establishment, date, items);
     const id2 = await generateGalleryReceiptId(establishment, date, [
+      { name: "CAFE 500G", total: 20 },
+      { name: "ARROZ 5KG", total: 25.5 },
+    ]);
+    expect(id1).not.toBe(id2);
+  });
+});
+
+describe("generateTextReceiptId", () => {
+  const establishment = "MERCADO EXEMPLO";
+  const date = "10/09/2026 14:30:00";
+  const items = [
+    { name: "CAFE 500G", total: 20 },
+    { name: "ARROZ 5KG", total: 24.9 },
+  ];
+
+  it("é estável para o mesmo texto (mesmo estabelecimento, data e itens)", async () => {
+    const id1 = await generateTextReceiptId(establishment, date, items);
+    const id2 = await generateTextReceiptId(establishment, date, [
+      { name: "CAFE 500G", total: 20 },
+      { name: "ARROZ 5KG", total: 24.9 },
+    ]);
+    expect(id1).toBe(id2);
+    expect(id1.startsWith("text-")).toBe(true);
+  });
+
+  it("gera IDs diferentes para notas diferentes (data distinta)", async () => {
+    const id1 = await generateTextReceiptId(establishment, date, items);
+    const id2 = await generateTextReceiptId(
+      establishment,
+      "10/09/2026 18:30:00",
+      items,
+    );
+    expect(id1).not.toBe(id2);
+  });
+
+  it("gera IDs diferentes para estabelecimentos distintos", async () => {
+    const id1 = await generateTextReceiptId("MERCADO A", date, items);
+    const id2 = await generateTextReceiptId("MERCADO B", date, items);
+    expect(id1).not.toBe(id2);
+  });
+
+  it("gera IDs diferentes quando os itens/totais diferem", async () => {
+    const id1 = await generateTextReceiptId(establishment, date, items);
+    const id2 = await generateTextReceiptId(establishment, date, [
       { name: "CAFE 500G", total: 20 },
       { name: "ARROZ 5KG", total: 25.5 },
     ]);

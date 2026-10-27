@@ -21,8 +21,9 @@ export function ResultScreen({
   const [fullEditIndex, setFullEditIndex] = useState<number | null>(null);
   const setCurrentReceipt = useScannerStore((state) => state.setCurrentReceipt);
 
-  // Edição completa (nome/qtd/preço) e adicionar/remover são exclusivos da galeria.
-  const isGallery = currentReceipt.source === "gallery";
+  // Edição completa (nome/qtd/preço) e adicionar/remover estão disponíveis
+  // para galeria e para notas coladas por texto.
+  const allowFullEdit = currentReceipt.source === "gallery" || currentReceipt.source === "text";
 
   const editingItem = useMemo(() => {
     if (editingIndex === null || !currentReceipt?.items) return null;
@@ -278,7 +279,7 @@ export function ResultScreen({
                   >
                     <Pencil size={10} />
                   </button>
-                  {isGallery && (
+                  {allowFullEdit && (
                     <>
                       <button
                         onClick={(e) => handleStartFullEdit(e, idx)}
@@ -303,8 +304,8 @@ export function ResultScreen({
         )}
       </div>
 
-      {/* Adicionar item — exclusivo da galeria */}
-      {isGallery && (
+      {/* Adicionar item — galeria e texto colado */}
+      {allowFullEdit && (
         <div className="px-4 pb-3">
           <button
             onClick={handleAddItem}
@@ -365,8 +366,8 @@ export function ResultScreen({
         />
       )}
 
-      {/* Modal de edição completa do item — exclusivo da galeria */}
-      {isGallery && fullEditIndex !== null && fullEditingItem && (
+      {/* Modal de edição completa do item — galeria e texto colado */}
+      {allowFullEdit && fullEditIndex !== null && fullEditingItem && (
         <ItemEditModal
           item={fullEditingItem}
           isOpen={true}

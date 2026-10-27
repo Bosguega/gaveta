@@ -193,7 +193,7 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
       setError(null);
 
       try {
-        const extractedData = parseRawTextReceipt(text);
+        const extractedData = await parseRawTextReceipt(text);
 
         if (!extractedData || !extractedData.items || extractedData.items.length === 0) {
           setError('Nenhum item encontrado no texto.');

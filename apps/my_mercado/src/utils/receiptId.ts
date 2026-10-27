@@ -90,6 +90,27 @@ export async function generateGalleryReceiptId(
   return `img-${hash}`;
 }
 
+/**
+ * Gera um ID determinístico para uma nota extraída por texto colado,
+ * reutilizando a mesma receita de fingerprint (establishment + date +
+ * name:total de cada item). Assim, colar o mesmo texto produz o mesmo ID
+ * e a detecção de duplicidade funciona como nos demais fluxos.
+ */
+export async function generateTextReceiptId(
+  establishment: string,
+  date: string,
+  items: Array<Pick<ReceiptItem, 'name' | 'total'>>,
+): Promise<string> {
+  const fingerprint = [
+    establishment,
+    date,
+    ...items.map((i) => `${i.name}:${i.total ?? ''}`),
+  ].join('|');
+
+  const hash = await sha256Hex16(fingerprint);
+  return `text-${hash}`;
+}
+
 // ==============================
 // Correspondência por conteúdo (cruzamento entre fontes)
 // ==============================
