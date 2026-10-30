@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "NFC-e Capture",
+  "version": "1.0.0",
+  "description": "Captura automática de NFC-e SEFAZ/SP",
+  "permissions": ["tabs"],
+  "host_permissions": [
+    "https://www.nfce.fazenda.sp.gov.br/*",
+    "https://<MY_MERCADO_ORIGIN>/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.nfce.fazenda.sp.gov.br/*",
+        "https://<MY_MERCADO_ORIGIN>/*"
+      ],
+      "js": ["content.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ]
+}

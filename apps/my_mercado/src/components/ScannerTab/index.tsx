@@ -11,7 +11,6 @@ import { useScannerStore } from "../../stores/useScannerStore";
 import { useSaveReceipt } from "../../hooks/queries/useReceiptsQuery";
 import { useEstablishmentDictionaryQuery, useUpsertEstablishmentDictionaryEntry } from "../../hooks/queries/useEstablishmentDictionaryQuery";
 import { IdleScreen } from "./screens/IdleScreen";
-import { ScanningScreen } from "./screens/ScanningScreen";
 import { LoadingScreen } from "./screens/LoadingScreen";
 import { ResultScreen } from "./screens/ResultScreen";
 import { ManualReceiptForm } from "./forms/ManualReceiptForm";

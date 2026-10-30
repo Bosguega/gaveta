@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>POC - NFC-e SEFAZ/SP em iframe</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main>
+    <h1>POC: NFC-e SEFAZ/SP em iframe</h1>
+    <p class="warn">Prova de conceito descartável. Não é parte do My Mercado. Carregamento visual do iframe não garante acesso ao DOM da página externa.</p>
+
+    <section>
+      <label for="url">URL da NFC-e</label>
+      <input id="url" type="url" placeholder="https://www.nfce.fazenda.sp.gov.br/..." />
+      <button id="open">Abrir NFC-e</button>
+    </section>
+
+    <section>
+      <iframe id="frame" title="NFC-e" sandbox="allow-scripts allow-same-origin"></iframe>
+    </section>
+
+    <section>
+      <button id="read">Tentar ler texto do iframe</button>
+      <button id="paste">Tentar colar da área de transferência</button>
+    </section>
+
+    <section>
+      <label for="target">Campo de texto de destino</label>
+      <textarea id="target" rows="8"></textarea>
+    </section>
+
+    <section>
+      <h2>Diagnóstico</h2>
+      <pre id="diag"></pre>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

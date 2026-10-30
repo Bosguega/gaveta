@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>POC 3 - Automação completa NFC-e</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; max-width: 900px; }
+    section { margin: 12px 0; }
+    input, textarea { width: 100%; box-sizing: border-box; }
+    pre { background: #f4f4f4; padding: 8px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>POC 3: Automação completa de captura de NFC-e</h1>
+  <section>
+    <label>URL da NFC-e</label>
+    <input id="url" type="url" />
+    <button id="import">Importar NFC-e</button>
+  </section>
+  <section>
+    <label>Texto capturado</label>
+    <textarea id="target" rows="12"></textarea>
+  </section>
+  <section>
+    <h2>Diagnóstico</h2>
+    <pre id="diag"></pre>
+  </section>
+  <script>
+    const urlInput = document.getElementById('url');
+    const target = document.getElementById('target');
+    const diag = document.getElementById('diag');
+    let currentId = null;
+    function log(m){ diag.textContent += m + '\n'; }
+
+    window.addEventListener('message', (e) => {
+      if (e.source !== window) return;
+      const d = e.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'nfce-ext-status') log('[Ext] ativa: ' + d.active);
+      if (d.type === 'nfce-import-ack') {
+        if (d.requestId !== currentId) return;
+        log('[Import] ack: ' + d.ok + (d.error ? ' - ' + d.error : ''));
+      }
+      if (d.type === 'nfce-import-result') {
+        if (d.requestId !== currentId) return;
+        if (d.ok) {
+          target.value = d.text || '';
+          log('[Import] SUCESSO - ' + d.charCount + ' chars. step=' + d.step);
+          // confirm delivery
+          window.postMessage({ type: 'nfce-delivery-ack', requestId: d.requestId }, '*');
+        } else {
+          log('[Import] FALHA - step=' + d.step + ' - ' + (d.error || 'erro'));
+        }
+      }
+      if (d.type === 'nfce-delivery-ack-result') {
+        if (d.requestId !== currentId) return;
+        log('[Import] delivery ack: ' + d.ok);
+      }
+    });
+
+    document.getElementById('import').addEventListener('click', () => {
+      currentId = 'req-' + Date.now();
+      target.value = '';
+      diag.textContent = '';
+      log('[Import] iniciado id=' + currentId);
+      window.postMessage({ type: 'nfce-import', requestId: currentId, url: urlInput.value.trim() }, '*');
+    });
+  </script>
+</body>
+</html>
