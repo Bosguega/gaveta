@@ -133,6 +133,12 @@ export type ImportMethod = QrMethod | IaMethod;
 
 export interface InitialScannerScreenProps {
   onStartCamera: () => void;
+  onStopCamera?: () => void;
+  torch?: boolean;
+  torchSupported?: boolean;
+  applyTorch?: (on: boolean) => void;
+  isNative?: boolean;
+  nativeVideoRef?: React.RefObject<HTMLVideoElement | null>;
   /** Decodifica QR Code de uma foto tirada na hora (capture=environment). */
   onQrPhoto: (event: React.ChangeEvent<HTMLInputElement>) => void;
   /** Decodifica QR Code de uma imagem selecionada na galeria. */

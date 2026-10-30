@@ -338,10 +338,16 @@ function ScannerTab() {
         />
       )}
 
-      {/* Tela Inicial */}
-      {!manualMode && !currentReceipt && !isScanning && !isLoading && (
+      {/* Tela de Seleção de Método / Escaneamento */}
+      {!manualMode && !currentReceipt && !isLoading && (
         <IdleScreen
           onStartCamera={() => startCamera('environment', handleScanSuccess)}
+          onStopCamera={stopCamera}
+          torch={torch}
+          torchSupported={torchSupported}
+          applyTorch={applyTorch}
+          isNative={isNativeSupported}
+          nativeVideoRef={nativeVideoRef}
           onQrPhoto={handleQrImageUpload}
           onQrGallery={handleQrImageUpload}
           onUrlSubmit={handleUrlSubmit}
@@ -351,18 +357,6 @@ function ScannerTab() {
           isLoading={isLoading}
           isScanning={isScanning}
           error={error}
-        />
-      )}
-
-      {/* Tela de Escaneamento */}
-      {!manualMode && !currentReceipt && isScanning && (
-        <ScanningScreen
-          onStopCamera={stopCamera}
-          torch={torch}
-          torchSupported={torchSupported}
-          applyTorch={applyTorch}
-          isNative={isNativeSupported}
-          nativeVideoRef={nativeVideoRef}
         />
       )}
 
