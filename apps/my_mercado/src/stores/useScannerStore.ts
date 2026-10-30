@@ -15,6 +15,7 @@ interface ScanSlice {
   duplicateReceipt: Receipt | null;
   duplicateMatchLevel: "exact" | "probable" | null;
   isSaving: boolean;
+  isScannerEntryActive: boolean;
 }
 
 interface ScanActions {
@@ -28,6 +29,7 @@ interface ScanActions {
   setDuplicateReceipt: (value: Receipt | null) => void;
   setDuplicateMatchLevel: (value: "exact" | "probable" | null) => void;
   setIsSaving: (value: boolean) => void;
+  setIsScannerEntryActive: (value: boolean) => void;
 }
 
 interface CameraSlice {
@@ -94,6 +96,7 @@ const initialScanState: ScanSlice = {
   duplicateReceipt: null,
   duplicateMatchLevel: null,
   isSaving: false,
+  isScannerEntryActive: false,
 };
 
 const initialCameraState: CameraSlice = {
@@ -136,6 +139,7 @@ export const useScannerStore = create<ScannerState>()((set) => ({
   setDuplicateReceipt: (value) => set({ duplicateReceipt: value }),
   setDuplicateMatchLevel: (value) => set({ duplicateMatchLevel: value }),
   setIsSaving: (value) => set({ isSaving: value }),
+  setIsScannerEntryActive: (value) => set({ isScannerEntryActive: value }),
 
   // Camera Slice
   ...initialCameraState,

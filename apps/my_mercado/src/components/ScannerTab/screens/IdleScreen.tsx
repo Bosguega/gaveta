@@ -24,6 +24,7 @@ import type {
 } from "../../../types/scanner";
 import { WatchBottomNav, type WatchNavItem } from "../components/WatchBottomNav";
 import { ScannerView } from "../views/ScannerView";
+import { useScannerStore } from "../../../stores/useScannerStore";
 
 const QR_METHODS: WatchNavItem<QrMethod>[] = [
   { id: "camera", label: "Câmera", icon: Camera, ariaLabel: "Ler com Câmera ao vivo" },
@@ -54,11 +55,14 @@ export function IdleScreen({
   isLoading,
   isScanning,
   error,
+  onEntryActiveChange,
 }: InitialScannerScreenProps) {
   const [activeGroup, setActiveGroup] = useState<ImportGroup | null>(() => (isScanning ? "qr" : null));
   const [activeMethod, setActiveMethod] = useState<ImportMethod | null>(() => (isScanning ? "camera" : null));
   const [pastedUrl, setPastedUrl] = useState("");
   const [pastedText, setPastedText] = useState("");
+
+  const setIsScannerEntryActive = useScannerStore((state) => state.setIsScannerEntryActive);
 
   // Sincroniza se o scanner for acionado externamente
   useEffect(() => {
@@ -69,6 +73,15 @@ export function IdleScreen({
   }, [isScanning, activeGroup]);
 
   const isImportActive = activeGroup !== null;
+
+  useEffect(() => {
+    setIsScannerEntryActive(isImportActive);
+    onEntryActiveChange?.(isImportActive);
+    return () => {
+      setIsScannerEntryActive(false);
+      onEntryActiveChange?.(false);
+    };
+  }, [isImportActive, setIsScannerEntryActive, onEntryActiveChange]);
   const disabled = isLoading;
 
   const groupTitle = activeGroup === "qr" ? "Ler QR Code" : "Enviar conteúdo para IA";

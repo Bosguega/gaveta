@@ -11,6 +11,10 @@
     padding: var(--space-4) var(--space-4) 8rem var(--space-4);
 }
 
+.app-container.no-bottom-nav {
+    padding-bottom: max(var(--space-4), env(safe-area-inset-bottom)) !important;
+}
+
 .header {
     text-align: left;
     margin-bottom: var(--space-5);

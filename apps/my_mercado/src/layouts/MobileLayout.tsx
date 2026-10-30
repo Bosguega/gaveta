@@ -9,6 +9,7 @@ import {
 import type { AppTab } from '../types/ui'
 import { TabSkeleton } from '../components/Skeleton'
 import { lazyWithRetry } from '../utils/lazyWithRetry'
+import { useScannerStore } from '../stores/useScannerStore'
 
 const ScannerTab = lazyWithRetry(() => import('../components/ScannerTab'))
 const ShoppingListTab = lazyWithRetry(() => import('../components/ShoppingListTab'))
@@ -23,8 +24,11 @@ interface MobileLayoutProps {
 }
 
 export function MobileLayout({ tab, onTabChange, onOpenAiConfig }: MobileLayoutProps) {
+    const isScannerEntryActive = useScannerStore((state) => state.isScannerEntryActive)
+    const showBottomNav = !(tab === 'scan' && isScannerEntryActive)
+
     return (
-        <div className="app-container">
+        <div className={`app-container ${!showBottomNav ? 'no-bottom-nav' : ''}`}>
             <header className="header">
                 <div style={{ flex: 1 }}>
                     <h1>My Mercado</h1>
@@ -42,53 +46,55 @@ export function MobileLayout({ tab, onTabChange, onOpenAiConfig }: MobileLayoutP
                 </Suspense>
             </main>
 
-            <nav className="bottom-nav" role="navigation" aria-label="Navegação principal">
-                <button
-                    className={`nav-item ${tab === 'scan' ? 'active' : ''}`}
-                    onClick={() => onTabChange('scan')}
-                    aria-label="Escanear nota fiscal"
-                    aria-current={tab === 'scan' ? 'page' : undefined}
-                >
-                    <Scan size={22} aria-hidden />
-                    <span style={{ marginTop: '2px' }}>Escanear</span>
-                </button>
-                <button
-                    className={`nav-item ${tab === 'shopping' ? 'active' : ''}`}
-                    onClick={() => onTabChange('shopping')}
-                    aria-label="Lista de compras"
-                    aria-current={tab === 'shopping' ? 'page' : undefined}
-                >
-                    <ListChecks size={22} aria-hidden />
-                    <span style={{ marginTop: '2px' }}>Lista</span>
-                </button>
-                <button
-                    className={`nav-item ${tab === 'history' ? 'active' : ''}`}
-                    onClick={() => onTabChange('history')}
-                    aria-label="Histórico de compras"
-                    aria-current={tab === 'history' ? 'page' : undefined}
-                >
-                    <HistoryIcon size={22} aria-hidden />
-                    <span style={{ marginTop: '2px' }}>Histórico</span>
-                </button>
-                <button
-                    className={`nav-item ${tab === 'search' ? 'active' : ''}`}
-                    onClick={() => onTabChange('search')}
-                    aria-label="Buscar preços"
-                    aria-current={tab === 'search' ? 'page' : undefined}
-                >
-                    <Search size={22} aria-hidden />
-                    <span style={{ marginTop: '2px' }}>Preços</span>
-                </button>
-                <button
-                    className={`nav-item ${tab === 'settings' ? 'active' : ''}`}
-                    onClick={() => onTabChange('settings')}
-                    aria-label="Configurações"
-                    aria-current={tab === 'settings' ? 'page' : undefined}
-                >
-                    <SettingsIcon size={22} aria-hidden />
-                    <span style={{ marginTop: '2px' }}>Ajustes</span>
-                </button>
-            </nav>
+            {showBottomNav && (
+                <nav className="bottom-nav" role="navigation" aria-label="Navegação principal">
+                    <button
+                        className={`nav-item ${tab === 'scan' ? 'active' : ''}`}
+                        onClick={() => onTabChange('scan')}
+                        aria-label="Escanear nota fiscal"
+                        aria-current={tab === 'scan' ? 'page' : undefined}
+                    >
+                        <Scan size={22} aria-hidden />
+                        <span style={{ marginTop: '2px' }}>Escanear</span>
+                    </button>
+                    <button
+                        className={`nav-item ${tab === 'shopping' ? 'active' : ''}`}
+                        onClick={() => onTabChange('shopping')}
+                        aria-label="Lista de compras"
+                        aria-current={tab === 'shopping' ? 'page' : undefined}
+                    >
+                        <ListChecks size={22} aria-hidden />
+                        <span style={{ marginTop: '2px' }}>Lista</span>
+                    </button>
+                    <button
+                        className={`nav-item ${tab === 'history' ? 'active' : ''}`}
+                        onClick={() => onTabChange('history')}
+                        aria-label="Histórico de compras"
+                        aria-current={tab === 'history' ? 'page' : undefined}
+                    >
+                        <HistoryIcon size={22} aria-hidden />
+                        <span style={{ marginTop: '2px' }}>Histórico</span>
+                    </button>
+                    <button
+                        className={`nav-item ${tab === 'search' ? 'active' : ''}`}
+                        onClick={() => onTabChange('search')}
+                        aria-label="Buscar preços"
+                        aria-current={tab === 'search' ? 'page' : undefined}
+                    >
+                        <Search size={22} aria-hidden />
+                        <span style={{ marginTop: '2px' }}>Preços</span>
+                    </button>
+                    <button
+                        className={`nav-item ${tab === 'settings' ? 'active' : ''}`}
+                        onClick={() => onTabChange('settings')}
+                        aria-label="Configurações"
+                        aria-current={tab === 'settings' ? 'page' : undefined}
+                    >
+                        <SettingsIcon size={22} aria-hidden />
+                        <span style={{ marginTop: '2px' }}>Ajustes</span>
+                    </button>
+                </nav>
+            )}
         </div>
     )
 }

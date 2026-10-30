@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { IdleScreen } from "./IdleScreen";
+import { useScannerStore } from "../../../stores/useScannerStore";
 
 describe("IdleScreen", () => {
   it("renderiza os dois cards principais e a opção manual", () => {
@@ -251,6 +252,63 @@ describe("IdleScreen", () => {
     // Deve voltar para a tela inicial com os 2 cards e botão manual
     expect(screen.getByText(/Escolha como importar/i)).toBeInTheDocument();
     expect(screen.getByText(/Digitar manualmente/i)).toBeInTheDocument();
+  });
+
+  it("atualiza isScannerEntryActive no store ao abrir entradas e ao clicar em Voltar", () => {
+    useScannerStore.getState().resetScannerState();
+    render(
+      <IdleScreen
+        onStartCamera={vi.fn()}
+        onQrPhoto={vi.fn()}
+        onQrGallery={vi.fn()}
+        onUrlSubmit={vi.fn()}
+        onIaText={vi.fn()}
+        onIaImage={vi.fn()}
+        onManualMode={vi.fn()}
+        isLoading={false}
+        isScanning={false}
+        error={null}
+      />
+    );
+
+    expect(useScannerStore.getState().isScannerEntryActive).toBe(false);
+
+    // Clica em um método de entrada (ex: Carregar link)
+    fireEvent.click(screen.getByRole("button", { name: /Carregar link/i }));
+    expect(useScannerStore.getState().isScannerEntryActive).toBe(true);
+
+    // Clica no botão Voltar
+    fireEvent.click(screen.getByRole("button", { name: /Voltar/i }));
+    expect(useScannerStore.getState().isScannerEntryActive).toBe(false);
+  });
+
+  it("notifica onEntryActiveChange ao abrir as entradas e ao clicar em Voltar", () => {
+    const onEntryActiveChange = vi.fn();
+    render(
+      <IdleScreen
+        onStartCamera={vi.fn()}
+        onQrPhoto={vi.fn()}
+        onQrGallery={vi.fn()}
+        onUrlSubmit={vi.fn()}
+        onIaText={vi.fn()}
+        onIaImage={vi.fn()}
+        onManualMode={vi.fn()}
+        isLoading={false}
+        isScanning={false}
+        error={null}
+        onEntryActiveChange={onEntryActiveChange}
+      />
+    );
+
+    expect(onEntryActiveChange).toHaveBeenCalledWith(false);
+
+    // Clica em Enviar texto no grupo IA
+    fireEvent.click(screen.getByRole("button", { name: /Enviar texto/i }));
+    expect(onEntryActiveChange).toHaveBeenLastCalledWith(true);
+
+    // Clica em Voltar
+    fireEvent.click(screen.getByRole("button", { name: /Voltar/i }));
+    expect(onEntryActiveChange).toHaveBeenLastCalledWith(false);
   });
 });
 

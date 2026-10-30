@@ -153,6 +153,8 @@ export interface InitialScannerScreenProps {
   isLoading: boolean;
   isScanning: boolean;
   error: string | null;
+  /** Notifica quando o usuário entra ou sai da tela com as entradas para escanear */
+  onEntryActiveChange?: (active: boolean) => void;
 }
 
 /**
