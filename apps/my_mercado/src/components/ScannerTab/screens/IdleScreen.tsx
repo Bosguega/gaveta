@@ -16,6 +16,12 @@ import {
 } from "lucide-react";
 import { notify } from "../../../utils/notifications";
 import { validateNfcUrl } from "../../../utils/validation";
+import {
+  validateBrowserLink,
+  openNfceUrl,
+  tryReadClipboardText,
+  isDesktopPlatform,
+} from "../../../services/nfce/browserImport";
 import type {
   InitialScannerScreenProps,
   ImportGroup,
@@ -64,6 +70,8 @@ export function IdleScreen({
   const [activeMethod, setActiveMethod] = useState<ImportMethod | null>(() => (isScanning ? "camera" : null));
   const [pastedUrl, setPastedUrl] = useState("");
   const [pastedText, setPastedText] = useState("");
+  const [importingViaBrowser, setImportingViaBrowser] = useState(false);
+  const [browserError, setBrowserError] = useState<string | null>(null);
 
   const setIsScannerEntryActive = useScannerStore((state) => state.setIsScannerEntryActive);
 
@@ -195,6 +203,65 @@ export function IdleScreen({
     onUrlSubmit(validation.data);
     setPastedUrl("");
   }, [pastedUrl, onUrlSubmit]);
+
+  /**
+   * Abre o link público da NFC-e no navegador do sistema para que o usuário
+   * copie o conteúdo exibido. Não consome nem substitui o fluxo atual de
+   * "Processar Link" (handleLinkSubmit); é uma alternativa independente.
+   */
+  const handleOpenAndImportLink = useCallback(() => {
+    setBrowserError(null);
+    const rawUrl = pastedUrl.trim();
+
+    const validation = validateBrowserLink(rawUrl);
+    if (!validation.ok) {
+      setBrowserError(validation.error);
+      notify.error(validation.error);
+      return;
+    }
+
+    const result = openNfceUrl(validation.url);
+    if (!result.ok) {
+      setBrowserError(result.error);
+      notify.error(result.error);
+      return;
+    }
+
+    // Link aberto com sucesso: exibe o campo de texto existente para o usuário
+    // colar o conteúdo da nota exibida no navegador.
+    setImportingViaBrowser(true);
+    notify.success(
+      "Página aberta no navegador. Copie o texto da nota e cole aqui abaixo."
+    );
+  }, [pastedUrl]);
+
+  /**
+   * Tenta ler a área de transferência e preencher o campo de texto existente.
+   * Ação explícita do usuário: só preenche quando o campo está vazio, para
+   * nunca substituir silenciosamente um texto já digitado.
+   */
+  const handlePasteFromBrowser = useCallback(async () => {
+    setBrowserError(null);
+
+    const result = await tryReadClipboardText();
+
+    if (!result.ok) {
+      setBrowserError(result.error);
+      notify.error(result.error);
+      return;
+    }
+
+    if (pastedText.trim()) {
+      // Preserva o texto já digitado; não sobrescreve por conteúdo vazio/incompleto.
+      notify.error(
+        "O campo já contém texto. Ele foi preservado; cole manualmente se desejar substituir."
+      );
+      return;
+    }
+
+    setPastedText(result.text);
+    notify.success("Texto colado da área de transferência. Revise e prossiga.");
+  }, [pastedText]);
 
   const handleTextSubmit = useCallback(() => {
     const text = pastedText.trim();
@@ -437,7 +504,7 @@ export function IdleScreen({
                 )}
 
                 {activeMethod === "link" && (
-                  <div className="w-full max-w-sm glass-card p-5 text-left">
+                  <div className="w-full max-w-sm glass-card p-5 text-left space-y-3">
                     <label className="block text-slate-400 text-xs font-semibold mb-2">
                       Link da NFC-e (URL completa)
                     </label>
@@ -460,8 +527,80 @@ export function IdleScreen({
                         <Plus size={20} />
                       </button>
                     </div>
+
+                    {/* Nova funcionalidade: abrir no navegador e importar texto */}
+                    <button
+                      type="button"
+                      className="btn btn-outline w-full text-[0.9rem] flex items-center justify-center gap-2"
+                      onClick={handleOpenAndImportLink}
+                      disabled={disabled || !pastedUrl.trim()}
+                      title="Abrir link no navegador e importar texto"
+                    >
+                      <LinkIcon size={16} /> Abrir no navegador e importar texto
+                    </button>
+
+                    {browserError && (
+                      <div className="p-3 rounded bg-red-500/10 border border-red-500/20 text-red-400 text-xs leading-relaxed">
+                        {browserError}
+                      </div>
+                    )}
+
+                    {importingViaBrowser && (
+                      <div className="space-y-2 pt-2 border-t border-slate-700/30">
+                        <p className="text-slate-400 text-xs leading-relaxed">
+                          A página foi aberta no navegador. Copie o texto da nota
+                          fiscal exibida por lá e cole aqui no campo abaixo.{" "}
+                          {isDesktopPlatform()
+                            ? "(Dica: use Ctrl+C para copiar e Ctrl+V para colar.)"
+                            : "(Dica: selecione o texto, copie e volte ao app.)"}
+                        </p>
+
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="block text-slate-400 text-xs font-semibold">
+                            Texto da nota fiscal
+                          </label>
+                          {pastedText && (
+                            <button
+                              type="button"
+                              className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1"
+                              onClick={() => setPastedText("")}
+                            >
+                              <X size={12} /> Limpar
+                            </button>
+                          )}
+                        </div>
+                        <textarea
+                          placeholder="Cole aqui o conteúdo da nota..."
+                          value={pastedText}
+                          onChange={(e) => setPastedText(e.target.value)}
+                          autoFocus
+                          rows={4}
+                          className="search-input text-sm w-full resize-none bg-slate-900/60 border border-slate-700/60 p-3 mb-3 leading-relaxed"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className="btn btn-outline flex-1 text-[0.9rem] flex items-center justify-center gap-2"
+                            onClick={handlePasteFromBrowser}
+                            title="Tentar colar da área de transferência"
+                          >
+                            <span>📋</span> Tentar colar do navegador
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-success flex-1 text-[0.9rem] flex items-center justify-center gap-2"
+                            onClick={handleTextSubmit}
+                            disabled={disabled || !pastedText.trim()}
+                          >
+                            <Sparkles size={16} /> Processar Texto
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     <p className="text-slate-500 text-xs leading-relaxed">
-                      Dica: Você pode copiar o endereço impresso na nota ou recebido por mensagem.
+                      Dica: Você pode copiar o endereço impresso na nota ou
+                      recebido por mensagem.
                     </p>
                   </div>
                 )}

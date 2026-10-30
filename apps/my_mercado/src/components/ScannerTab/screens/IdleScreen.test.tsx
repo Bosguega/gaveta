@@ -1,7 +1,40 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { IdleScreen } from "./IdleScreen";
 import { useScannerStore } from "../../../stores/useScannerStore";
+
+// Mock do módulo de importação via navegador para não depender de window.open
+// nem da área de transferência nos testes unitários.
+vi.mock("../../../services/nfce/browserImport", () => ({
+  validateBrowserLink: vi.fn((url: string) => {
+    if (!url || !url.includes("fazenda.sp.gov.br")) {
+      return { ok: false, error: "URL inválida." };
+    }
+    return { ok: true, url };
+  }),
+  openNfceUrl: vi.fn(() => ({ ok: true, opened: true })),
+  tryReadClipboardText: vi.fn(),
+  isDesktopPlatform: vi.fn(() => false),
+}));
+
+import {
+  validateBrowserLink,
+  openNfceUrl,
+  tryReadClipboardText,
+  isDesktopPlatform,
+} from "../../../services/nfce/browserImport";
+
+const mockedValidateBrowserLink = vi.mocked(validateBrowserLink);
+const mockedOpenNfceUrl = vi.mocked(openNfceUrl);
+const mockedTryReadClipboardText = vi.mocked(tryReadClipboardText);
+const mockedIsDesktopPlatform = vi.mocked(isDesktopPlatform);
+
+beforeEach(() => {
+  mockedValidateBrowserLink.mockClear();
+  mockedOpenNfceUrl.mockClear();
+  mockedTryReadClipboardText.mockClear();
+  mockedIsDesktopPlatform.mockClear();
+});
 
 describe("IdleScreen", () => {
   it("renderiza os dois cards principais e a opção manual", () => {
@@ -353,6 +386,197 @@ describe("IdleScreen", () => {
     // Clica em Voltar
     fireEvent.click(screen.getByRole("button", { name: /Voltar/i }));
     expect(onEntryActiveChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("renderiza o botão 'Abrir no navegador e importar texto' na aba de link", () => {
+    render(
+      <IdleScreen
+        onStartCamera={vi.fn()}
+        onQrPhoto={vi.fn()}
+        onQrGallery={vi.fn()}
+        onUrlSubmit={vi.fn()}
+        onIaText={vi.fn()}
+        onIaImage={vi.fn()}
+        onIaPhoto={vi.fn()}
+        onManualMode={vi.fn()}
+        isLoading={false}
+        isScanning={false}
+        error={null}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Carregar link/i }));
+    expect(
+      screen.getByRole("button", { name: /Abrir no navegador e importar texto/i })
+    ).toBeInTheDocument();
+  });
+
+  it("abre o link no navegador e exibe o campo de texto para importação", () => {
+    mockedOpenNfceUrl.mockReturnValue({ ok: true, opened: true });
+
+    const onUrlSubmit = vi.fn();
+    render(
+      <IdleScreen
+        onStartCamera={vi.fn()}
+        onQrPhoto={vi.fn()}
+        onQrGallery={vi.fn()}
+        onUrlSubmit={onUrlSubmit}
+        onIaText={vi.fn()}
+        onIaImage={vi.fn()}
+        onIaPhoto={vi.fn()}
+        onManualMode={vi.fn()}
+        isLoading={false}
+        isScanning={false}
+        error={null}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Carregar link/i }));
+
+    const urlInput = screen.getByPlaceholderText(/Cole aqui a URL da NFC-e/i);
+    fireEvent.change(urlInput, {
+      target: {
+        value: "https://www.fazenda.sp.gov.br/NFCe/ConsultaNFCe.aspx?p=123",
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Abrir no navegador e importar texto/i })
+    );
+
+    expect(mockedOpenNfceUrl).toHaveBeenCalledTimes(1);
+    // Não chama o fluxo atual de processamento de link (é independente).
+    expect(onUrlSubmit).not.toHaveBeenCalled();
+
+    // O campo de texto existente é exibido para o usuário colar o conteúdo.
+    expect(
+      screen.getByPlaceholderText(/Cole aqui o conteúdo da nota/i)
+    ).toBeInTheDocument();
+  });
+
+  it("exibe erro claro quando o link é inválido ao tentar abrir no navegador", () => {
+    mockedOpenNfceUrl.mockReturnValue({ ok: true, opened: true });
+
+    render(
+      <IdleScreen
+        onStartCamera={vi.fn()}
+        onQrPhoto={vi.fn()}
+        onQrGallery={vi.fn()}
+        onUrlSubmit={vi.fn()}
+        onIaText={vi.fn()}
+        onIaImage={vi.fn()}
+        onIaPhoto={vi.fn()}
+        onManualMode={vi.fn()}
+        isLoading={false}
+        isScanning={false}
+        error={null}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Carregar link/i }));
+
+    const urlInput = screen.getByPlaceholderText(/Cole aqui a URL da NFC-e/i);
+    fireEvent.change(urlInput, { target: { value: "http://site-perigoso.com" } });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Abrir no navegador e importar texto/i })
+    );
+
+    expect(mockedOpenNfceUrl).not.toHaveBeenCalled();
+    expect(screen.getByText(/URL inválida/i)).toBeInTheDocument();
+  });
+
+  it("tentar colar do navegador preenche o campo de texto existente quando vazio", async () => {
+    mockedTryReadClipboardText.mockResolvedValue({
+      ok: true,
+      text: "NOTA FISCAL DE TESTE\nArroz 1 kg 5,00",
+    });
+
+    render(
+      <IdleScreen
+        onStartCamera={vi.fn()}
+        onQrPhoto={vi.fn()}
+        onQrGallery={vi.fn()}
+        onUrlSubmit={vi.fn()}
+        onIaText={vi.fn()}
+        onIaImage={vi.fn()}
+        onIaPhoto={vi.fn()}
+        onManualMode={vi.fn()}
+        isLoading={false}
+        isScanning={false}
+        error={null}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Carregar link/i }));
+
+    const urlInput = screen.getByPlaceholderText(/Cole aqui a URL da NFC-e/i);
+    fireEvent.change(urlInput, {
+      target: {
+        value: "https://www.fazenda.sp.gov.br/NFCe/ConsultaNFCe.aspx?p=123",
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Abrir no navegador e importar texto/i })
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Tentar colar do navegador/i })
+    );
+
+    await vi.waitFor(() => {
+      const textarea = screen.getByPlaceholderText(/Cole aqui o conteúdo da nota/i);
+      expect((textarea as HTMLTextAreaElement).value).toContain("NOTA FISCAL DE TESTE");
+    });
+  });
+
+  it("preserva o texto já digitado quando tenta colar do navegador", async () => {
+    mockedTryReadClipboardText.mockResolvedValue({
+      ok: true,
+      text: "TEXTO DA ÁREA DE TRANSFERÊNCIA",
+    });
+
+    render(
+      <IdleScreen
+        onStartCamera={vi.fn()}
+        onQrPhoto={vi.fn()}
+        onQrGallery={vi.fn()}
+        onUrlSubmit={vi.fn()}
+        onIaText={vi.fn()}
+        onIaImage={vi.fn()}
+        onIaPhoto={vi.fn()}
+        onManualMode={vi.fn()}
+        isLoading={false}
+        isScanning={false}
+        error={null}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Carregar link/i }));
+
+    const urlInput = screen.getByPlaceholderText(/Cole aqui a URL da NFC-e/i);
+    fireEvent.change(urlInput, {
+      target: {
+        value: "https://www.fazenda.sp.gov.br/NFCe/ConsultaNFCe.aspx?p=123",
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Abrir no navegador e importar texto/i })
+    );
+
+    // Usuário já digitou algo no campo.
+    const textarea = screen.getByPlaceholderText(/Cole aqui o conteúdo da nota/i);
+    fireEvent.change(textarea, { target: { value: "TEXTO JÁ DIGITADO" } });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Tentar colar do navegador/i })
+    );
+
+    await vi.waitFor(() => {
+      expect((textarea as HTMLTextAreaElement).value).toBe("TEXTO JÁ DIGITADO");
+    });
   });
 });
 
