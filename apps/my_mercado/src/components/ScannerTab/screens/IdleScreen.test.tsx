@@ -13,6 +13,7 @@ describe("IdleScreen", () => {
         onUrlSubmit={vi.fn()}
         onIaText={vi.fn()}
         onIaImage={vi.fn()}
+        onIaPhoto={vi.fn()}
         onManualMode={vi.fn()}
         isLoading={false}
         isScanning={false}
@@ -35,6 +36,7 @@ describe("IdleScreen", () => {
         onUrlSubmit={vi.fn()}
         onIaText={vi.fn()}
         onIaImage={vi.fn()}
+        onIaPhoto={vi.fn()}
         onManualMode={vi.fn()}
         isLoading={false}
         isScanning={false}
@@ -56,6 +58,7 @@ describe("IdleScreen", () => {
         onUrlSubmit={vi.fn()}
         onIaText={vi.fn()}
         onIaImage={vi.fn()}
+        onIaPhoto={vi.fn()}
         onManualMode={vi.fn()}
         isLoading={false}
         isScanning={false}
@@ -79,6 +82,7 @@ describe("IdleScreen", () => {
         onUrlSubmit={vi.fn()}
         onIaText={vi.fn()}
         onIaImage={onIaImage}
+        onIaPhoto={vi.fn()}
         onManualMode={vi.fn()}
         isLoading={false}
         isScanning={false}
@@ -96,6 +100,39 @@ describe("IdleScreen", () => {
     expect(onIaImage).toHaveBeenCalledTimes(1);
   });
 
+  it("exibe input de câmera ao escolher Tirar foto no card IA", () => {
+    const onIaPhoto = vi.fn();
+    const { container } = render(
+      <IdleScreen
+        onStartCamera={vi.fn()}
+        onQrPhoto={vi.fn()}
+        onQrGallery={vi.fn()}
+        onUrlSubmit={vi.fn()}
+        onIaText={vi.fn()}
+        onIaImage={vi.fn()}
+        onIaPhoto={onIaPhoto}
+        onManualMode={vi.fn()}
+        isLoading={false}
+        isScanning={false}
+        error={null}
+      />,
+    );
+
+    // Entra no grupo IA pelo método Imagem
+    fireEvent.click(screen.getByRole("button", { name: /Enviar imagem/i }));
+    // Agora o botão "Tirar foto" do menu inferior do grupo IA está disponível
+    fireEvent.click(screen.getByRole("tab", { name: /Tirar foto da nota para IA/i }));
+    // O input de câmera aparece
+    const input = container.querySelector(
+      'input[type="file"][accept="image/*"][capture="environment"]',
+    );
+    expect(input).toBeInTheDocument();
+
+    const file = new File(["image"], "receipt.png", { type: "image/png" });
+    fireEvent.change(input as HTMLInputElement, { target: { files: [file] } });
+    expect(onIaPhoto).toHaveBeenCalledTimes(1);
+  });
+
   it("chama onIaText ao processar texto no grupo IA", () => {
     const onIaText = vi.fn();
     render(
@@ -106,6 +143,7 @@ describe("IdleScreen", () => {
         onUrlSubmit={vi.fn()}
         onIaText={onIaText}
         onIaImage={vi.fn()}
+        onIaPhoto={vi.fn()}
         onManualMode={vi.fn()}
         isLoading={false}
         isScanning={false}
@@ -130,6 +168,7 @@ describe("IdleScreen", () => {
         onUrlSubmit={vi.fn()}
         onIaText={vi.fn()}
         onIaImage={vi.fn()}
+        onIaPhoto={vi.fn()}
         onManualMode={vi.fn()}
         isLoading={false}
         isScanning={false}
@@ -165,6 +204,7 @@ describe("IdleScreen", () => {
         onUrlSubmit={vi.fn()}
         onIaText={vi.fn()}
         onIaImage={vi.fn()}
+        onIaPhoto={vi.fn()}
         onManualMode={vi.fn()}
         isLoading={false}
         isScanning={false}
@@ -200,6 +240,7 @@ describe("IdleScreen", () => {
         onUrlSubmit={vi.fn()}
         onIaText={vi.fn()}
         onIaImage={vi.fn()}
+        onIaPhoto={vi.fn()}
         onManualMode={vi.fn()}
         isLoading={false}
         isScanning={false}
@@ -236,6 +277,7 @@ describe("IdleScreen", () => {
         onIaText={vi.fn()}
         onIaImage={vi.fn()}
         onManualMode={vi.fn()}
+        onIaPhoto={vi.fn()}
         isLoading={false}
         isScanning={false}
         error={null}
@@ -265,6 +307,7 @@ describe("IdleScreen", () => {
         onIaText={vi.fn()}
         onIaImage={vi.fn()}
         onManualMode={vi.fn()}
+        onIaPhoto={vi.fn()}
         isLoading={false}
         isScanning={false}
         error={null}
@@ -293,6 +336,7 @@ describe("IdleScreen", () => {
         onIaText={vi.fn()}
         onIaImage={vi.fn()}
         onManualMode={vi.fn()}
+        onIaPhoto={vi.fn()}
         isLoading={false}
         isScanning={false}
         error={null}

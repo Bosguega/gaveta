@@ -1,6 +1,20 @@
 import type { RawReceiptItem, Receipt } from "../../types/domain";
 import { getFallbackDateAtMidnight, extractEmissionDate } from "./htmlParser";
 import { generateTextReceiptId } from "../../utils/receiptId";
+/**
+ * Verifica se a linha é um cabeçalho de documento NFC-e/DANFE que não
+ * representa o nome do estabelecimento (ex.: "NFC-e", "DOCUMENTO AUXILIAR...").
+ * Essas linhas devem ser ignoradas ao extrair o nome da loja.
+ */
+function isDocumentHeader(line: string): boolean {
+    const upper = line.toUpperCase();
+    return (
+        upper === "NFC-E" ||
+        upper.startsWith("DOCUMENTO AUXILIAR") ||
+        upper.startsWith("DANFE")
+    );
+}
+
 
 function cleanProductName(name: string | null | undefined): string {
     if (!name) return "";
@@ -29,13 +43,18 @@ export async function parseRawTextReceipt(text: string): Promise<Receipt> {
     const lines = text.split("\n").map((l) => l.trim()).filter((l) => l !== "");
     const items: RawReceiptItem[] = [];
 
-    // 1. Tentar extrair o estabelecimento (Geralmente a primeira linha)
+    // 1. Tentar extrair o estabelecimento.
+    // Ignora cabeçalhos de documento como "NFC-e", "DOCUMENTO AUXILIAR..." e "DANFE",
+    // que não representam o nome da loja.
     let establishment = "Nota Colada";
     if (lines.length > 0) {
-        const firstLine = lines[0];
-        // Se a primeira linha não parecer um item e não for meta-informação óbvia
-        if (!firstLine.includes("Qtde.:") && !firstLine.includes("Código:") && firstLine.length > 3) {
-            establishment = firstLine;
+        for (const line of lines) {
+            if (isDocumentHeader(line)) continue;
+            // Se a linha não parecer um item e não for meta-informação óbvia
+            if (!line.includes("Qtde.:") && !line.includes("Código:") && line.length > 3) {
+                establishment = line;
+                break;
+            }
         }
     }
 

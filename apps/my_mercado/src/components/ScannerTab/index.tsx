@@ -353,6 +353,7 @@ function ScannerTab() {
           onUrlSubmit={handleUrlSubmit}
           onIaText={processRawText}
           onIaImage={handleReceiptImageUpload}
+          onIaPhoto={handleReceiptImageUpload}
           onManualMode={enterManualMode}
           isLoading={isLoading}
           isScanning={isScanning}

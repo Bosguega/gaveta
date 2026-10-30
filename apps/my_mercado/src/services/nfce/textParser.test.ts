@@ -25,6 +25,25 @@ describe("parseRawTextReceipt", () => {
     expect(receipt.total_discount).toBe(3.2);
   });
 
+  it("ignora cabeçalho NFC-e / DOCUMENTO AUXILIAR e extrai o nome do estabelecimento", async () => {
+    const textoComCabecalho = [
+      "NFC-e",
+      "DOCUMENTO AUXILIAR DA NOTA FISCAL DE CONSUMIDOR ELETRÔNICA",
+      "",
+      "R. de D. Zeferino LTDA",
+      "CNPJ: 67.228.536/0001-30",
+      "BOLO CENOURA Kg (Código: 448)",
+      "Qtde.:0,404   UN: KG   Vl. Unit.:   32,9 	Vl. Total",
+      "13,29",
+    ].join("\n");
+
+    const receipt = await parseRawTextReceipt(textoComCabecalho);
+
+    expect(receipt.establishment).toBe("R. de D. Zeferino LTDA");
+    expect(receipt.items).toHaveLength(1);
+    expect(receipt.items[0].name).toBe("BOLO CENOURA Kg");
+  });
+
   it("não define total_discount quando não há desconto no texto", async () => {
     const receipt = await parseRawTextReceipt(textoComItens);
 

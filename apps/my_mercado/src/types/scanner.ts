@@ -128,7 +128,7 @@ export interface ManualReceiptFormProps {
 export type ImportGroup = "qr" | "ia";
 
 export type QrMethod = "camera" | "photo" | "gallery" | "link";
-export type IaMethod = "text" | "image";
+export type IaMethod = "text" | "image" | "photo";
 export type ImportMethod = QrMethod | IaMethod;
 
 export interface InitialScannerScreenProps {
@@ -149,6 +149,8 @@ export interface InitialScannerScreenProps {
   onIaText: (text: string) => void;
   /** Extrai dados completos da nota a partir de uma imagem (foto ou galeria). */
   onIaImage: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  /** Extrai dados completos da nota a partir de uma foto tirada na câmera. */
+  onIaPhoto: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onManualMode: () => void;
   isLoading: boolean;
   isScanning: boolean;

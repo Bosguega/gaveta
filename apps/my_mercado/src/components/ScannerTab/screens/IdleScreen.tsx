@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   Plus,
   Sparkles,
+  Aperture,
 } from "lucide-react";
 import { notify } from "../../../utils/notifications";
 import { validateNfcUrl } from "../../../utils/validation";
@@ -36,6 +37,7 @@ const QR_METHODS: WatchNavItem<QrMethod>[] = [
 const IA_METHODS: WatchNavItem<IaMethod>[] = [
   { id: "text", label: "Enviar texto", icon: FileText, ariaLabel: "Enviar texto copiado para IA" },
   { id: "image", label: "Enviar imagem", icon: ImageIcon, ariaLabel: "Enviar imagem da nota para IA" },
+  { id: "photo", label: "Tirar foto", icon: Aperture, ariaLabel: "Tirar foto da nota para IA" },
 ];
 
 export function IdleScreen({
@@ -51,6 +53,7 @@ export function IdleScreen({
   onUrlSubmit,
   onIaText,
   onIaImage,
+  onIaPhoto,
   onManualMode,
   isLoading,
   isScanning,
@@ -106,6 +109,8 @@ export function IdleScreen({
           return "Cole o conteúdo da nota para extração inteligente com IA.";
         case "image":
           return "Envie uma foto da nota para a IA ler todos os dados.";
+        case "photo":
+          return "Tire uma foto da nota para a IA ler todos os dados automaticamente.";
         default:
           return "Extraia os dados da nota a partir de um texto ou de uma imagem.";
       }
@@ -171,6 +176,13 @@ export function IdleScreen({
       onIaImage(event);
     },
     [onIaImage]
+  );
+
+  const handleIaPhotoChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      onIaPhoto(event);
+    },
+    [onIaPhoto]
   );
 
   const handleLinkSubmit = useCallback(() => {
@@ -285,6 +297,14 @@ export function IdleScreen({
                   disabled={disabled}
                 >
                   <ImageIcon size={16} /> Enviar imagem
+                </button>
+                <button
+                  type="button"
+                  className="btn w-full text-[0.9rem] flex items-center justify-center gap-2"
+                  onClick={() => enterGroup("ia", "photo")}
+                  disabled={disabled}
+                >
+                  <Aperture size={16} /> Tirar foto
                 </button>
               </div>
             </div>
@@ -505,7 +525,29 @@ export function IdleScreen({
                     </label>
                   </div>
                 )}
-              </>
+
+                {activeMethod === "photo" && (
+                  <div className="w-full max-w-sm glass-card p-6 text-center flex flex-col items-center gap-3">
+                    <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                      <Aperture size={32} />
+                    </div>
+                    <p className="text-slate-300 text-sm">
+                      Tire uma foto da nota inteira com a câmera. A Inteligência Artificial lerá todos os itens e preços automaticamente.
+                    </p>
+                    <label className="btn w-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25 cursor-pointer mt-2 flex items-center justify-center gap-2">
+                      <Aperture size={18} /> Tirar foto
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handleIaPhotoChange}
+                        disabled={disabled}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                )}
+                </>
             )}
           </div>
 
