@@ -7,6 +7,7 @@ export function useNfceExtension() {
   const rejectRef = useRef<Map<string, (err: Error) => void>>(new Map());
 
   const isAvailable = useCallback(async () => {
+    
     return new Promise<boolean>((resolve) => {
       const handler = (e: MessageEvent) => {
         if (e.source !== window || e.origin !== window.location.origin) return;
@@ -18,6 +19,7 @@ export function useNfceExtension() {
       window.addEventListener('message', handler);
       window.postMessage({ type: 'nfce-ping' }, '*');
       setTimeout(() => {
+        
         window.removeEventListener('message', handler);
         resolve(false);
       }, 1000);
@@ -64,6 +66,7 @@ export function useNfceExtension() {
       }, EXT_TIMEOUT);
 
       window.postMessage({ type: 'nfce-import', requestId, url }, '*');
+      
     });
   }, []);
 

@@ -24,6 +24,10 @@
     const data = e.data;
     if (!data || typeof data !== 'object') return;
     if (data.type === 'nfce-ping') {
+      if (!chrome || !chrome.runtime) {
+        window.postMessage({ type: 'nfce-ext-status', active: false }, '*');
+        return;
+      }
       chrome.runtime.sendMessage({ type: 'ping' }, (resp) => {
         window.postMessage({ type: 'nfce-ext-status', active: !!(resp && resp.ok) }, '*');
       });
