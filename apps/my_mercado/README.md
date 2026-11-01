@@ -110,6 +110,30 @@ pnpm dev
 
 ---
 
+## Extensão NFC-e
+
+O My Mercado pode usar a extensão em `apps/my_mercado_extension` para capturar automaticamente o texto de NFC-e da SEFAZ/SP.
+
+Fluxo:
+1. O usuário informa ou lê o QR Code da NFC-e.
+2. O aplicativo envia a URL para a extensão.
+3. A extensão abre a consulta em segundo plano, captura o texto e fecha a aba.
+4. O aplicativo processa o texto com o fluxo existente de `processRawText()`.
+
+Instalação manual no Brave:
+1. Abra `brave://extensions`.
+2. Ative o modo desenvolvedor.
+3. Carregue a pasta `apps/my_mercado_extension`.
+4. Recarregue a extensão após alterações nos arquivos.
+
+Origens suportadas:
+- Desenvolvimento: `http://localhost:5173`
+- Produção: `https://mymercado.pages.dev`
+
+No Android, a extensão pode não estar disponível; nesse caso, use a importação por texto ou pelo fluxo manual já existente.
+
+---
+
 ## 📞 Suporte
 
 - **Issues**: [GitHub Issues](https://github.com/Bosguega/gaveta/issues)

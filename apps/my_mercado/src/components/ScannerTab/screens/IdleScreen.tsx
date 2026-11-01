@@ -396,7 +396,7 @@ export function IdleScreen({
                   onClick={() => enterGroup("ia", "link")}
                   disabled={disabled}
                 >
-                  <LinkIcon size={16} /> Carregar link
+                  <LinkIcon size={16} /> Carregar link (extensão)
                 </button>
               </div>
             </div>
