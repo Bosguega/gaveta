@@ -64,7 +64,7 @@ export function useReceiptScanner({
   } = useManualReceipt();
 
   const handleScanSuccess = useCallback(
-    async (decodedText: string) => {
+    async (decodedText: string, options?: { useExtension?: boolean }) => {
       if (processingRef.current) {
         if (import.meta.env.DEV) {
           logger.info('Scanner', 'Processamento ja em andamento, ignorando');
@@ -72,7 +72,7 @@ export function useReceiptScanner({
         return;
       }
       processingRef.current = true;
-      await processQRCode(decodedText);
+      await processQRCode(decodedText, options);
       processingRef.current = false;
     },
     [processQRCode, processingRef],

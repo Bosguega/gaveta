@@ -3,6 +3,7 @@ import { notify } from '../utils/notifications';
 import { errorMessages } from '../utils/errorMessages';
 import { parseNFCeSP, parseRawTextReceipt } from '../services/receiptParser';
 import { useScannerStore } from '../stores/useScannerStore';
+import { useNfceExtension } from './useNfceExtension';
 import { logger } from '../utils/logger';
 import type { Receipt } from '../types/domain';
 import type { LoadingStep } from '../types/scanner';
@@ -39,6 +40,7 @@ const OFFLINE_MESSAGE =
   'Você está offline. O escaneamento de notas requer conexão com a internet. Tente novamente quando estiver online.';
 
 export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
+  const { isAvailable, requestText } = useNfceExtension();
   const setLoading = useScannerStore((state) => state.setLoading);
   const setCurrentReceipt = useScannerStore((state) => state.setCurrentReceipt);
   const setDuplicateReceipt = useScannerStore((state) => state.setDuplicateReceipt);
@@ -80,8 +82,70 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
     [saveReceipt, setCurrentReceipt, setDuplicateReceipt, setDuplicateMatchLevel, setError],
   );
 
+  const processRawText = useCallback(
+    async (text: string) => {
+      logger.debug('QRProcessor', 'Processando texto manual');
+
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        logger.warn('QRProcessor', 'Offline: bloqueando processamento manual');
+        notify.error(OFFLINE_MESSAGE, 10000);
+        setError('Você está offline. Tente novamente quando estiver online.');
+        return;
+      }
+
+      setLoading(true);
+      setLoadingStep('parsing');
+      setError(null);
+
+      try {
+        const extractedData = await parseRawTextReceipt(text);
+
+        if (!extractedData || !extractedData.items || extractedData.items.length === 0) {
+          setError('Nenhum item encontrado no texto.');
+          notify.error('Texto não contém itens válidos.');
+          return;
+        }
+
+        logger.debug('QRProcessor', 'Processando produtos manuais na pipeline...');
+        const { processItemsPipeline } = await import('../services/productService');
+        
+        const rawItemsForPipeline = extractedData.items.map(item => ({
+          name: item.name,
+          qty: item.quantity.toString().replace('.', ','),
+          unit: item.unit || 'UN',
+          unitPrice: item.price.toString().replace('.', ','),
+          total: (item.total ?? item.price * item.quantity).toString().replace('.', ','),
+          ...(item.paid_price !== undefined && item.paid_price !== null && item.paid_price < item.price
+            ? { paidPrice: item.paid_price.toString().replace('.', ',') }
+            : {}),
+        }));
+
+        const processedItems = await processItemsPipeline(rawItemsForPipeline, (step: LoadingStep) => {
+          setLoadingStep(step);
+        });
+
+        const processedReceipt = {
+          ...extractedData,
+          items: processedItems
+        };
+
+        // Apenas exibe — NÃO salva ainda
+        setCurrentReceipt(processedReceipt);
+      } catch (err: unknown) {
+        logger.error('QRProcessor', 'Erro ao processar texto', err);
+        const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+        notify.error(errorMessage);
+        setError(errorMessage);
+      } finally {
+        setLoading(false);
+        setLoadingStep(null);
+      }
+    },
+    [setLoading, setCurrentReceipt, setError]
+  );
+
   const processQRCode = useCallback(
-    async (decodedText: string) => {
+    async (decodedText: string, options?: { useExtension?: boolean }) => {
       logger.debug('QRProcessor', 'Processando QR Code', decodedText.substring(0, 100));
 
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -107,6 +171,30 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
         const isNfceUrl = decodedText.trim().includes('fazenda.sp.gov.br');
 
         logger.debug('QRProcessor', 'É URL NFC-e?', isNfceUrl);
+
+        if (isNfceUrl && options?.useExtension !== false) {
+          const available = await isAvailable();
+          if (available) {
+            notify.loading('Capturando nota fiscal via extensão...');
+            try {
+              const text = await requestText(decodedText.trim());
+              await processRawText(text);
+              return;
+            } catch (err) {
+              const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+              notify.error(`Falha na captura da NFC-e: ${errorMessage}`);
+              setError(errorMessage);
+              setLoading(false);
+              setLoadingStep(null);
+              return;
+            }
+          }
+          notify.error('Extensão NFC-e não encontrada. Use outro método de importação.');
+          setError('Extensão NFC-e não encontrada.');
+          setLoading(false);
+          setLoadingStep(null);
+          return;
+        }
 
         if (isNfceUrl) {
           notify.loading('Buscando dados da NFC-e...');
@@ -174,69 +262,7 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
         setLoadingStep(null);
       }
     },
-    [setLoading, setCurrentReceipt, setError],
-  );
-
-  const processRawText = useCallback(
-    async (text: string) => {
-      logger.debug('QRProcessor', 'Processando texto manual');
-
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        logger.warn('QRProcessor', 'Offline: bloqueando processamento manual');
-        notify.error(OFFLINE_MESSAGE, 10000);
-        setError('Você está offline. Tente novamente quando estiver online.');
-        return;
-      }
-
-      setLoading(true);
-      setLoadingStep('parsing');
-      setError(null);
-
-      try {
-        const extractedData = await parseRawTextReceipt(text);
-
-        if (!extractedData || !extractedData.items || extractedData.items.length === 0) {
-          setError('Nenhum item encontrado no texto.');
-          notify.error('Texto não contém itens válidos.');
-          return;
-        }
-
-        logger.debug('QRProcessor', 'Processando produtos manuais na pipeline...');
-        const { processItemsPipeline } = await import('../services/productService');
-        
-        const rawItemsForPipeline = extractedData.items.map(item => ({
-          name: item.name,
-          qty: item.quantity.toString().replace('.', ','),
-          unit: item.unit || 'UN',
-          unitPrice: item.price.toString().replace('.', ','),
-          total: (item.total ?? item.price * item.quantity).toString().replace('.', ','),
-          ...(item.paid_price !== undefined && item.paid_price !== null && item.paid_price < item.price
-            ? { paidPrice: item.paid_price.toString().replace('.', ',') }
-            : {}),
-        }));
-
-        const processedItems = await processItemsPipeline(rawItemsForPipeline, (step: LoadingStep) => {
-          setLoadingStep(step);
-        });
-
-        const processedReceipt = {
-          ...extractedData,
-          items: processedItems
-        };
-
-        // Apenas exibe — NÃO salva ainda
-        setCurrentReceipt(processedReceipt);
-      } catch (err: unknown) {
-        logger.error('QRProcessor', 'Erro ao processar texto', err);
-        const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
-        notify.error(errorMessage);
-        setError(errorMessage);
-      } finally {
-        setLoading(false);
-        setLoadingStep(null);
-      }
-    },
-    [setLoading, setCurrentReceipt, setError]
+    [setLoading, setCurrentReceipt, setError, isAvailable, requestText, processRawText],
   );
 
   return {

@@ -128,7 +128,7 @@ export interface ManualReceiptFormProps {
 export type ImportGroup = "qr" | "ia";
 
 export type QrMethod = "camera" | "photo" | "gallery" | "link";
-export type IaMethod = "text" | "image" | "photo";
+export type IaMethod = "text" | "image" | "photo" | "link";
 export type ImportMethod = QrMethod | IaMethod;
 
 export interface InitialScannerScreenProps {
@@ -145,6 +145,7 @@ export interface InitialScannerScreenProps {
   onQrGallery: (event: React.ChangeEvent<HTMLInputElement>) => void;
   /** Processa o link da NFC-e informado pelo usuário. */
   onUrlSubmit: (url: string) => void;
+  onUrlSubmitExtension?: (url: string) => void;
   /** Extrai dados da nota a partir de texto colado. */
   onIaText: (text: string) => void;
   /** Extrai dados completos da nota a partir de uma imagem (foto ou galeria). */

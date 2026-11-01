@@ -6,18 +6,16 @@
   "permissions": ["tabs"],
   "host_permissions": [
     "https://www.nfce.fazenda.sp.gov.br/*",
-    "file:///*",
-    "http://localhost/*",
-    "http://127.0.0.1/*"
+    "http://localhost:5173/*",
+    "file:///*"
   ],
   "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
       "matches": [
         "https://www.nfce.fazenda.sp.gov.br/*",
-        "file:///*",
-        "http://localhost/*",
-        "http://127.0.0.1/*"
+        "http://localhost:5173/*",
+        "file:///*"
       ],
       "js": ["content.js"],
       "all_frames": true,

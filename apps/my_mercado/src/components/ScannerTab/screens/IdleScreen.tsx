@@ -44,6 +44,7 @@ const IA_METHODS: WatchNavItem<IaMethod>[] = [
   { id: "text", label: "Enviar texto", icon: FileText, ariaLabel: "Enviar texto copiado para IA" },
   { id: "image", label: "Enviar imagem", icon: ImageIcon, ariaLabel: "Enviar imagem da nota para IA" },
   { id: "photo", label: "Tirar foto", icon: Aperture, ariaLabel: "Tirar foto da nota para IA" },
+  { id: "link", label: "Carregar link", icon: LinkIcon, ariaLabel: "Informar link da nota fiscal" },
 ];
 
 export function IdleScreen({
@@ -57,6 +58,7 @@ export function IdleScreen({
   onQrPhoto,
   onQrGallery,
   onUrlSubmit,
+  onUrlSubmitExtension,
   onIaText,
   onIaImage,
   onIaPhoto,
@@ -203,6 +205,21 @@ export function IdleScreen({
     onUrlSubmit(validation.data);
     setPastedUrl("");
   }, [pastedUrl, onUrlSubmit]);
+
+  const handleLinkSubmitExtension = useCallback(() => {
+    const rawUrl = pastedUrl.trim();
+    const validation = validateNfcUrl(rawUrl);
+    if (!validation.success) {
+      notify.error(validation.error);
+      return;
+    }
+    if (onUrlSubmitExtension) {
+      onUrlSubmitExtension(validation.data);
+      setPastedUrl("");
+    } else {
+      notify.error("Extensão não disponível.");
+    }
+  }, [pastedUrl, onUrlSubmitExtension]);
 
   /**
    * Abre o link público da NFC-e no navegador do sistema para que o usuário
@@ -373,6 +390,14 @@ export function IdleScreen({
                 >
                   <Aperture size={16} /> Tirar foto
                 </button>
+                <button
+                  type="button"
+                  className="btn w-full text-[0.9rem] flex items-center justify-center gap-2"
+                  onClick={() => enterGroup("ia", "link")}
+                  disabled={disabled}
+                >
+                  <LinkIcon size={16} /> Carregar link
+                </button>
               </div>
             </div>
           </section>
@@ -520,7 +545,7 @@ export function IdleScreen({
                       <button
                         type="button"
                         className="btn btn-success px-4 flex items-center justify-center"
-                        onClick={handleLinkSubmit}
+                        onClick={(activeGroup as ImportGroup) === "ia" ? handleLinkSubmitExtension : handleLinkSubmit}
                         disabled={disabled || !pastedUrl.trim()}
                         title="Processar Link"
                       >
@@ -609,6 +634,33 @@ export function IdleScreen({
 
             {activeGroup === "ia" && (
               <>
+                {activeMethod === "link" && (
+                  <div className="w-full max-w-sm glass-card p-5 text-left space-y-3">
+                    <label className="block text-slate-400 text-xs font-semibold mb-2">
+                      Link da NFC-e (URL completa)
+                    </label>
+                    <div className="scanner-link-row mb-3">
+                      <input
+                        type="text"
+                        placeholder="Cole aqui a URL da NFC-e..."
+                        value={pastedUrl}
+                        onChange={(e) => setPastedUrl(e.target.value)}
+                        autoFocus
+                        className="search-input text-sm w-full"
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-success px-4 flex items-center justify-center"
+                        onClick={handleLinkSubmitExtension}
+                        disabled={disabled || !pastedUrl.trim()}
+                        title="Processar Link via Extensão"
+                      >
+                        <Plus size={20} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {activeMethod === "text" && (
                   <div className="w-full max-w-md glass-card p-5 text-left">
                     <div className="flex items-center justify-between mb-2">

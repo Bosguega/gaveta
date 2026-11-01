@@ -202,8 +202,14 @@ function ScannerTab() {
     [setCurrentReceipt]
   );
 
-  // Handler de URL
   const handleUrlSubmit = useCallback(
+    async (url: string) => {
+      await handleScanSuccess(url, { useExtension: false });
+    },
+    [handleScanSuccess]
+  );
+
+  const handleUrlSubmitExtension = useCallback(
     async (url: string) => {
       await handleScanSuccess(url);
     },
@@ -350,6 +356,7 @@ function ScannerTab() {
           onQrPhoto={handleQrImageUpload}
           onQrGallery={handleQrImageUpload}
           onUrlSubmit={handleUrlSubmit}
+          onUrlSubmitExtension={handleUrlSubmitExtension}
           onIaText={processRawText}
           onIaImage={handleReceiptImageUpload}
           onIaPhoto={handleReceiptImageUpload}

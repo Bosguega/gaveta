@@ -5,6 +5,10 @@ const pending = new Map();
 function validateUrl(raw) {
   let u;
   try { u = new URL(raw); } catch (e) { return { ok: false, reason: 'URL inválida' }; }
+  // Exceção de teste: apenas empty-nfce.html local
+  if (u.protocol === 'file:' && /empty-nfce\.html(\?|$)/i.test(u.href)) {
+    return { ok: true, url: u.href };
+  }
   if (u.protocol !== 'https:') return { ok: false, reason: 'URL não usa HTTPS' };
   if (!ALLOWED_HOSTS.includes(u.hostname)) return { ok: false, reason: 'Domínio não permitido' };
   if (!ALLOWED_PATHS.some((re) => re.test(u.pathname))) return { ok: false, reason: 'Caminho não é de consulta NFC-e' };

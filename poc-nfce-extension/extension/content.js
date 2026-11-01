@@ -1,7 +1,24 @@
 (function () {
+  // Simulação de teste exclusiva para empty-nfce.html
+  if (/\/empty-nfce\.html$/i.test(location.pathname)) {
+    if (new URL(location.href).searchParams.get('poc_timeout') === '1') {
+      return;
+    }
+    if (new URL(location.href).searchParams.get('poc_capture_empty') === '1') {
+      setTimeout(() => {
+        chrome.runtime.sendMessage({ type: 'nfce-captured', text: 'x' });
+      }, 200);
+      return;
+    }
+  }
+
   const isSefaz = location.hostname === 'www.nfce.fazenda.sp.gov.br';
 
   if (isSefaz) {
+    // Simulação de timeout exclusiva para ambiente de teste
+    if (new URL(location.href).searchParams.get('poc_timeout') === '1') {
+      return;
+    }
     function capture() {
       const text = document.body ? document.body.innerText : '';
       chrome.runtime.sendMessage({ type: 'nfce-captured', text: text });
@@ -23,6 +40,12 @@
     if (e.source !== window) return;
     const data = e.data;
     if (!data || typeof data !== 'object') return;
+    if (data.type === 'nfce-ping') {
+      chrome.runtime.sendMessage({ type: 'ping' }, (resp) => {
+        window.postMessage({ type: 'nfce-ext-status', active: !!(resp && resp.ok) }, '*');
+      });
+      return;
+    }
     if (data.type === 'nfce-import') {
       chrome.runtime.sendMessage({ type: 'import-nfce', requestId: data.requestId, url: data.url }, (resp) => {
         window.postMessage({ type: 'nfce-import-ack', requestId: data.requestId, ok: !!(resp && resp.ok), error: resp && resp.error }, '*');
