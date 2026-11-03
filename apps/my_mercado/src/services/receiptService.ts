@@ -160,7 +160,7 @@ export async function getReceiptsPaginated(
 
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
-  const includeItems = options.includeItems || Boolean(filters?.search);
+  const includeItems = options.includeItems ?? true;
   const selectColumns: string = includeItems
     ? `
       id,

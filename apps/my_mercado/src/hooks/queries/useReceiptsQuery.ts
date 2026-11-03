@@ -31,7 +31,7 @@ export function useReceiptsQuery(
             endDate: filters?.endDate,
             sortBy: filters?.sortBy,
             sortOrder: filters?.sortOrder,
-        }),
+        }, { includeItems: true }),
         staleTime: 2 * 60 * 1000, // 2 minutos
     });
 }
@@ -54,7 +54,7 @@ export function useInfiniteReceiptsQuery(
                 endDate: filters?.endDate,
                 sortBy: filters?.sortBy,
                 sortOrder: filters?.sortOrder,
-            }),
+            }, { includeItems: true }),
         getNextPageParam: (lastPage, pages) =>
             lastPage.hasMore ? pages.length + 1 : undefined,
         initialPageParam: 1,

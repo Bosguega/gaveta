@@ -67,7 +67,7 @@ export function useAllReceiptsQuery(enabled: boolean = true) {
             if (localData) {
                 try {
                     const parsed = JSON.parse(localData) as Receipt[];
-                    return normalizeReceipts(parsed);
+                    return parsed;
                 } catch (parseError) {
                     logger.error('AllReceiptsQuery', 'Erro ao parsear dados locais', parseError);
                     return [];
