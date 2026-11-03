@@ -14,7 +14,7 @@ import {
   type EmbeddingProfile,
 } from './embeddingProfile';
 import { getEmbeddingConfig } from './tauriStore';
-import { sha256 } from '../utils/sha256';
+import { sha256 } from '@bosguega/ai-core';
 import { logger } from '../utils/logger';
 
 export { testEmbeddingConnection } from './embeddingConnection';

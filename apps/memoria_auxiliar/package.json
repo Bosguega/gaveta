@@ -13,6 +13,7 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
+    "@bosguega/ai-core": "workspace:*",
     "@bosguega/device-mode-core": "workspace:*",
     "@bosguega/llama-cpp": "workspace:*",
     "@tauri-apps/api": "^2.0.0",

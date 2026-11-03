@@ -3,7 +3,7 @@ import { notify } from '../utils/notifications';
 import { logger } from '../utils/logger';
 import { useScannerStore } from '../stores/useScannerStore';
 import { validateManualReceiptForm } from '../utils/validation';
-import { buildDefaultManualDate } from '../utils/manualDate';
+import { buildDefaultManualDate } from '../utils/date';
 import { processItemsPipeline } from '../services/productService';
 import { generateManualReceiptId } from '../utils/receiptId';
 import type { Receipt } from '../types/domain';

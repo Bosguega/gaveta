@@ -3,7 +3,7 @@ import {
   brDateToIsoDatePart,
   buildDefaultManualDate,
   isoDateToBrPreservingTime,
-} from "./manualDate";
+} from "./date";
 import { validateManualReceiptForm } from "./validation";
 
 describe("manualDate", () => {

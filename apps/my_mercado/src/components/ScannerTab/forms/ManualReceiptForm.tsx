@@ -4,7 +4,7 @@ import { formatBRL } from "../../../utils/currency";
 import {
   brDateToIsoDatePart,
   isoDateToBrPreservingTime,
-} from "../../../utils/manualDate";
+} from "../../../utils/date";
 import type { ReceiptItem } from "../../../types/domain";
 import type { ManualReceiptFormProps } from "../../../types/scanner";
 import { CATEGORIES } from "../../../constants/domain";
