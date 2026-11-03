@@ -13,17 +13,14 @@
  */
 
 import { CATEGORIES, type Category } from "../constants/domain";
+import { removeAccents } from "./stringUtils";
 
 /**
  * Remove acentos via NFD + strip combining marks.
  * Mantém a string lowercased e trimada.
  */
 function slugify(value: string): string {
-    return value
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .trim()
-        .toLowerCase();
+    return removeAccents(value).trim().toLowerCase();
 }
 
 /**

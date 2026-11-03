@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-interface EmptyStateProps {
+export interface EmptyStateProps {
     icon?: ReactNode;
     title: string;
     description: string;
@@ -8,22 +8,25 @@ interface EmptyStateProps {
         label: string;
         onClick: () => void;
     };
+    children?: ReactNode;
+    className?: string;
 }
 
 /**
  * EmptyState — Estado vazio genérico
  *
- * Exibe ícone, título, descrição e ação opcional
- * Substitui estados vazios manuais em History, ShoppingList, Search
+ * Exibe ícone, título, descrição, ação opcional e conteúdo customizado (children).
  */
 export function EmptyState({
     icon,
     title,
     description,
     action,
+    children,
+    className = "glass-card text-center py-12 px-4",
 }: EmptyStateProps) {
     return (
-        <div className="glass-card text-center py-12 px-4">
+        <div className={className}>
             {icon && (
                 <div className="flex justify-center mb-4 opacity-30">
                     {icon}
@@ -43,6 +46,7 @@ export function EmptyState({
                     {action.label}
                 </button>
             )}
+            {children}
         </div>
     );
 }

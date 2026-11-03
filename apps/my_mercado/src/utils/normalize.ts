@@ -1,3 +1,5 @@
+import { removeAccents } from "./stringUtils";
+
 /**
  * Normaliza uma string para ser usada como chave determinística.
  * - Remove acentos (NFD + regex unicode)
@@ -12,9 +14,7 @@
 export function normalizeKey(name: string): string {
   if (!name) return "";
 
-  const normalized = name
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+  const normalized = removeAccents(name)
     .toUpperCase()
     .replace(/[,]/g, ".") // Padroniza vírgula para ponto (ex: 1,5L -> 1.5L)
     .replace(/[-_/]/g, " ") // Mantém pontos por enquanto

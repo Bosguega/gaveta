@@ -346,6 +346,7 @@ export function IdleScreen({
                   className="btn w-full text-[0.9rem] flex items-center justify-center gap-2"
                   onClick={() => enterGroup("qr", "link")}
                   disabled={disabled}
+                  aria-label="Carregar link"
                 >
                   <LinkIcon size={16} /> Carregar link
                 </button>

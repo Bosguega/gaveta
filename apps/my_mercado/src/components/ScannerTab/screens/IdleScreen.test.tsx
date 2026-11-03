@@ -246,7 +246,7 @@ describe("IdleScreen", () => {
     );
 
     // Entra em Link
-    fireEvent.click(screen.getByRole("button", { name: /Carregar link/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Carregar link$/i }));
     const input = screen.getByPlaceholderText(/Cole aqui a URL da NFC-e/i);
     fireEvent.change(input, { target: { value: "https://www.fazenda.sp.gov.br/nfce/qrcode?p=12345" } });
 
@@ -318,7 +318,7 @@ describe("IdleScreen", () => {
     );
 
     // Entra no grupo QR
-    fireEvent.click(screen.getByRole("button", { name: /Carregar link/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Carregar link$/i }));
     expect(screen.getByPlaceholderText(/Cole aqui a URL da NFC-e/i)).toBeInTheDocument();
 
     // Clica em Voltar
@@ -350,7 +350,7 @@ describe("IdleScreen", () => {
     expect(useScannerStore.getState().isScannerEntryActive).toBe(false);
 
     // Clica em um método de entrada (ex: Carregar link)
-    fireEvent.click(screen.getByRole("button", { name: /Carregar link/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Carregar link$/i }));
     expect(useScannerStore.getState().isScannerEntryActive).toBe(true);
 
     // Clica no botão Voltar
@@ -405,7 +405,7 @@ describe("IdleScreen", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Carregar link/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Carregar link$/i }));
     expect(
       screen.getByRole("button", { name: /Abrir no navegador e importar texto/i })
     ).toBeInTheDocument();
@@ -431,7 +431,7 @@ describe("IdleScreen", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Carregar link/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Carregar link$/i }));
 
     const urlInput = screen.getByPlaceholderText(/Cole aqui a URL da NFC-e/i);
     fireEvent.change(urlInput, {
@@ -473,7 +473,7 @@ describe("IdleScreen", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Carregar link/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Carregar link$/i }));
 
     const urlInput = screen.getByPlaceholderText(/Cole aqui a URL da NFC-e/i);
     fireEvent.change(urlInput, { target: { value: "http://site-perigoso.com" } });
@@ -508,7 +508,7 @@ describe("IdleScreen", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Carregar link/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Carregar link$/i }));
 
     const urlInput = screen.getByPlaceholderText(/Cole aqui a URL da NFC-e/i);
     fireEvent.change(urlInput, {
@@ -553,7 +553,7 @@ describe("IdleScreen", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Carregar link/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Carregar link$/i }));
 
     const urlInput = screen.getByPlaceholderText(/Cole aqui a URL da NFC-e/i);
     fireEvent.change(urlInput, {

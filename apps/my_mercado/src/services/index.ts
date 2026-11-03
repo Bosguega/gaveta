@@ -32,15 +32,6 @@ export {
     clearEstablishmentDictionaryInDB,
 } from "./establishmentDictionaryService";
 
-
-// Storage fallback service
-export {
-    getAllReceiptsFromDBWithFallback,
-    saveReceiptToDBWithFallback,
-    getDictionaryWithFallback,
-    getStorageConnectionStatus,
-} from "./storageFallbackService";
-
 // Shopping list snapshot service
 export {
     pushSnapshot,
