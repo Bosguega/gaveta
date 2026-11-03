@@ -3,7 +3,7 @@
     "private": true,
     "scripts": {
         "dev": "pnpm --filter @bosguega/ai-core build && pnpm --filter my_mercado dev",
-        "ci:local": "pnpm --filter @bosguega/ai-core build && pnpm --filter my_mercado typecheck && pnpm --filter my_mercado lint && pnpm --filter my_mercado test:run"
+        "ci:local": "pnpm --filter @bosguega/ai-core build && pnpm --filter @bosguega/ai-core test && pnpm --filter @bosguega/llama-cpp build && pnpm --filter @bosguega/llama-cpp test && pnpm --filter @bosguega/supabase build && pnpm --filter @bosguega/supabase test && pnpm --filter @bosguega/device-mode-core build && pnpm --filter memoria-auxiliar build && pnpm --filter my_mercado typecheck && pnpm --filter my_mercado lint && pnpm --filter my_mercado test:run && pnpm --filter my_mercado build"
     },
     "pnpm": {
         "onlyBuiltDependencies": [

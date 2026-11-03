@@ -33,6 +33,27 @@ jobs:
       - name: Build shared package (ai-core)
         run: pnpm --filter @bosguega/ai-core build
 
+      - name: Test shared package (ai-core)
+        run: pnpm --filter @bosguega/ai-core test
+
+      - name: Build shared package (llama-cpp)
+        run: pnpm --filter @bosguega/llama-cpp build
+
+      - name: Test shared package (llama-cpp)
+        run: pnpm --filter @bosguega/llama-cpp test
+
+      - name: Build shared package (supabase)
+        run: pnpm --filter @bosguega/supabase build
+
+      - name: Test shared package (supabase)
+        run: pnpm --filter @bosguega/supabase test
+
+      - name: Build shared package (device-mode-core)
+        run: pnpm --filter @bosguega/device-mode-core build
+
+      - name: Build app (memoria-auxiliar)
+        run: pnpm --filter memoria-auxiliar build
+
       - name: Type Check (app)
         run: pnpm --filter my_mercado typecheck
 

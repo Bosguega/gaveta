@@ -20,8 +20,7 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage",
-    "prepare": ""
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@bosguega/ai-core": "workspace:*",
