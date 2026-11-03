@@ -50,13 +50,7 @@ function App() {
     if (sessionUser) {
       const timer = setTimeout(async () => {
         try {
-          const { syncLocalStorageWithSupabase } = await import('./services/syncService')
-          const result = await syncLocalStorageWithSupabase()
           const shouldSyncLists = isShoppingListCloudSyncEnabled()
-
-          if (result.synced > 0) {
-            notify.success(`${result.synced} nota(s) sincronizada(s) com a nuvem!`)
-          }
 
           if (shouldSyncLists && sessionUser?.id) {
             const { syncShoppingListsWithCloud } = await import(
@@ -75,7 +69,7 @@ function App() {
 
           await refetch()
         } catch (error) {
-          console.warn('Erro ao sincronizar dados locais:', error)
+          console.warn('Erro ao sincronizar listas com a nuvem:', error)
         }
       }, 1000)
 

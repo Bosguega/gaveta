@@ -104,22 +104,44 @@ export const manualReceiptFormSchema = z.object({
 });
 
 /**
- * Schema para entrada de URL de NFC-e
+ * Schema para entrada de URL de NFC-e (São Paulo)
  */
 export const nfcUrlSchema = z
   .string()
   .min(1, "URL é obrigatória")
-  .url("URL inválida! Deve começar com http:// ou https://")
+  .url("URL inválida! Deve começar com https://")
   .refine(
     (url) => {
       try {
         const parsed = new URL(url);
-        return ["http:", "https:"].includes(parsed.protocol);
+        return parsed.protocol === "https:";
       } catch {
         return false;
       }
     },
-    { message: "Protocolo inválido! Use http:// ou https://" }
+    { message: "URL inválida para consulta da NFC-e. Somente HTTPS é permitido." }
+  )
+  .refine(
+    (url) => {
+      try {
+        const parsed = new URL(url);
+        return parsed.hostname.toLowerCase().endsWith("fazenda.sp.gov.br");
+      } catch {
+        return false;
+      }
+    },
+    { message: "Somente URLs da NFC-e de São Paulo (fazenda.sp.gov.br) são suportadas." }
+  )
+  .refine(
+    (url) => {
+      try {
+        const parsed = new URL(url);
+        return parsed.searchParams.has("p") || parsed.searchParams.has("chNFe");
+      } catch {
+        return false;
+      }
+    },
+    { message: "Link da NFC-e sem parâmetros esperados (p/chNFe)." }
   );
 
 /**
