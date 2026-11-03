@@ -78,11 +78,12 @@ export function useManualReceipt() {
       price: finalUnitPrice,
       paid_price: finalUnitPrice,
       total: finalTotal,
+      category: manualItem.category?.trim() || undefined,
     };
 
     // Atualização funcional para evitar stale state
     setManualData(prev => ({ ...prev, items: [newItem, ...prev.items] }));
-    setManualItem({ name: '', qty: '1', unitPrice: '', totalPrice: '' });
+    setManualItem({ name: '', qty: '1', unitPrice: '', totalPrice: '', category: '' });
     notify.itemAdded();
   }, [manualItem, setManualData, setManualItem]);
 

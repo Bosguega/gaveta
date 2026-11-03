@@ -7,6 +7,7 @@ import {
 } from "../../../utils/manualDate";
 import type { ReceiptItem } from "../../../types/domain";
 import type { ManualReceiptFormProps } from "../../../types/scanner";
+import { CATEGORIES } from "../../../constants/domain";
 
 export function ManualReceiptForm({
   manualData,
@@ -187,6 +188,26 @@ export function ManualReceiptForm({
                 ))}
               </datalist>
             )}
+          </div>
+          {/* Categoria */}
+          <div>
+            <label className="block text-slate-500 text-[0.7rem] uppercase tracking-wide mb-1 font-semibold">
+              Categoria
+            </label>
+            <select
+              className="search-input bg-[var(--bg-color)]"
+              value={manualItem.category ?? ""}
+              onChange={(e) =>
+                setManualItem({ ...manualItem, category: e.target.value })
+              }
+            >
+              <option value="">Selecione a categoria</option>
+              {CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
           </div>
           {/* Qtd, Preço Unitário, Preço Total e Botão */}
           <div className="flex gap-3 items-end">

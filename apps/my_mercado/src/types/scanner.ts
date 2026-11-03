@@ -69,6 +69,7 @@ export interface ManualReceiptItemInput {
   qty: string;
   unitPrice: string;
   totalPrice: string;
+  category?: string;
 }
 
 // =========================
