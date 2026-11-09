@@ -39,7 +39,7 @@ export function useSearchItems(
           allItems.push({
             ...item,
             purchasedAt: receipt.date,
-            store: receipt.establishment,
+            store: receipt.establishment_display || receipt.establishment,
           });
         });
       }
