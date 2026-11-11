@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createLlamaCppClient } from './createLlamaCppClient'
+import { createLlamaCppClient, listLlamaCppModels } from './createLlamaCppClient'
 
 const originalFetch = globalThis.fetch
 
@@ -35,6 +35,14 @@ describe('createLlamaCppClient', () => {
                 body: expect.stringContaining('"role":"system"'),
             }),
         )
+    })
+
+    it('lists model identifiers from the llama-server', async () => {
+        globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            data: [{ id: 'bonsai' }, { id: 'bge-m3' }],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+        await expect(listLlamaCppModels('http://127.0.0.1:8080')).resolves.toEqual(['bonsai', 'bge-m3'])
     })
 
     it('reports a healthy llama-server', async () => {
