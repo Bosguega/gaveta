@@ -1,161 +1,159 @@
-# 🛒 My Mercado - Suas Compras Organizadas
+# My Mercado
 
-O **My Mercado** é seu assistente pessoal para compras de supermercado. Escaneie notas fiscais, acompanhe preços e economize dinheiro!
+**Organize suas compras, acompanhe os preços e descubra como seu dinheiro está sendo gasto.**
 
----
+O My Mercado reúne suas notas fiscais e transforma as informações das compras em um histórico que você pode consultar. Com ele, fica mais fácil lembrar onde comprou, acompanhar a variação dos preços e planejar as próximas compras.
 
-## 🎯 O Que Você Pode Fazer
+Acesse: **[mymercado.pages.dev](https://mymercado.pages.dev)**
 
-### 📸 Escanear Notas Fiscais
-- Aponte a câmera para o QR Code da nota
-- Ou fotografe a nota para extração por IA
-- Ou cole o texto / digite manualmente
-- Os dados são extraídos automaticamente
+## O que você pode fazer
 
-### 🏷️ Conferir Descontos
-- Notas com desconto mostram um indicador pendente
-- Fotografe a nota e a IA sugere o preço pago por item
-- Você revisa e confirma antes de aplicar
+### Registrar suas compras
 
-### 📊 Acompanhar Seus Gastos
-- Veja todo o histórico de compras
-- Filtre por período, mercado ou produto
-- Compare preços ao longo do tempo
+Adicione notas fiscais de diferentes maneiras:
 
-### 🔍 Buscar Preços
-- Pesquise produtos específicos
-- Veja gráficos de tendência de preços
-- Descubra onde comprar mais barato
+- Leia o QR Code da NFC-e usando a câmera.
+- Fotografe o QR Code ou selecione uma imagem salva.
+- Informe o link da consulta da nota.
+- Envie o texto da nota para leitura.
+- Digite as informações manualmente.
 
-### 📚 Gerenciar Produtos
-- Organize produtos em categorias
-- Crie produtos canônicos para agrupar variações
-- Mantenha seu dicionário de produtos
+Depois da leitura, confira os dados e os produtos antes de salvar. Você pode corrigir informações para que o histórico fique organizado.
 
-### 💾 Backup e Exportação
-- Exporte dados para CSV
-- Faça backup completo em JSON
-- Seus dados estão sempre seguros
+### Conferir descontos
 
----
+Quando uma nota precisa de conferência de descontos, você pode enviar uma foto para a leitura assistida por inteligência artificial. O sistema sugere os preços efetivamente pagos e você revisa as sugestões antes de aplicá-las.
 
-## 🚀 Como Começar
+A IA é um recurso auxiliar: confira os valores identificados e ajuste o que for necessário.
 
-### 1. Instale as Dependências
+### Consultar o histórico e acompanhar preços
 
-Na raiz do monorepo:
+As notas registradas formam seu histórico de compras. Nele, você pode:
 
-```bash
-pnpm install
-```
+- Consultar compras anteriores.
+- Pesquisar produtos e filtrar informações.
+- Acompanhar a evolução dos preços registrados.
+- Comparar os valores encontrados em diferentes estabelecimentos.
+- Consultar gráficos e análises para entender melhor seus gastos.
 
-### 2. Configure o Banco
-- Crie uma conta no [Supabase](https://supabase.com/)
-- Aplique as migrations em `supabase/migrations` (na raiz do monorepo) no painel do Supabase
-- Configure as variáveis de ambiente (veja `.env.example`)
+As comparações usam os registros disponíveis no seu próprio histórico. Portanto, quanto mais compras você registrar, mais útil será essa visão.
 
-### 3. Execute
+### Organizar listas de compras
 
-Na raiz do monorepo (compila o pacote interno `ai-core`, do qual o app depende):
+Crie listas para planejar o que precisa comprar. Você também pode aproveitar informações do histórico de preços, compartilhar uma lista por link e, se desejar, ativar a sincronização das listas com a nuvem nas configurações.
 
-```bash
-pnpm dev
-```
+### Manter os nomes organizados
 
-### 4. Use no Celular
-- Acesse o app no navegador do celular
-- Adicione à tela inicial (PWA)
-- Pronto! Use como um app nativo
+O My Mercado possui recursos para organizar os nomes de produtos e estabelecimentos. Isso ajuda a reconhecer o mesmo produto mesmo quando ele aparece escrito de formas diferentes nas notas.
 
----
+## Como importar uma nota pela extensão NFC-e
 
-## 📱 Funcionalidades Principais
+Para consultar o conteúdo de uma NFC-e diretamente na página da SEFAZ/SP, o My Mercado pode trabalhar com a extensão de navegador.
 
-| Funcionalidade | Descrição |
-|----------------|-----------|
-| **Scanner** | Escaneie QR Code de NFC-e com a câmera, fotografe a nota (IA), cole o texto ou digite manualmente |
-| **Descontos** | Confira descontos pendentes fotografando a nota; a IA sugere o preço pago para revisão |
-| **Histórico** | Veja todas as suas compras organizadas |
-| **Busca** | Encontre produtos e compare preços |
-| **Dicionário** | Gerencie categorias e normalização |
-| **Listas de compras** | Crie listas, compartilhe por link e acompanhe o histórico de preços |
-| **Backup** | Exporte e importe seus dados |
+1. No My Mercado, escolha a opção de importar pelo link.
+2. Informe o link do QR Code da nota.
+3. Quando solicitado, permita que a extensão abra a consulta.
+4. A extensão acessa a página da SEFAZ/SP e envia o conteúdo encontrado de volta ao aplicativo.
+5. Confira os dados importados antes de salvar.
 
----
+### Instalar a extensão no Brave ou Chrome
 
-## 🎨 Interface
+A extensão é carregada manualmente a partir dos arquivos do projeto:
 
-- **Design Moderno**: Glassmorphism e animações suaves
-- **Mobile-First**: Otimizado para celular
-- **PWA**: Instalável, com cache para melhor experiência
+1. Baixe ou atualize este repositório no computador.
+2. Abra `brave://extensions` no Brave ou `chrome://extensions` no Chrome.
+3. Ative o **Modo do desenvolvedor**.
+4. Clique em **Carregar sem compactação**.
+5. Selecione a pasta `apps/my_mercado_extension`.
 
----
+Se atualizar os arquivos da extensão, volte à página de extensões e clique em **Recarregar**.
 
-## 🔒 Segurança
+A extensão é destinada a navegadores compatíveis com extensões do Chrome em computadores. No celular, ou se a extensão não estiver disponível, você ainda pode usar os outros métodos de importação oferecidos pelo aplicativo.
 
-- **Seus dados são privados**: Cada usuário vê apenas suas notas
-- **Autenticação segura**: Login via Supabase Auth
-- **Backup local**: Seus dados ficam no seu dispositivo
+> A consulta depende da disponibilidade da página da SEFAZ/SP. Se ela estiver temporariamente indisponível ou bloquear o acesso, tente novamente mais tarde ou utilize outra forma de importar a nota.
 
----
+## Instalar o My Mercado como aplicativo
 
-## 🛠️ Tecnologias
+O My Mercado é um aplicativo web que também pode ser instalado pelo navegador (PWA).
 
-- **Frontend**: React, TypeScript, Vite
-- **Banco**: Supabase (PostgreSQL)
-- **Cache**: React Query
-- **Estado**: Zustand
-- **UI**: Tailwind CSS, Recharts, Lucide Icons
-- **PWA**: vite-plugin-pwa (instalável e com cache offline)
+- **No computador:** use a opção de instalação exibida pelo navegador, quando disponível.
+- **No celular:** abra o endereço do My Mercado no navegador e escolha **Adicionar à tela inicial** ou **Instalar aplicativo**, conforme o navegador.
 
----
+Depois de instalado, você poderá abrir o My Mercado pelo ícone na tela inicial ou na lista de aplicativos. A instalação não transforma o serviço em um aplicativo totalmente independente: alguns recursos dependem de conexão com a internet.
 
-## Extensão NFC-e
+## Seus dados e sua privacidade
 
-O My Mercado pode usar a extensão em `apps/my_mercado_extension` para capturar automaticamente o texto de NFC-e da SEFAZ/SP.
+É importante entender onde cada informação é guardada:
 
-Fluxo:
-1. O usuário informa ou lê o QR Code da NFC-e.
-2. O aplicativo envia a URL para a extensão.
-3. A extensão abre a consulta em segundo plano, captura o texto e fecha a aba.
-4. O aplicativo processa o texto com o fluxo existente de `processRawText()`.
+- **Notas fiscais e histórico de compras:** ficam no banco de dados online do aplicativo, associados à sua conta.
+- **Listas de compras:** ficam armazenadas no navegador/dispositivo por padrão. Você pode ativar a sincronização com a nuvem nas configurações.
+- **Backups:** você pode exportar seus dados para guardar uma cópia. O arquivo baixado fica sob seus cuidados.
 
-Instalação manual no Brave:
-1. Abra `brave://extensions`.
-2. Ative o modo desenvolvedor.
-3. Carregue a pasta `apps/my_mercado_extension`.
-4. Recarregue a extensão após alterações nos arquivos.
+O acesso às notas é associado à conta autenticada. Não compartilhe sua senha nem arquivos de backup com pessoas em quem não confia.
 
-Origens suportadas:
-- Desenvolvimento: `http://localhost:5173`
-- Produção: `https://mymercado.pages.dev`
+### Backup e exportação
 
-No Android, a extensão pode não estar disponível; nesse caso, use a importação por texto ou pelo fluxo manual já existente.
+Nas opções de backup, você pode exportar os dados para arquivos, incluindo backup em JSON e exportação de itens em CSV. O JSON também pode ser utilizado para restaurar dados por meio da opção de importação disponível no aplicativo.
 
----
+Recomendamos guardar cópias de segurança em um local confiável, especialmente antes de operações de manutenção ou limpeza dos dados.
 
-## 📞 Suporte
+## Inteligência artificial
 
-- **Issues**: [GitHub Issues](https://github.com/Bosguega/gaveta/issues)
+Algumas funções podem utilizar inteligência artificial para ajudar a interpretar textos e imagens de notas fiscais e sugerir informações, como preços pagos. A disponibilidade dessas funções depende da configuração de IA escolhida no aplicativo.
 
----
+As sugestões automáticas devem ser conferidas antes de serem salvas. A IA ajuda no preenchimento, mas não substitui a revisão dos dados da nota.
 
-## ✅ Verificações
+## Para desenvolvedores
 
-Dentro de `apps/my_mercado`:
+O My Mercado faz parte do monorepo [Bosguega/gaveta](https://github.com/Bosguega/gaveta).
+
+**Principais tecnologias:**
+- React, TypeScript e Vite.
+- Supabase para autenticação e armazenamento online.
+- Zustand e TanStack Query para gerenciamento de estado e dados.
+- Tailwind CSS para interface.
+- Vite PWA para instalação pelo navegador.
+
+### Executar localmente
+
+É necessário ter Node.js e pnpm instalados.
+
+1. Clone o repositório e entre na pasta raiz.
+2. Instale as dependências:
+
+   ```bash
+   pnpm install
+   ```
+
+3. Crie o arquivo `apps/my_mercado/.env` a partir de `apps/my_mercado/.env.example` e configure as credenciais do Supabase:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+
+4. Configure o projeto Supabase e aplique as migrations disponíveis em `supabase/migrations`.
+5. Inicie o aplicativo:
+
+   ```bash
+   pnpm --filter my_mercado dev
+   ```
+
+Para verificar o projeto, os comandos abaixo podem ser executados na pasta `apps/my_mercado`:
 
 ```bash
-pnpm typecheck   # TypeScript
-pnpm lint        # ESLint
-pnpm test:run    # Vitest
+pnpm typecheck
+pnpm lint
+pnpm test:run
 ```
 
-Também disponível na raiz do monorepo:
+Na raiz do monorepo também está disponível:
 
 ```bash
 pnpm ci:local
 ```
 
+## Ajuda e sugestões
+
+Encontrou um problema ou tem uma sugestão? Abra uma solicitação em [GitHub Issues](https://github.com/Bosguega/gaveta/issues).
+
 ---
 
-**Feito com ❤️ para ajudar você a economizar nas compras!**
+**My Mercado — suas compras organizadas, suas escolhas mais conscientes.**

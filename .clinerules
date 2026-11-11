@@ -229,6 +229,65 @@ Não assumir que uma regra antiga representa uma decisão atual.
 
 ---
 
+## Forma de trabalho com o usuário e agentes de IA
+
+Estas regras orientam o processo de trabalho, independentemente da ferramenta ou do agente utilizado.
+
+### Antes de implementar
+
+1. **Inspecionar antes de alterar.** Ler os arquivos envolvidos, entender o fluxo atual e identificar quem consome as funções, dados, componentes ou contratos que serão modificados.
+2. **Consultar a realidade do repositório.** Não confiar cegamente em documentação antiga, comentários, nomes ou resumos anteriores. Conferir código, configurações, scripts, dependências e testes atuais.
+3. **Respeitar o contexto local.** Procurar instruções do workspace e preservar decisões específicas que não conflitem com uma decisão explícita mais recente.
+4. **Definir o escopo.** Identificar o problema que será resolvido e evitar aproveitar a tarefa para fazer refatorações paralelas.
+5. **Explicar incertezas relevantes.** Se faltar informação que possa mudar a solução, investigar primeiro; perguntar ao usuário somente quando a decisão não puder ser tomada com segurança a partir do projeto.
+
+### Durante a implementação
+
+* Preferir mudanças pequenas, focadas e fáceis de revisar.
+* Preservar comportamentos, compatibilidade e dados existentes, salvo quando a mudança exigir explicitamente o contrário.
+* Não remover código, caminhos de compatibilidade, dados ou mecanismos existentes apenas por parecerem obsoletos. Confirmar primeiro que não são utilizados e avaliar o impacto da remoção.
+* Não introduzir dependências, serviços externos, custos recorrentes ou infraestrutura sem necessidade demonstrável.
+* Não duplicar lógica nem criar camadas, configurações ou abstrações sem benefício concreto.
+* Não alterar arquivos fora do escopo sem justificativa. Se uma descoberta exigir ampliar o escopo, explicar o motivo antes de fazer mudanças relevantes.
+* Em tarefas com várias etapas, implementar incrementalmente e validar cada etapa importante.
+* Para operações destrutivas, migrações de banco, mudanças de segurança, publicação ou ações difíceis de reverter, avaliar impactos e preservar possibilidade de recuperação. Solicitar confirmação quando a ação ou seu impacto não estiver claramente autorizado.
+* Não enfraquecer validações, permissões, segurança ou integridade de dados para contornar um erro.
+
+### Testes e verificação
+
+1. Identificar quais comportamentos podem ser afetados, inclusive consumidores indiretos.
+2. Executar os testes, verificações de tipos, lint e build pertinentes à mudança, conforme os scripts disponíveis no workspace.
+3. Criar ou atualizar testes quando a mudança alterar comportamento relevante ou corrigir uma falha que possa voltar a ocorrer.
+4. Quando o recurso depender de integração externa, navegador, extensão, dispositivo ou fluxo entre aplicações, não considerar testes unitários ou build como prova suficiente: validar o fluxo integrado quando isso for possível.
+5. Verificar também caminhos de erro, dados antigos e compatibilidade quando forem relevantes.
+6. Se algum teste não puder ser executado, informar claramente qual não foi executado e por quê.
+
+**Nunca afirmar que algo foi testado, validado, implantado ou concluído sem evidência dessa etapa.** Diferenciar claramente:
+* implementação realizada;
+* verificações automatizadas aprovadas;
+* teste manual ou integrado realizado;
+* publicação/deploy concluído.
+
+### Comunicação e decisões
+
+* Explicar o problema, a solução e os impactos em linguagem clara, sem presumir que o usuário seja programador.
+* Apresentar termos técnicos quando necessários, acompanhados de uma explicação curta.
+* Explicar alternativas somente quando houver uma decisão real a tomar; não transformar tarefas simples em longas listas de opções.
+* Não esconder limitações, riscos, falhas de teste ou comportamento ainda não confirmado.
+* Ao concluir, resumir o que mudou, os arquivos ou áreas afetadas, os testes realizados e qualquer ação que ainda dependa do usuário.
+* Não pedir ao usuário que repita informações ou decisões já registradas no contexto do projeto.
+
+### Git e revisão
+
+* Para mudanças de código ou documentação que serão revisadas, preferir uma branch específica em vez de alterar diretamente a `main`.
+* Agrupar alterações relacionadas na mesma branch quando fizerem parte do mesmo objetivo de revisão; não misturar tarefas independentes sem motivo.
+* Usar mensagens de commit claras, preferencialmente no padrão Conventional Commits.
+* Antes de integrar uma mudança, conferir o diff, o estado do CI e eventuais conflitos ou restrições de proteção da branch.
+* Não considerar um PR integrado apenas porque foi criado ou porque o CI passou.
+* Após o merge, informar o resultado e o commit de integração. Não presumir que o ambiente local do usuário foi atualizado.
+
+---
+
 ## Commits
 
 Quando o usuário solicitar commits, preferir Conventional Commits:
