@@ -1,5 +1,8 @@
 const ALLOWED_HOSTS = ['www.nfce.fazenda.sp.gov.br', 'nfce.fazenda.sp.gov.br'];
-const ALLOWED_PATHS = [/^\/NFCeConsultaPublica\/Paginas\/ConsultaQRCode\.aspx$/i];
+const ALLOWED_PATHS = [
+  /^\/qrcode$/i,
+  /^\/NFCeConsultaPublica\/Paginas\/ConsultaQRCode\.aspx$/i,
+];
 const pending = new Map();
 
 function validateUrl(raw) {
@@ -29,7 +32,6 @@ function finalize(requestId, result) {
   if (p.captureTimer) clearTimeout(p.captureTimer);
   if (p.ackTimer) clearTimeout(p.ackTimer);
   try { chrome.tabs.sendMessage(p.hostTabId, { type: 'import-result', requestId, ...result }); } catch (e) {}
-  // tab removal only after delivery ack; handled in ack branch
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -37,14 +39,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const v = validateUrl(msg.url);
     if (!v.ok) { sendResponse({ ok: false, error: v.reason }); return true; }
     const requestId = msg.requestId;
-    chrome.tabs.create({ url: v.url, active: false }, (tab) => {
+    // Cria primeiro uma aba vazia para registrar a solicitação antes de o
+    // content script da SEFAZ poder executar após o redirecionamento.
+    chrome.tabs.create({ url: 'about:blank', active: false }, (tab) => {
+      if (chrome.runtime.lastError || !tab?.id) {
+        sendResponse({ ok: false, error: chrome.runtime.lastError?.message || 'Não foi possível abrir a consulta da SEFAZ' });
+        return;
+      }
       const nfceTabId = tab.id;
       const captureTimer = setTimeout(() => {
         if (!pending.has(requestId) || pending.get(requestId).finished) return;
-        finalize(requestId, { ok: false, error: 'Timeout na captura', step: 'timeout' });
+        finalize(requestId, { ok: false, error: 'Tempo esgotado aguardando a página da SEFAZ', step: 'timeout' });
         cleanup(requestId);
       }, 20000);
       pending.set(requestId, { requestId, hostTabId: sender.tab.id, nfceTabId, captureTimer, ackTimer: null, finished: false });
+      chrome.tabs.update(nfceTabId, { url: v.url }, () => {
+        if (chrome.runtime.lastError) {
+          finalize(requestId, { ok: false, error: 'Não foi possível navegar até a SEFAZ: ' + chrome.runtime.lastError.message, step: 'navigation' });
+          cleanup(requestId);
+        }
+      });
       sendResponse({ ok: true, tabId: nfceTabId });
     });
     return true;
@@ -59,18 +73,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const text = msg.text || '';
     const valid = text.length >= 200 && /NFC-?e|Nota Fiscal/i.test(text);
     if (!valid) {
-      finalize(foundKey, { ok: false, error: 'Conteúdo insuficiente ou página inválida', step: 'content', charCount: text.length });
+      finalize(foundKey, { ok: false, error: 'A página da SEFAZ abriu, mas não apresentou o conteúdo esperado da NFC-e', step: 'content', charCount: text.length });
       cleanup(foundKey);
       sendResponse({ ok: true });
       return true;
     }
     const p = pending.get(foundKey);
     if (p.captureTimer) clearTimeout(p.captureTimer);
-    // deliver and await ack
-    try { chrome.tabs.sendMessage(p.hostTabId, { type: 'import-result', requestId: foundKey, ok: true, text: text, charCount: text.length, step: 'delivered-awaiting-ack' }); } catch (e) {}
+    try { chrome.tabs.sendMessage(p.hostTabId, { type: 'import-result', requestId: foundKey, ok: true, text, charCount: text.length, step: 'delivered-awaiting-ack' }); } catch (e) {}
     p.ackTimer = setTimeout(() => {
       if (pending.has(foundKey) && !pending.get(foundKey).finished) {
-        finalize(foundKey, { ok: false, error: 'Timeout na confirmação de entrega', step: 'delivery-timeout' });
+        finalize(foundKey, { ok: false, error: 'Tempo esgotado aguardando confirmação de entrega ao My Mercado', step: 'delivery-timeout' });
         cleanup(foundKey);
       }
     }, 5000);
@@ -100,7 +113,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   for (const [k, v] of pending.entries()) {
     if (!v.finished && v.nfceTabId === tabId) {
-      finalize(k, { ok: false, error: 'Aba fechada inesperadamente', step: 'tab-closed' });
+      finalize(k, { ok: false, error: 'Aba da consulta fechada inesperadamente', step: 'tab-closed' });
       cleanup(k);
     }
   }
