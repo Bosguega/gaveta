@@ -61,16 +61,16 @@ describe('useApiKey', () => {
     expect(result.current.persistApiKey).toBe(true)
   })
 
-  it('supports local Ollama config without an API key', async () => {
+  it('supports llama.cpp config without an API key', async () => {
     const { result } = renderHook(() => useApiKey())
 
     await act(async () => {
       await result.current.setMode('local')
-      await result.current.setProvider('ollama')
-      await result.current.setModel('llama3.2')
+      await result.current.setProvider('llama-cpp')
+      await result.current.setLocalModel('bonsai')
     })
 
-    expect(result.current.provider).toBe('Ollama')
+    expect(result.current.provider).toBe('llama.cpp')
     expect(result.current.hasAiConfig).toBe(true)
   })
 })
