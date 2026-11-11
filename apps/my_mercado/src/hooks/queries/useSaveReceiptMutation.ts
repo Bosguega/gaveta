@@ -48,13 +48,11 @@ export function useSaveReceiptMutation() {
             );
             const existing = currentReceipts.find((r: Receipt) => idCandidates.has(String(r.id)));
 
-            // Cruzamento entre fontes (apenas para novas notas da galeria).
-            // Serve tanto para sinalizar duplicata (quando !forceReplace) quanto
-            // para saber qual nota substituir (quando forceReplace), pois as
-            // fontes diferentes usam IDs distintos e o match por ID não basta.
-            // Não altera o comportamento de QR/texto/manual.
+            // Cruzamento por conteúdo entre todas as fontes de entrada.
+            // QR, texto, imagem e cadastro manual podem representar a mesma compra,
+            // embora cada fluxo gere um ID próprio.
             let crossSourceExisting: Receipt | undefined;
-            if (!existing && receipt.source === "gallery") {
+            if (!existing) {
                 const contentMatch = findContentMatch(receipt, currentReceipts);
                 if (contentMatch) {
                     crossSourceExisting = contentMatch.receipt;
