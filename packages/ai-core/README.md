@@ -6,8 +6,8 @@ O pacote é **agnóstico de framework e de domínio**: ele sabe chamar providers
 
 ## Stack
 
-- TypeScript puro — **zero dependências de runtime** (React, Vue, DOM)
-- Única dependência opcional: SDK do provider (ex: OpenAI)
+- TypeScript puro — sem dependências de framework (React, Vue, DOM)
+- Dependência interna de runtime: `@bosguega/llama-cpp`, responsável pela comunicação com `llama-server`
 - Testes com Vitest
 
 ## Instalação
