@@ -10,6 +10,30 @@ vi.mock("@bosguega/ai-core", () => ({
     },
   }),
 }));
+
+const { analyzeDiscountsFromImage } = await import("./discountImageAnalyzer");
+import type { ReceiptItem } from "../types/domain";
+
+function geminiResponse(text: string): Response {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({ candidates: [{ content: { parts: [{ text }] } }] }),
+  } as any;
+}
+
+function makeFile(): File {
+  return new File(["fake"], "nota.png", { type: "image/png" });
+}
+
+const items: ReceiptItem[] = [
+  { id: "i1", name: "CAFE 500G", quantity: 1, price: 20, total: 20 },
+  { id: "i2", name: "ARROZ 5KG", quantity: 2, price: 24.9, total: 49.8 },
+  { id: "i3", name: "LEITE 1L", quantity: 3, price: 5, total: 15 },
+];
+
+describe("analyzeDiscountsFromImage", () => {
+  beforeEach(() => vi.stubGlobal("fetch", vi.fn()));
   afterEach(() => {
     vi.unstubAllGlobals();
   });
