@@ -122,7 +122,7 @@ export function hasApiKeyCached(): boolean {
 export function hasAiConfigCached(): boolean {
     assertInitialized()
     if ((_mode ?? DEFAULT_AI_MODE) === 'local') {
-        return (_provider ?? DEFAULT_AI_PROVIDER) === 'ollama' && getApiModelCached().trim().length > 0
+        return ((_provider ?? DEFAULT_AI_PROVIDER) === 'ollama' || (_provider ?? DEFAULT_AI_PROVIDER) === 'llama-cpp') && getApiModelCached().trim().length > 0
     }
     return hasApiKeyCached()
 }
