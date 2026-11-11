@@ -159,7 +159,7 @@ function App() {
   // ── AI Config / PWA Debug ──
   const [showApiKeyModal, setShowApiKeyModal] = useState(false)
   const aiConfig = useApiKey()
-  const { apiKey, hasAiConfig, persistApiKey, setPersistApiKey } = aiConfig
+  const { apiKey, hasAiConfig, persistApiKey, setPersistApiKey, mode: aiMode, provider: aiProvider } = aiConfig
 
   useEffect(() => {
     if (!hasAiConfig) {
@@ -220,6 +220,9 @@ function App() {
           tab={tab}
           onTabChange={handleChangeTab}
           onOpenAiConfig={() => setShowApiKeyModal(true)}
+          aiMode={aiMode}
+          aiProvider={aiProvider}
+          hasAiConfig={hasAiConfig}
         />
       ) : (
         <MobileLayout
