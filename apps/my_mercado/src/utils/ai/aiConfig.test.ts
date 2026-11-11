@@ -4,6 +4,7 @@ import {
   invalidateAiConfigCache,
   setAiMode as coreSetAiMode,
   setAiProvider as coreSetAiProvider,
+  setAiLocalModel as coreSetAiLocalModel,
   setApiKey as coreSetApiKey,
   setConfigStore,
   type ConfigStore,
@@ -73,12 +74,13 @@ describe('app aiConfig adapter', () => {
 
   it('reads mode/provider labels from the core cache', async () => {
     await coreSetAiMode('local')
-    await coreSetAiProvider('ollama')
+    await coreSetAiProvider('llama-cpp')
+    await coreSetAiLocalModel('bonsai')
     invalidateAiConfigCache()
     await initializeAiConfig()
 
     expect(getAiMode()).toBe('local')
-    expect(getAiProvider()).toBe('ollama')
+    expect(getAiProvider()).toBe('llama-cpp')
     expect(hasAiConfig()).toBe(true)
   })
 })
