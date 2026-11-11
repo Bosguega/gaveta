@@ -38,7 +38,7 @@ export async function setPersistenceEnabled(enabled: boolean): Promise<void> {
 }
 
 export async function getApiKey(): Promise<string | null> {
-    return isPersistenceEnabled()
+    return (await isPersistenceEnabled())
         ? currentStore.preferences.get(STORAGE_KEY_KEY)
         : currentStore.apiKey.get(STORAGE_KEY_KEY)
 }
