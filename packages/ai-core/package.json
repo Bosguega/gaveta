@@ -8,7 +8,7 @@
         "build": "tsc --noEmit",
         "test": "vitest run"
     },
-    "devDependencies": {
+    "dependencies": {\n        "@bosguega/llama-cpp": "workspace:*"\n    },\n    "devDependencies": {
         "typescript": "^5.7.0",
         "vitest": "^4.1.11"
     }
