@@ -12,8 +12,8 @@ export function createLlamaCppClient(model: string, baseUrl = DEFAULT_BASE_URL):
     return {
         generateText: async (options: GenerateTextOptions): Promise<GenerateTextResult> => {
             const messages: ChatMessage[] = [
-                ...(options.systemPrompt ? [{ role: 'system' as const, content: options.systemPrompt }] : []),
-                { role: 'user' as const, content: options.userPrompt },
+                ...(options.systemPrompt ? [{ role: 'system', content: options.systemPrompt }] : []),
+                { role: 'user', content: options.userPrompt },
             ]
 
             const result = await llama.chat({
@@ -42,5 +42,29 @@ export function createLlamaCppClient(model: string, baseUrl = DEFAULT_BASE_URL):
                 }
             }
         },
+    }
+}
+
+/**
+ * Lists model identifiers exposed by the configured llama-server.
+ */
+export async function listLlamaCppModels(baseUrl = DEFAULT_BASE_URL): Promise<string[]> {
+    return createLlamaClient({ baseUrl }).listModels()
+}
+
+/**
+ * Checks whether the configured llama-server is healthy.
+ */
+export async function testLlamaCppConnection(baseUrl = DEFAULT_BASE_URL): Promise<{ success: boolean; error?: string }> {
+    try {
+        const available = await createLlamaClient({ baseUrl }).health()
+        return available
+            ? { success: true }
+            : { success: false, error: 'O llama-server não está pronto para receber requisições.' }
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Não foi possível conectar ao llama-server.',
+        }
     }
 }
