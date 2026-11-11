@@ -293,6 +293,10 @@ importers:
         version: 8.3.0(@types/node@25.6.2)(jiti@2.7.0)(terser@5.51.2)
 
   packages/ai-core:
+    dependencies:
+      '@bosguega/llama-cpp':
+        specifier: workspace:*
+        version: link:../llama-cpp
     devDependencies:
       typescript:
         specifier: ^5.7.0
