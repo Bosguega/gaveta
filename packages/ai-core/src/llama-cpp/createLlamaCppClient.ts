@@ -12,8 +12,8 @@ export function createLlamaCppClient(model: string, baseUrl = DEFAULT_BASE_URL):
     return {
         generateText: async (options: GenerateTextOptions): Promise<GenerateTextResult> => {
             const messages: ChatMessage[] = [
-                ...(options.systemPrompt ? [{ role: 'system', content: options.systemPrompt }] : []),
-                { role: 'user', content: options.userPrompt },
+                ...(options.systemPrompt ? [{ role: 'system' as const, content: options.systemPrompt }] : []),
+                { role: 'user' as const, content: options.userPrompt },
             ]
 
             const result = await llama.chat({
