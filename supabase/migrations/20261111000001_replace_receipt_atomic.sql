@@ -17,7 +17,9 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
+  v_old_receipt public.receipts%ROWTYPE;
   v_saved_receipt jsonb;
+  v_has_establishment_dictionary_entry boolean;
 BEGIN
   IF auth.uid() IS NULL OR auth.uid() <> p_user_id THEN
     RAISE EXCEPTION 'Usuario nao autorizado';
@@ -28,7 +30,8 @@ BEGIN
   END IF;
 
   -- Confirma propriedade e bloqueia a nota antiga durante a substituição.
-  PERFORM 1
+  SELECT *
+  INTO v_old_receipt
   FROM public.receipts
   WHERE id = p_old_receipt_id
     AND user_id = p_user_id
@@ -38,17 +41,37 @@ BEGIN
     RAISE EXCEPTION 'Nota a substituir nao encontrada ou nao pertence ao usuario';
   END IF;
 
-  -- Reutiliza a rotina oficial de salvamento, preservando todos os campos,
-  -- regras de itens, descontos e nome fantasia já existentes.
+  -- Se a nova fonte não trouxe esses metadados, preserva os que já existiam.
+  -- Isso evita perder o QR da NFC-e ou o desconto ao trocar a origem da nota.
   v_saved_receipt := public.save_receipt_atomic(
     p_user_id,
     p_receipt_id,
     p_establishment,
     p_date,
     COALESCE(p_items, '[]'::jsonb),
-    p_total_discount,
-    p_nfce_qr_url
+    COALESCE(p_total_discount, v_old_receipt.total_discount),
+    COALESCE(p_nfce_qr_url, v_old_receipt.nfce_qr_url)
   );
+
+  -- O salvamento resolve o nome fantasia pelo dicionário. Se a loja não
+  -- mudou e não há entrada no dicionário, conserva o nome já apresentado.
+  IF p_establishment = v_old_receipt.establishment
+     AND v_old_receipt.establishment_display IS NOT NULL THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM public.establishment_dictionary
+      WHERE user_id = p_user_id
+        AND establishment = p_establishment
+    )
+    INTO v_has_establishment_dictionary_entry;
+
+    IF NOT v_has_establishment_dictionary_entry THEN
+      UPDATE public.receipts
+      SET establishment_display = v_old_receipt.establishment_display
+      WHERE id = p_receipt_id
+        AND user_id = p_user_id;
+    END IF;
+  END IF;
 
   -- Se os IDs forem iguais, save_receipt_atomic já atualizou a própria nota.
   IF p_old_receipt_id <> p_receipt_id THEN
