@@ -9,6 +9,8 @@ import {
 import type { AppTab } from '../types/ui'
 import { TabSkeleton } from '../components/Skeleton'
 import { lazyWithRetry } from '../utils/lazyWithRetry'
+import { AiModeIndicator } from '../components/AiModeIndicator'
+import type { AIMode } from '@bosguega/ai-core'
 
 const ScannerTab = lazyWithRetry(() => import('../components/ScannerTab'))
 const ShoppingListTab = lazyWithRetry(() => import('../components/ShoppingListTab'))
@@ -20,6 +22,9 @@ interface DesktopLayoutProps {
     tab: AppTab
     onTabChange: (tab: AppTab) => void
     onOpenAiConfig: () => void
+    aiMode: AIMode
+    aiProvider: string
+    hasAiConfig: boolean
 }
 
 const tabs: { key: AppTab; icon: React.ReactNode; label: string }[] = [
@@ -30,13 +35,16 @@ const tabs: { key: AppTab; icon: React.ReactNode; label: string }[] = [
     { key: 'settings', icon: <SettingsIcon size={20} />, label: 'Ajustes' },
 ]
 
-export function DesktopLayout({ tab, onTabChange, onOpenAiConfig }: DesktopLayoutProps) {
+export function DesktopLayout({ tab, onTabChange, onOpenAiConfig, aiMode, aiProvider, hasAiConfig }: DesktopLayoutProps) {
     return (
         <div className="desktop-layout">
             <aside className="desktop-sidebar">
                 <div className="desktop-sidebar-header">
                     <h1>My Mercado</h1>
                     <p>Economize comparando preços.</p>
+                    <div style={{ marginTop: '1rem' }}>
+                        <AiModeIndicator mode={aiMode} provider={aiProvider} hasAiConfig={hasAiConfig} onClick={onOpenAiConfig} />
+                    </div>
                 </div>
                 <nav className="desktop-nav">
                     {tabs.map((t) => (
