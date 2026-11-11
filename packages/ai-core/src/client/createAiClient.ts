@@ -68,7 +68,7 @@ export function createAiClient(options?: CreateAiClientOptions): ProviderClient 
     const model = options?.model ?? (mode === 'local' ? getAiLocalModelCached() : getApiModelCached())
     const cachedBaseUrl = getAiBaseUrlCached()
     const baseUrl = provider === 'ollama'
-        ? options?.baseUrl ?? cachedBaseUrl
+        ? options?.baseUrl ?? DEFAULT_OLLAMA_BASE_URL
         : provider === 'llama-cpp'
             ? options?.baseUrl ?? cachedBaseUrl
             : undefined
