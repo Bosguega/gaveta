@@ -229,6 +229,9 @@ function App() {
           tab={tab}
           onTabChange={handleChangeTab}
           onOpenAiConfig={() => setShowApiKeyModal(true)}
+          aiMode={aiMode}
+          aiProvider={aiProvider}
+          hasAiConfig={hasAiConfig}
         />
       )}
 
