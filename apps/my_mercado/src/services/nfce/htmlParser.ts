@@ -17,7 +17,7 @@ function toBRDateTime(datePart: string, timePart?: string): string {
         const normalizedTime = baseTime.length === 5 ? `${baseTime}:00` : baseTime;
         return `${datePart.trim()} ${normalizedTime}`;
     }
-    // Sem horário impresso, não usar o momento da importação como horário da compra.
+    // Sem horário impresso, usar meia-noite: não inventar a hora da leitura.
     return `${datePart.trim()} 00:00:00`;
 }
 
@@ -47,6 +47,7 @@ export function getFallbackDateAtMidnight(): string {
     const dd = String(now.getDate()).padStart(2, "0");
     const mm = String(now.getMonth() + 1).padStart(2, "0");
     const yyyy = String(now.getFullYear());
+    // Quando a data não é encontrada, manter o fallback estável durante o dia.
     return `${dd}/${mm}/${yyyy} 00:00:00`;
 }
 
@@ -132,7 +133,7 @@ export function extractDateFromHtml(doc: Document): string {
     }
 
     const fallback = getFallbackDateAtMidnight();
-    logger.warn("Parser", "Nao foi possivel extrair data/hora da emissao. Usando fallback com meia-noite.");
+    logger.warn("Parser", "Nao foi possivel extrair data/hora da emissao. Usando a data atual à meia-noite como fallback; a data real não foi identificada.");
     return fallback;
 }
 
