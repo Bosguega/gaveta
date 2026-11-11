@@ -3,6 +3,7 @@ import {
   AlertCircle,
   CheckCircle,
   Cpu,
+  Copy,
   Key,
   RefreshCw,
   Save,
@@ -28,6 +29,9 @@ import { validateApiKey } from "../utils/validation";
 import { logger } from "../utils/logger";
 import { Modal } from "./ui/Modal";
 import type { ApiKeyModalProps } from "../types/ui";
+
+const LLAMA_CPP_COMMAND_STORAGE_KEY = "my_mercado_llama_cpp_launch_command";
+const DEFAULT_LLAMA_CPP_LAUNCH_COMMAND = '.\\llama-server.exe -m "C:\\CAMINHO\\Ternary-Bonsai-2-27B-PQ2_0.gguf" -ngl 999 -fa on -c 32768 -np 1 --host 127.0.0.1 --port 8080 -ctk q8_0 -ctv q8_0';
 
 const CONNECTION_LABELS: Record<AiConnectionStatus, string> = {
   idle: "Testar conexao",
@@ -57,6 +61,7 @@ export default function ApiKeyModal({
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [localPersist, setLocalPersist] = useState(persistKey);
+  const [launchCommand, setLaunchCommand] = useState(DEFAULT_LLAMA_CPP_LAUNCH_COMMAND);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -68,6 +73,11 @@ export default function ApiKeyModal({
     setFetchedModels([]);
     setConnectionStatus("idle");
     setLocalPersist(persistKey);
+    try {
+      setLaunchCommand(window.localStorage.getItem(LLAMA_CPP_COMMAND_STORAGE_KEY) ?? DEFAULT_LLAMA_CPP_LAUNCH_COMMAND);
+    } catch {
+      setLaunchCommand(DEFAULT_LLAMA_CPP_LAUNCH_COMMAND);
+    }
   }, [aiConfig, currentKey, isOpen, persistKey]);
 
   const onlineProvider = useMemo(() => {
@@ -201,6 +211,7 @@ export default function ApiKeyModal({
   const handleSave = async () => {
     const provider = mode === "local" ? "llama-cpp" : onlineProvider;
     const modelToSave = selectedModel || (provider === "unknown" ? "" : DEFAULT_MODEL_BY_PROVIDER[provider]);
+    let commandSaveFailed = false;
 
     if (mode === "online") {
       const valid = validateOnlineKey();
@@ -224,11 +235,30 @@ export default function ApiKeyModal({
       await aiConfig?.setProvider("llama-cpp");
       await aiConfig?.setBaseUrl(baseUrl || DEFAULT_AI_BASE_URL);
       await aiConfig?.setLocalModel(modelToSave);
+      try {
+        window.localStorage.setItem(LLAMA_CPP_COMMAND_STORAGE_KEY, launchCommand.trim());
+      } catch (err) {
+        commandSaveFailed = true;
+        logger.warn("ApiKeyModal", "Nao foi possivel salvar o comando do llama.cpp neste navegador", err);
+      }
       await onSave();
     }
 
     notify.settingsSaved();
+    if (commandSaveFailed) {
+      notify.warning("Configuracoes de IA salvas, mas o comando nao pôde ser salvo neste navegador.");
+    }
     onClose();
+  };
+
+  const handleCopyLaunchCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(launchCommand);
+      notify.success("Comando copiado!");
+    } catch (err) {
+      logger.error("ApiKeyModal", "Nao foi possivel copiar o comando", err);
+      notify.error("Nao foi possivel copiar. Selecione o comando e copie manualmente.");
+    }
   };
 
   const handleTest = async () => {
@@ -333,21 +363,55 @@ export default function ApiKeyModal({
           </div>
 
           {mode === "local" && (
-            <div style={{ marginBottom: "1rem" }}>
-              <label style={{ display: "block", fontSize: "0.75rem", color: "#64748b", marginBottom: "0.5rem" }}>
-                URL local:
-              </label>
-              <input
-                className="search-input"
-                style={{ width: "100%", background: "var(--bg-color)", border: "1px solid var(--card-border)" }}
-                value={baseUrl}
-                placeholder={DEFAULT_AI_BASE_URL}
-                onChange={(event) => {
-                  setBaseUrl(event.target.value);
-                  setConnectionStatus("idle");
-                }}
-              />
-            </div>
+            <>
+              <div style={{ marginBottom: "1rem" }}>
+                <label style={{ display: "block", fontSize: "0.75rem", color: "#64748b", marginBottom: "0.5rem" }}>
+                  URL local:
+                </label>
+                <input
+                  className="search-input"
+                  style={{ width: "100%", background: "var(--bg-color)", border: "1px solid var(--card-border)" }}
+                  value={baseUrl}
+                  placeholder={DEFAULT_AI_BASE_URL}
+                  onChange={(event) => {
+                    setBaseUrl(event.target.value);
+                    setConnectionStatus("idle");
+                  }}
+                />
+              </div>
+              <div style={{ marginBottom: "1rem" }}>
+                <label style={{ display: "block", fontSize: "0.75rem", color: "#64748b", marginBottom: "0.5rem" }}>
+                  Comando para iniciar o llama-server:
+                </label>
+                <textarea
+                  className="search-input"
+                  rows={4}
+                  value={launchCommand}
+                  onChange={(event) => setLaunchCommand(event.target.value)}
+                  spellCheck={false}
+                  style={{
+                    width: "100%",
+                    resize: "vertical",
+                    fontFamily: "monospace",
+                    fontSize: "0.75rem",
+                    lineHeight: 1.5,
+                    background: "var(--bg-color)",
+                    border: "1px solid var(--card-border)",
+                  }}
+                />
+                <p style={{ fontSize: "0.7rem", color: "#64748b", margin: "0.5rem 0" }}>
+                  Edite o caminho do executavel e do modelo conforme seu computador. Salve aqui e copie para executar manualmente no terminal. O PWA nao inicia o processo.
+                </p>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={handleCopyLaunchCommand}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}
+                >
+                  <Copy size={16} /> Copiar comando
+                </button>
+              </div>
+            </>
           )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
