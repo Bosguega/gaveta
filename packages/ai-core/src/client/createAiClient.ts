@@ -33,7 +33,7 @@ export interface CreateAiClientOptions {
     provider?: ProviderName
     /** Modelo explícito. Se não informado, usa o salvo no storage. */
     model?: string
-    /** URL base para providers locais HTTP, como Ollama. */
+    /** URL base para provedores locais HTTP, como Ollama e llama.cpp. */
     baseUrl?: string
     /** ProviderClient primário para fallback (uso avançado). */
     primary?: ProviderClient
@@ -65,9 +65,12 @@ export function createAiClient(options?: CreateAiClientOptions): ProviderClient 
         ? options?.apiKey
         : options?.apiKey ?? getApiKeyCached()
     const model = options?.model ?? getApiModelCached()
-    const baseUrl = provider === 'ollama' || provider === 'llama-cpp'
-        ? options?.baseUrl ?? (explicitProvider ? DEFAULT_OLLAMA_BASE_URL : getAiBaseUrlCached())
-        : undefined
+    const cachedBaseUrl = getAiBaseUrlCached()
+    const baseUrl = provider === 'ollama'
+        ? options?.baseUrl ?? cachedBaseUrl
+        : provider === 'llama-cpp'
+            ? options?.baseUrl ?? (cachedBaseUrl === DEFAULT_OLLAMA_BASE_URL ? DEFAULT_LLAMA_CPP_BASE_URL : cachedBaseUrl)
+            : undefined
 
     if (provider !== 'ollama' && provider !== 'llama-cpp' && !apiKey) {
         throw new Error(
