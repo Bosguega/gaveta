@@ -167,13 +167,9 @@ function parseBrDateToMs(dateStr: string): number | null {
 function receiptTotal(receipt: Receipt): number {
   return (receipt.items || []).reduce((sum, item) => {
     const qty = item.quantity ?? 1;
-    const edited =
-      item.paid_price !== undefined &&
-      item.paid_price !== null &&
-      item.price !== undefined &&
-      item.price !== null &&
-      item.paid_price !== item.price;
-    if (edited) return sum + (item.paid_price as number) * qty;
+    // "total" representa o total cheio impresso na linha da nota.
+    // paid_price é o valor unitário pago após desconto e não deve substituir
+    // esse total ao comparar notas vindas de fontes diferentes.
     if (item.total !== undefined && item.total !== null) return sum + item.total;
     if (item.paid_price !== undefined && item.paid_price !== null) {
       return sum + item.paid_price * qty;
@@ -233,7 +229,9 @@ export function matchReceiptsByContent(
   const nameEvidence = sharedNames > 0;
   const sameItemCount = (candidate.items || []).length === (existing.items || []).length;
 
-  if (totalMatches && dateStrong) return 'exact';
+  // Correspondência exata exige também algum item em comum.
+  // Estabelecimento + data + total, isoladamente, pode coincidir em compras distintas.
+  if (totalMatches && dateStrong && nameEvidence) return 'exact';
 
   // Total igual nunca é prova única — exigimos evidência adicional.
   if (totalMatches && (nameEvidence || sameItemCount)) return 'probable';
