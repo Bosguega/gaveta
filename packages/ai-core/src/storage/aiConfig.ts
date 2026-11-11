@@ -126,7 +126,7 @@ export async function setAiMode(mode: AIMode): Promise<void> {
 
 export async function getAiProvider(): Promise<AIProvider> {
     const val = await currentStore.preferences.get(STORAGE_KEY_PROVIDER)
-    if (val === 'gemini' || val === 'openai' || val === 'ollama') return val
+    if (val === 'gemini' || val === 'openai' || val === 'ollama' || val === 'llama-cpp') return val
     return DEFAULT_AI_PROVIDER
 }
 
@@ -170,7 +170,7 @@ export async function hasAiConfig(): Promise<boolean> {
     if (mode === 'local') {
         const provider = await getAiProvider()
         const model = await getApiModel()
-        return provider === 'ollama' && model.trim().length > 0
+        return (provider === 'ollama' || provider === 'llama-cpp') && model.trim().length > 0
     }
 
     return hasApiKey()
