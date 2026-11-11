@@ -37,6 +37,43 @@ describe('createLlamaCppClient', () => {
         )
     })
 
+    it('sends image content using the OpenAI-compatible data URL format', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            choices: [{ message: { content: 'Imagem analisada' }, finish_reason: 'stop' }],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+        globalThis.fetch = fetchMock
+
+        const client = createLlamaCppClient('vision-model', 'http://127.0.0.1:8080')
+        await client.generateText({
+            userPrompt: 'Leia esta nota.',
+            images: [{ mimeType: 'image/png', data: 'ZmFrZQ==' }],
+            enableThinking: false,
+        })
+
+        const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+        expect(requestBody.messages[0].content).toEqual([
+            { type: 'text', text: 'Leia esta nota.' },
+            { type: 'image_url', image_url: { url: 'data:image/png;base64,ZmFrZQ==' } },
+        ])
+        expect(requestBody.chat_template_kwargs).toEqual({ enable_thinking: false })
+    })
+
+    it('forwards enableThinking when explicitly enabled', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            choices: [{ message: { content: 'Resposta' }, finish_reason: 'stop' }],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+        globalThis.fetch = fetchMock
+
+        const client = createLlamaCppClient('bonsai')
+        await client.generateText({
+            userPrompt: 'Explique.',
+            enableThinking: true,
+        })
+
+        const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+        expect(requestBody.chat_template_kwargs).toEqual({ enable_thinking: true })
+    })
+
     it('lists model identifiers from the llama-server', async () => {
         globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
             data: [{ id: 'bonsai' }, { id: 'bge-m3' }],

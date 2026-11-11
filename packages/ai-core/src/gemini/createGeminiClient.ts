@@ -15,6 +15,7 @@ export function createGeminiClient(apiKey: string, model: string): ProviderClien
             const result = await generateText(opts.userPrompt, apiKey, model, {
                 temperature: opts.temperature,
                 maxOutputTokens: opts.maxTokens,
+                images: opts.images,
             })
             return { text: result.text, model, provider: 'gemini' }
         },

@@ -10,7 +10,7 @@ import { createAiApiError } from '../errors'
 interface OpenAIResponse {
     choices?: Array<{
         message?: {
-            content?: string
+            content?: string | Array<{ type: string; text?: string; image_url?: { url: string } }>
         }
     }>
 }
@@ -19,7 +19,7 @@ export async function generateText(
     prompt: string,
     apiKey: string,
     model: string,
-    options?: { temperature?: number; maxTokens?: number }
+    options?: { temperature?: number; maxTokens?: number; images?: Array<{ mimeType: string; data: string }> }
 ): Promise<{ text: string }> {
     let response: Response
 
@@ -37,7 +37,15 @@ export async function generateText(
                 messages: [
                     {
                         role: 'user',
-                        content: prompt,
+                        content: options?.images?.length
+                            ? [
+                                { type: 'text', text: prompt },
+                                ...options.images.map((image) => ({
+                                    type: 'image_url',
+                                    image_url: { url: `data:${image.mimeType};base64,${image.data}` },
+                                })),
+                            ]
+                            : prompt,
                     },
                 ],
             }),
@@ -52,7 +60,12 @@ export async function generateText(
     }
 
     const data = (await response.json()) as OpenAIResponse
-    const text = data?.choices?.[0]?.message?.content
+    const content = data?.choices?.[0]?.message?.content
+    const text = typeof content === 'string'
+        ? content
+        : Array.isArray(content)
+            ? content.filter((part) => part.type === 'text').map((part) => part.text ?? '').join('')
+            : undefined
 
     if (typeof text !== 'string') {
         throw createAiApiError('INVALID_RESPONSE_FORMAT')

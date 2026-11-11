@@ -13,7 +13,18 @@ export function createLlamaCppClient(model: string, baseUrl = DEFAULT_BASE_URL):
         generateText: async (options: GenerateTextOptions): Promise<GenerateTextResult> => {
             const messages: ChatMessage[] = [
                 ...(options.systemPrompt ? [{ role: 'system' as const, content: options.systemPrompt }] : []),
-                { role: 'user' as const, content: options.userPrompt },
+                {
+                    role: 'user' as const,
+                    content: options.images?.length
+                        ? [
+                            { type: 'text' as const, text: options.userPrompt },
+                            ...options.images.map((image) => ({
+                                type: 'image_url' as const,
+                                image_url: { url: `data:${image.mimeType};base64,${image.data}` },
+                            })),
+                        ]
+                        : options.userPrompt,
+                },
             ]
 
             const result = await llama.chat({
@@ -21,6 +32,7 @@ export function createLlamaCppClient(model: string, baseUrl = DEFAULT_BASE_URL):
                 messages,
                 temperature: options.temperature,
                 maxTokens: options.maxTokens,
+                enableThinking: options.enableThinking,
             })
 
             return {

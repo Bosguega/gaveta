@@ -15,7 +15,7 @@ describe('MobileLayout', () => {
   })
 
   it('exibe o menu inferior normalmente quando isScannerEntryActive é false na aba scan', () => {
-    render(<MobileLayout tab="scan" onTabChange={vi.fn()} onOpenAiConfig={vi.fn()} />)
+    render(<MobileLayout tab="scan" onTabChange={vi.fn()} onOpenAiConfig={vi.fn()} aiMode="online" aiProvider="gemini" hasAiConfig={true} />)
 
     const nav = screen.getByRole('navigation', { name: /Navegação principal/i })
     expect(nav).toBeInTheDocument()
@@ -29,27 +29,27 @@ describe('MobileLayout', () => {
       useScannerStore.getState().setIsScannerEntryActive(true)
     })
 
-    render(<MobileLayout tab="scan" onTabChange={vi.fn()} onOpenAiConfig={vi.fn()} />)
+    render(<MobileLayout tab="scan" onTabChange={vi.fn()} onOpenAiConfig={vi.fn()} aiMode="online" aiProvider="gemini" hasAiConfig={true} />)
 
     expect(screen.queryByRole('navigation', { name: /Navegação principal/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Escanear nota fiscal/i })).not.toBeInTheDocument()
   })
 
   it('exibe o menu inferior novamente quando sair da tela de entradas', () => {
-    const { rerender } = render(<MobileLayout tab="scan" onTabChange={vi.fn()} onOpenAiConfig={vi.fn()} />)
+    const { rerender } = render(<MobileLayout tab="scan" onTabChange={vi.fn()} onOpenAiConfig={vi.fn()} aiMode="online" aiProvider="gemini" hasAiConfig={true} />)
 
     // Abre tela de entradas
     act(() => {
       useScannerStore.getState().setIsScannerEntryActive(true)
     })
-    rerender(<MobileLayout tab="scan" onTabChange={vi.fn()} onOpenAiConfig={vi.fn()} />)
+    rerender(<MobileLayout tab="scan" onTabChange={vi.fn()} onOpenAiConfig={vi.fn()} aiMode="online" aiProvider="gemini" hasAiConfig={true} />)
     expect(screen.queryByRole('navigation', { name: /Navegação principal/i })).not.toBeInTheDocument()
 
     // Sai da tela de entradas (ex: ao clicar em voltar)
     act(() => {
       useScannerStore.getState().setIsScannerEntryActive(false)
     })
-    rerender(<MobileLayout tab="scan" onTabChange={vi.fn()} onOpenAiConfig={vi.fn()} />)
+    rerender(<MobileLayout tab="scan" onTabChange={vi.fn()} onOpenAiConfig={vi.fn()} aiMode="online" aiProvider="gemini" hasAiConfig={true} />)
     expect(screen.getByRole('navigation', { name: /Navegação principal/i })).toBeInTheDocument()
   })
 
@@ -58,7 +58,7 @@ describe('MobileLayout', () => {
       useScannerStore.getState().setIsScannerEntryActive(true)
     })
 
-    render(<MobileLayout tab="history" onTabChange={vi.fn()} onOpenAiConfig={vi.fn()} />)
+    render(<MobileLayout tab="history" onTabChange={vi.fn()} onOpenAiConfig={vi.fn()} aiMode="online" aiProvider="gemini" hasAiConfig={true} />)
 
     expect(screen.getByRole('navigation', { name: /Navegação principal/i })).toBeInTheDocument()
   })

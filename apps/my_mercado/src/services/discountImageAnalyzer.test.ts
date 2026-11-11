@@ -1,8 +1,14 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock("../utils/ai/aiConfig", () => ({
-  getApiKey: () => "test-key",
-  getApiModel: () => "gemini-test",
+vi.mock("@bosguega/ai-core", () => ({
+  createAiClient: () => ({
+    generateText: async () => {
+      const response = await fetch("mock-ai-provider");
+      if (!response.ok) throw new Error("AI provider request failed");
+      const data = await response.json();
+      return { text: data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "" };
+    },
+  }),
 }));
 
 const { analyzeDiscountsFromImage } = await import("./discountImageAnalyzer");
@@ -13,7 +19,6 @@ function geminiResponse(text: string): Response {
     ok: true,
     status: 200,
     json: async () => ({ candidates: [{ content: { parts: [{ text }] } }] }),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
 }
 
@@ -28,10 +33,7 @@ const items: ReceiptItem[] = [
 ];
 
 describe("analyzeDiscountsFromImage", () => {
-  beforeEach(() => {
-    vi.stubGlobal("fetch", vi.fn());
-  });
-
+  beforeEach(() => vi.stubGlobal("fetch", vi.fn()));
   afterEach(() => {
     vi.unstubAllGlobals();
   });
