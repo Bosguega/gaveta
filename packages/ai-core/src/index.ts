@@ -41,7 +41,7 @@ export type {
 } from './ollama'
 
 // llama.cpp local provider adapter.
-export { createLlamaCppClient } from './llama-cpp'
+export { createLlamaCppClient, listLlamaCppModels, testLlamaCppConnection } from './llama-cpp'
 
 // Client (ProviderClient, createAiClient, wrappers)
 export {
