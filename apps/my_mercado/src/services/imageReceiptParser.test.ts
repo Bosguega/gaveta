@@ -10,6 +10,23 @@ vi.mock("@bosguega/ai-core", () => ({
     },
   }),
 }));
+
+const { parseReceiptFromImage } = await import("./imageReceiptParser");
+
+function geminiResponse(text: string): Response {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({ candidates: [{ content: { parts: [{ text }] } }] }),
+  } as any;
+}
+
+function makeFile(): File {
+  return new File(["fake-image-bytes"], "nota.png", { type: "image/png" });
+}
+
+describe("parseReceiptFromImage", () => {
+  beforeEach(() => vi.stubGlobal("fetch", vi.fn()));
   afterEach(() => {
     vi.unstubAllGlobals();
   });
