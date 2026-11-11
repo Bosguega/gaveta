@@ -1,34 +1,15 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-// Mock da config de IA para injetar apiKey/modelo sem depender do ai-core.
-vi.mock("../utils/ai/aiConfig", () => ({
-  getApiKey: () => "test-key",
-  getApiModel: () => "gemini-test",
+vi.mock("@bosguega/ai-core", () => ({
+  createAiClient: () => ({
+    generateText: async () => {
+      const response = await fetch("mock-ai-provider");
+      if (!response.ok) throw new Error("AI provider request failed");
+      const data = await response.json();
+      return { text: data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "" };
+    },
+  }),
 }));
-
-const { parseReceiptFromImage } = await import("./imageReceiptParser");
-
-function geminiResponse(text: string): Response {
-  return {
-    ok: true,
-    status: 200,
-    json: async () => ({
-      candidates: [{ content: { parts: [{ text }] } }],
-    }),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } as any;
-}
-
-function makeFile(): File {
-  // Conteúdo pequeno; só precisa existir para o FileReader gerar base64.
-  return new File(["fake-image-bytes"], "nota.png", { type: "image/png" });
-}
-
-describe("parseReceiptFromImage", () => {
-  beforeEach(() => {
-    vi.stubGlobal("fetch", vi.fn());
-  });
-
   afterEach(() => {
     vi.unstubAllGlobals();
   });
