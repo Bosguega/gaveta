@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { notify } from "../../utils/notifications";
 import {
     saveReceiptToDB,
-    deleteReceiptFromDB
+    replaceReceiptToDB
 } from "../../services";
 
 import { getReceiptIdCandidates, toUserScopedReceiptId, findContentMatch } from "../../utils/receiptId";
@@ -78,23 +78,17 @@ export function useSaveReceiptMutation() {
                 return { duplicate: true, existingReceipt: existing };
             }
 
-            // forceReplace: remover a nota antiga (por ID ou por conteúdo) antes
-            // de salvar a nova, para não deixar duplicata no histórico.
-            if (forceReplace) {
-                const toReplace = existing ?? crossSourceExisting;
-                if (toReplace && toReplace.id !== receiptId) {
-                    logger.info('SaveReceipt', 'Deletando nota antiga para substituir', toReplace.id);
-                    await deleteReceiptFromDB(toReplace.id);
-                }
-            }
-
             // Os itens já vêm processados do useQRCodeProcessor
             const processedItems = receipt.items;
             const fullReceipt = { ...receipt, id: receiptId };
+            const toReplace = forceReplace ? (existing ?? crossSourceExisting) : undefined;
 
-            // Salvar no banco
-            logger.debug('SaveReceipt', 'Salvando no DB...');
-            const persistedReceipt = await saveReceiptToDB(fullReceipt, processedItems);
+            // A substituição é feita em uma única transação no Supabase.
+            // Se o novo recibo falhar ao salvar, a nota antiga permanece intacta.
+            logger.debug('SaveReceipt', toReplace ? 'Substituindo nota atomicamente...' : 'Salvando no DB...');
+            const persistedReceipt = toReplace && toReplace.id !== receiptId
+                ? await replaceReceiptToDB(fullReceipt, processedItems, toReplace.id)
+                : await saveReceiptToDB(fullReceipt, processedItems);
 
             logger.info('SaveReceipt', 'Salvo com sucesso!', persistedReceipt);
 
