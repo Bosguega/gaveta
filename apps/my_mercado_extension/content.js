@@ -1,20 +1,30 @@
 (function () {
-  const isSefaz = location.hostname === 'www.nfce.fazenda.sp.gov.br';
+  const isSefazPage =
+    location.hostname === 'www.nfce.fazenda.sp.gov.br' &&
+    /^\/NFCeConsultaPublica\/Paginas\/ConsultaQRCode\.aspx$/i.test(location.pathname);
 
-  if (isSefaz) {
-    function capture() {
-      const text = document.body ? document.body.innerText : '';
-      chrome.runtime.sendMessage({ type: 'nfce-captured', text: text });
-    }
-    const start = Date.now();
-    const timeout = 10000;
+  if (isSefazPage) {
+    const startedAt = Date.now();
+    const maxWait = 15000;
     const minChars = 200;
-    const interval = setInterval(() => {
+    let sent = false;
+
+    function tryCapture(force = false) {
+      if (sent) return;
       const text = document.body ? document.body.innerText : '';
-      if (text.length >= minChars || Date.now() - start > timeout) {
-        clearInterval(interval);
-        capture();
+      const hasReceiptContent = text.length >= minChars && /NFC-?e|Nota Fiscal/i.test(text);
+      if (hasReceiptContent || force || Date.now() - startedAt >= maxWait) {
+        sent = true;
+        chrome.runtime.sendMessage({ type: 'nfce-captured', text });
       }
+    }
+
+    const interval = setInterval(() => {
+      if (sent) {
+        clearInterval(interval);
+        return;
+      }
+      tryCapture(Date.now() - startedAt >= maxWait);
     }, 500);
     return;
   }
@@ -35,7 +45,12 @@
     }
     if (data.type === 'nfce-import') {
       chrome.runtime.sendMessage({ type: 'import-nfce', requestId: data.requestId, url: data.url }, (resp) => {
-        window.postMessage({ type: 'nfce-import-ack', requestId: data.requestId, ok: !!(resp && resp.ok), error: resp && resp.error }, '*');
+        window.postMessage({
+          type: 'nfce-import-ack',
+          requestId: data.requestId,
+          ok: !!(resp && resp.ok),
+          error: resp && resp.error,
+        }, '*');
       });
     }
     if (data.type === 'nfce-delivery-ack') {
@@ -54,7 +69,7 @@
         text: msg.text,
         charCount: msg.charCount,
         error: msg.error,
-        step: msg.step
+        step: msg.step,
       }, '*');
     }
   });
