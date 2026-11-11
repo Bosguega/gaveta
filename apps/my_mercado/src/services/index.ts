@@ -1,6 +1,7 @@
 // Barrel export for services module
 
 // Receipt service
+export { replaceReceiptToDB } from "./receiptReplacementService";
 export {
     getReceiptsPaginated,
     getAllReceiptsFromDB,

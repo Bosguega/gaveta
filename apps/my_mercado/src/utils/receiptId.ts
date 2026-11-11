@@ -118,12 +118,6 @@ export async function generateTextReceiptId(
 export const TOTAL_TOLERANCE = 0.02;
 export const DATE_WINDOW_MS = 5 * 60 * 1000; // 5 minutos
 
-/**
- * Tolerância em ms usada quando a data não tem horário (00:00:00) — evita
- * falsos negativos por falta de hora na leitura da IA.
- */
-const NO_TIME_DATE_WINDOW_MS = 24 * 60 * 60 * 1000;
-
 export interface ContentMatchOptions {
   /** Tolerância absoluta no total da nota (padrão: R$ 0,02). */
   totalTolerance?: number;
@@ -142,7 +136,10 @@ function normalizeMatchKey(value: string | null | undefined): string {
 }
 
 function hasTimeComponent(dateStr: string): boolean {
-  return /\d{2}:\d{2}/.test(dateStr || '');
+  const match = (dateStr || '').match(/\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!match) return false;
+  // 00:00:00 é o marcador usado pelo app quando a hora não foi identificada.
+  return match[1] !== '00' || match[2] !== '00' || (match[3] ?? '00') !== '00';
 }
 
 /** Converte uma data BR (DD/MM/AAAA HH:mm:ss) para epoch ms. */
@@ -163,21 +160,16 @@ function parseBrDateToMs(dateStr: string): number | null {
   return d.getTime();
 }
 
-/** Total da nota espelhando a semântica de calculateItemTotal. */
+/** Total cheio da nota, sem aplicar descontos unitários. */
 function receiptTotal(receipt: Receipt): number {
   return (receipt.items || []).reduce((sum, item) => {
     const qty = item.quantity ?? 1;
-    const edited =
-      item.paid_price !== undefined &&
-      item.paid_price !== null &&
-      item.price !== undefined &&
-      item.price !== null &&
-      item.paid_price !== item.price;
-    if (edited) return sum + (item.paid_price as number) * qty;
+    // "total" representa o total cheio impresso na linha da nota.
+    // paid_price é o valor unitário pago após desconto e não deve substituir
+    // esse total ao comparar notas vindas de fontes diferentes.
     if (item.total !== undefined && item.total !== null) return sum + item.total;
-    if (item.paid_price !== undefined && item.paid_price !== null) {
-      return sum + item.paid_price * qty;
-    }
+    // Sem total impresso, usa o preço unitário cheio; paid_price representa
+    // o valor após desconto e não pode reduzir o total usado na comparação.
     return sum + (item.price || 0) * qty;
   }, 0);
 }
@@ -189,9 +181,10 @@ function receiptTotal(receipt: Receipt): number {
  * adicionais. NÃO exige igualdade de quantidade de itens.
  *
  * Retorna:
- * - "exact": estabelecimento + data (janela forte) + total batem.
+ * - "exact": estabelecimento + total + item em comum e data forte (horário
+ *   próximo quando conhecido, ou mesmo dia quando a hora não foi informada).
  * - "probable": estabelecimento + total batem, apoiados por evidências
- *   (quantidade de itens e/ou nomes), mesmo sem data forte.
+ *   (quantidade de itens e/ou nomes), mas sem data forte.
  * - null: sem correspondência confiável.
  */
 export function matchReceiptsByContent(
@@ -215,11 +208,15 @@ export function matchReceiptsByContent(
   let dateStrong = false;
   if (candidateMs !== null && existingMs !== null) {
     const diff = Math.abs(candidateMs - existingMs);
-    const window =
-      hasTimeComponent(candidate.date) && hasTimeComponent(existing.date)
-        ? dateWindowMs
-        : NO_TIME_DATE_WINDOW_MS;
-    dateStrong = diff <= window;
+    const candidateHasTime = hasTimeComponent(candidate.date);
+    const existingHasTime = hasTimeComponent(existing.date);
+    if (candidateHasTime && existingHasTime) {
+      dateStrong = diff <= dateWindowMs;
+    } else {
+      // Quando uma das fontes não informa a hora, só consideramos a data
+      // do calendário. Uma janela móvel de 24h poderia unir dias diferentes.
+      dateStrong = candidate.date.slice(0, 10) === existing.date.slice(0, 10);
+    }
   }
 
   // Evidências adicionais: quantidade de itens e nomes normalizados.
@@ -233,7 +230,9 @@ export function matchReceiptsByContent(
   const nameEvidence = sharedNames > 0;
   const sameItemCount = (candidate.items || []).length === (existing.items || []).length;
 
-  if (totalMatches && dateStrong) return 'exact';
+  // Correspondência exata exige também algum item em comum.
+  // Estabelecimento + data + total, isoladamente, pode coincidir em compras distintas.
+  if (totalMatches && dateStrong && nameEvidence) return 'exact';
 
   // Total igual nunca é prova única — exigimos evidência adicional.
   if (totalMatches && (nameEvidence || sameItemCount)) return 'probable';

@@ -47,7 +47,9 @@ const RESTORE_BATCH_SIZE = 25;
 function mapDbItemToReceiptItem(item: DbItemRow): ReceiptItem {
   const quantity = item.quantity ?? 1;
   const price = item.price ?? 0;
-  const total = item.total ?? calc.mul(item.paid_price ?? price, quantity);
+  // `total` é o total cheio da linha. Se uma nota antiga não tiver esse
+  // campo, reconstruímos pelo preço cheio, nunca pelo preço já descontado.
+  const total = item.total ?? calc.mul(price, quantity);
 
   return {
     id: item.id,
@@ -242,10 +244,24 @@ export async function getReceiptsPaginated(
  */
 export async function getAllReceiptsFromDB(): Promise<Receipt[]> {
   try {
-    const result = await getReceiptsPaginated(1, 2000, undefined, {
-      includeItems: true,
-    });
-    return result.data;
+    // Percorre todas as páginas. Um limite fixo poderia fazer analytics e
+    // backup ignorarem silenciosamente notas antigas após 2.000 registros.
+    const pageSize = 1000;
+    const allReceipts: Receipt[] = [];
+    let page = 1;
+
+    while (true) {
+      const result = await getReceiptsPaginated(page, pageSize, undefined, {
+        includeItems: true,
+      });
+
+      allReceipts.push(...result.data);
+
+      if (!result.hasMore || result.data.length === 0) break;
+      page += 1;
+    }
+
+    return allReceipts;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     if (import.meta.env.DEV) {

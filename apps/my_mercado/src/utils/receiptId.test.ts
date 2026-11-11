@@ -142,6 +142,53 @@ describe("matchReceiptsByContent (cruzamento entre fontes)", () => {
     expect(matchReceiptsByContent(baseGallery, other)).toBe("exact");
   });
 
+
+  it("não classifica como exata uma compra com mesma loja/data/total, mas itens sem correspondência", () => {
+    const otherItems = {
+      ...existingQr,
+      items: [
+        { name: "LEITE INTEGRAL", quantity: 1, price: 20, total: 20 },
+        { name: "PÃO FRANCÊS", quantity: 1, price: 24.9, total: 24.9 },
+      ],
+    };
+    // Mesmo total e quantidade de itens ainda pode ser coincidência.
+    // O resultado deve pedir confirmação, nunca afirmar duplicidade exata.
+    expect(matchReceiptsByContent(baseGallery, otherItems)).toBe("probable");
+  });
+
+  it("compara o total cheio impresso mesmo quando há paid_price", () => {
+    const withDiscount = {
+      ...baseGallery,
+      items: [
+        { name: "Café 500g", quantity: 1, price: 20, paid_price: 15, total: 20 },
+        { name: "Arroz 5kg", quantity: 1, price: 24.9, total: 24.9 },
+      ],
+    };
+    expect(matchReceiptsByContent(withDiscount, existingQr)).toBe("exact");
+  });
+
+  it("usa preço cheio como fallback quando o total não existe em notas antigas", () => {
+    const legacyWithDiscount = {
+      ...baseGallery,
+      items: [
+        { name: "Café 500g", quantity: 1, price: 20, paid_price: 15 },
+        { name: "Arroz 5kg", quantity: 1, price: 24.9 },
+      ],
+    };
+    expect(matchReceiptsByContent(legacyWithDiscount, existingQr)).toBe("exact");
+  });
+
+  it("considera 00:00:00 como horário desconhecido e compara pelo dia", () => {
+    const candidateNoTime = { ...baseGallery, date: "10/09/2026 00:00:00" };
+    expect(matchReceiptsByContent(candidateNoTime, existingQr)).toBe("exact");
+  });
+
+  it("não considera datas de dias diferentes como correspondência exata sem horário", () => {
+    const candidateNoTime = { ...baseGallery, date: "10/09/2026 00:00:00" };
+    const nextDay = { ...existingQr, date: "11/09/2026 00:00:00" };
+    expect(matchReceiptsByContent(candidateNoTime, nextDay)).toBe("probable");
+  });
+
   it("marca provável quando data está fora da janela mas há evidências", () => {
     const other = {
       ...existingQr,
