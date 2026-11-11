@@ -19,6 +19,8 @@ export interface GenerateTextOptions {
     images?: ImageInput[]
     temperature?: number
     maxTokens?: number
+    /** Desativa o modo de raciocínio em modelos llama.cpp que oferecem esse controle. */
+    enableThinking?: boolean
 }
 
 export interface GenerateTextResult {
