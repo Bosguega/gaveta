@@ -6,6 +6,7 @@ export type {
     ProviderClient,
     GenerateTextOptions,
     GenerateTextResult,
+    ImageInput,
     TestConnectionResult,
     ProviderName,
 } from './types'
