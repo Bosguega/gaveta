@@ -31,7 +31,7 @@ export interface ConfigStore {
 export type AIMode = 'online' | 'local'
 
 /** Provider ids canonicos, sem rotulos de UI. */
-export type AIProvider = 'gemini' | 'openai' | 'ollama' | 'llama-cpp'
+export type AIProvider = 'gemini' | 'openai' | 'ollama'
 
 /** Resultado de deteccao por chave, incluindo estados sem provider valido. */
 export type Provider = AIProvider | 'none' | 'unknown'
