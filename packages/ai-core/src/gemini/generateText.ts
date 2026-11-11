@@ -4,6 +4,7 @@ import { createAiApiError } from '../errors'
 export type GenerateTextOptions = {
     temperature?: number
     maxOutputTokens?: number
+    images?: Array<{ mimeType: string; data: string }>
 }
 
 export type GenerateTextResult = {
@@ -28,7 +29,12 @@ export async function generateText(
                 'x-goog-api-key': apiKey
             },
             body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
+                contents: [{ parts: [
+                    ...(options?.images ?? []).map((image) => ({
+                        inline_data: { mime_type: image.mimeType, data: image.data },
+                    })),
+                    { text: prompt },
+                ] }],
                 generationConfig: {
                     temperature: options?.temperature ?? 0.7,
                     maxOutputTokens: options?.maxOutputTokens ?? 2048
