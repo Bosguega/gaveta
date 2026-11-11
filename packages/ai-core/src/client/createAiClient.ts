@@ -11,6 +11,8 @@
 
 import { createGeminiClient } from '../gemini/createGeminiClient'
 import { createOllamaClient, DEFAULT_OLLAMA_BASE_URL } from '../ollama'
+import { createLlamaCppClient } from '../llama-cpp'
+import { DEFAULT_BASE_URL as DEFAULT_LLAMA_CPP_BASE_URL } from '@bosguega/llama-cpp'
 import { createOpenAiClient } from '../openai/createOpenAiClient'
 import { withRetry } from './retryWrapper'
 import { withFallback } from './fallbackWrapper'
@@ -31,7 +33,7 @@ export interface CreateAiClientOptions {
     provider?: ProviderName
     /** Modelo explícito. Se não informado, usa o salvo no storage. */
     model?: string
-    /** URL base para providers locais HTTP, como Ollama. */
+    /** URL base para provedores locais HTTP, como Ollama e llama.cpp. */
     baseUrl?: string
     /** ProviderClient primário para fallback (uso avançado). */
     primary?: ProviderClient
@@ -47,7 +49,7 @@ export interface CreateAiClientOptions {
  * Sync — obtém API key e modelo do cache (populado por initializeAiConfig()).
  *
  * Pipeline:
- *   1. Seleciona provider (gemini/openai) baseado na chave ou opção explícita
+ *   1. Seleciona o provider pelo modo, pela chave ou pela opção explícita
  *   2. Cria o client base do provider
  *   3. Aplica retry wrapper (a menos que desabilitado)
  *   4. Aplica fallback wrapper (se primary/secondary forem fornecidos)
@@ -55,19 +57,22 @@ export interface CreateAiClientOptions {
 export function createAiClient(options?: CreateAiClientOptions): ProviderClient {
     const explicitProvider = options?.provider
     const mode = explicitProvider
-        ? (explicitProvider === 'ollama' ? 'local' : 'online')
+        ? (explicitProvider === 'ollama' || explicitProvider === 'llama-cpp' ? 'local' : 'online')
         : getAiModeCached()
     const cachedProvider = mode === 'local' ? getAiProviderCached() : undefined
     const provider = explicitProvider ?? cachedProvider ?? detectProvider(options?.apiKey ?? getApiKeyCached())
-    const apiKey = provider === 'ollama'
+    const apiKey = provider === 'ollama' || provider === 'llama-cpp'
         ? options?.apiKey
         : options?.apiKey ?? getApiKeyCached()
     const model = options?.model ?? getApiModelCached()
+    const cachedBaseUrl = getAiBaseUrlCached()
     const baseUrl = provider === 'ollama'
-        ? options?.baseUrl ?? (explicitProvider ? DEFAULT_OLLAMA_BASE_URL : getAiBaseUrlCached())
-        : undefined
+        ? options?.baseUrl ?? cachedBaseUrl
+        : provider === 'llama-cpp'
+            ? options?.baseUrl ?? (cachedBaseUrl === DEFAULT_OLLAMA_BASE_URL ? DEFAULT_LLAMA_CPP_BASE_URL : cachedBaseUrl)
+            : undefined
 
-    if (provider !== 'ollama' && !apiKey) {
+    if (provider !== 'ollama' && provider !== 'llama-cpp' && !apiKey) {
         throw new Error(
             'API Key não configurada. Acesse as configurações para informar sua chave.'
         )
@@ -86,6 +91,8 @@ export function createAiClient(options?: CreateAiClientOptions): ProviderClient 
             client = createGeminiClient(apiKey ?? '', model)
         } else if (provider === 'ollama') {
             client = createOllamaClient(model, baseUrl || DEFAULT_OLLAMA_BASE_URL)
+        } else if (provider === 'llama-cpp') {
+            client = createLlamaCppClient(model, baseUrl || DEFAULT_LLAMA_CPP_BASE_URL)
         } else {
             throw new Error('Provider de IA nao suportado para a chave informada.')
         }

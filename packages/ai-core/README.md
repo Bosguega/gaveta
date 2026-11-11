@@ -6,8 +6,8 @@ O pacote é **agnóstico de framework e de domínio**: ele sabe chamar providers
 
 ## Stack
 
-- TypeScript puro — **zero dependências de runtime** (React, Vue, DOM)
-- Única dependência opcional: SDK do provider (ex: OpenAI)
+- TypeScript puro — sem dependências de framework (React, Vue, DOM)
+- Dependência interna de runtime: `@bosguega/llama-cpp`, responsável pela comunicação com `llama-server`
 - Testes com Vitest
 
 ## Instalação
@@ -58,7 +58,7 @@ const result = await ai.generateText({
 
 console.log(result.text)    // string
 console.log(result.model)   // string
-console.log(result.provider) // 'gemini' | 'openai' | 'ollama'
+console.log(result.provider) // 'gemini' | 'openai' | 'ollama' | 'llama-cpp'
 ```
 
 `createAiClient` detecta automaticamente o provider pela chave configurada, usa o modelo salvo e aplica **retry** por padrão. Também aceita configuração explícita:
@@ -132,6 +132,26 @@ const { text } = await client.generateText({ userPrompt: '...' })
 // Chamada direta
 const { text } = await openaiGenerateText(prompt, apiKey, model, options?)
 ```
+
+### llama.cpp (servidor local)
+
+O adaptador usa o cliente HTTP compartilhado `@bosguega/llama-cpp`. O servidor `llama-server` deve estar em execução separadamente:
+
+```ts
+import { createAiClient, listLlamaCppModels } from '@bosguega/ai-core'
+
+const localAi = createAiClient({
+  provider: 'llama-cpp',
+  model: 'nome-do-modelo-retornado-pelo-servidor',
+  baseUrl: 'http://127.0.0.1:8080',
+})
+
+const models = await listLlamaCppModels('http://127.0.0.1:8080')
+const { text } = await localAi.generateText({ userPrompt: 'Olá!' })
+const connection = await localAi.testConnection()
+```
+
+A listagem e a comunicação HTTP permanecem no pacote `@bosguega/llama-cpp`; o adaptador do `ai-core` apenas converte o contrato comum de geração de texto. O provider Ollama permanece disponível nesta etapa para não quebrar consumidores existentes.
 
 ### Ollama (`src/ollama/`)
 
