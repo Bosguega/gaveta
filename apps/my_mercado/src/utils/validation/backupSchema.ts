@@ -20,6 +20,7 @@ const backupReceiptSchema = z.object({
   items: z.array(backupItemSchema).default([]),
   created_at: z.string().optional(),
   total_discount: z.number().optional(),
+  nfce_qr_url: z.string().optional(),
 });
 
 export const backupSchema = z.object({
