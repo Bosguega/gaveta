@@ -160,7 +160,7 @@ function parseBrDateToMs(dateStr: string): number | null {
   return d.getTime();
 }
 
-/** Total da nota espelhando a semântica de calculateItemTotal. */
+/** Total cheio da nota, sem aplicar descontos unitários. */
 function receiptTotal(receipt: Receipt): number {
   return (receipt.items || []).reduce((sum, item) => {
     const qty = item.quantity ?? 1;
@@ -181,9 +181,10 @@ function receiptTotal(receipt: Receipt): number {
  * adicionais. NÃO exige igualdade de quantidade de itens.
  *
  * Retorna:
- * - "exact": estabelecimento + data (janela forte) + total batem.
+ * - "exact": estabelecimento + total + item em comum e data forte (horário
+ *   próximo quando conhecido, ou mesmo dia quando a hora não foi informada).
  * - "probable": estabelecimento + total batem, apoiados por evidências
- *   (quantidade de itens e/ou nomes), mesmo sem data forte.
+ *   (quantidade de itens e/ou nomes), mas sem data forte.
  * - null: sem correspondência confiável.
  */
 export function matchReceiptsByContent(
