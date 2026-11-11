@@ -49,7 +49,7 @@ export interface CreateAiClientOptions {
  * Sync — obtém API key e modelo do cache (populado por initializeAiConfig()).
  *
  * Pipeline:
- *   1. Seleciona provider (gemini/openai) baseado na chave ou opção explícita
+ *   1. Seleciona o provider pelo modo, pela chave ou pela opção explícita
  *   2. Cria o client base do provider
  *   3. Aplica retry wrapper (a menos que desabilitado)
  *   4. Aplica fallback wrapper (se primary/secondary forem fornecidos)
