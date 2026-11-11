@@ -138,7 +138,7 @@ const { text } = await openaiGenerateText(prompt, apiKey, model, options?)
 O adaptador usa o cliente HTTP compartilhado `@bosguega/llama-cpp`. O servidor `llama-server` deve estar em execução separadamente:
 
 ```ts
-import { createAiClient } from '@bosguega/ai-core'
+import { createAiClient, listLlamaCppModels } from '@bosguega/ai-core'
 
 const localAi = createAiClient({
   provider: 'llama-cpp',
