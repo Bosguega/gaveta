@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { notify } from "../../utils/notifications";
 import {
+    getAllReceiptsFromDB,
     saveReceiptToDB,
     replaceReceiptToDB
 } from "../../services";
@@ -34,9 +35,23 @@ export function useSaveReceiptMutation() {
         }) => {
             logger.debug('SaveReceipt', 'Iniciando salvamento...', { sessionUserId, receiptId: receipt.id });
 
-            // Buscar receipts atuais do cache ou localStorage
-            const currentReceipts = queryClient.getQueryData<Receipt[]>(["receipts", "all"]) ||
-                JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || "[]") as Receipt[];
+            // Usa o histórico completo do Supabase como fonte principal para
+            // detectar duplicatas. O cache evita uma nova leitura em sequência;
+            // se a rede falhar, preserva o fallback local/offline.
+            let currentReceipts: Receipt[];
+            try {
+                currentReceipts = await queryClient.fetchQuery({
+                    queryKey: ["receipts", "all"],
+                    queryFn: getAllReceiptsFromDB,
+                    staleTime: 60_000,
+                });
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(currentReceipts));
+            } catch (error) {
+                logger.warn("SaveReceipt", "Não foi possível atualizar o histórico remoto; usando cache local", error);
+                currentReceipts =
+                    queryClient.getQueryData<Receipt[]>(["receipts", "all"]) ??
+                    JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || "[]") as Receipt[];
+            }
 
             const rawReceiptId = receipt.id || Date.now().toString();
             const receiptId = toUserScopedReceiptId(rawReceiptId, sessionUserId ?? undefined);
