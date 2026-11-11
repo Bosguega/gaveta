@@ -11,6 +11,8 @@
 
 import { createGeminiClient } from '../gemini/createGeminiClient'
 import { createOllamaClient, DEFAULT_OLLAMA_BASE_URL } from '../ollama'
+import { createLlamaCppClient } from '../llama-cpp'
+import { DEFAULT_BASE_URL as DEFAULT_LLAMA_CPP_BASE_URL } from '@bosguega/llama-cpp'
 import { createOpenAiClient } from '../openai/createOpenAiClient'
 import { withRetry } from './retryWrapper'
 import { withFallback } from './fallbackWrapper'
@@ -55,19 +57,19 @@ export interface CreateAiClientOptions {
 export function createAiClient(options?: CreateAiClientOptions): ProviderClient {
     const explicitProvider = options?.provider
     const mode = explicitProvider
-        ? (explicitProvider === 'ollama' ? 'local' : 'online')
+        ? (explicitProvider === 'ollama' || explicitProvider === 'llama-cpp' ? 'local' : 'online')
         : getAiModeCached()
     const cachedProvider = mode === 'local' ? getAiProviderCached() : undefined
     const provider = explicitProvider ?? cachedProvider ?? detectProvider(options?.apiKey ?? getApiKeyCached())
-    const apiKey = provider === 'ollama'
+    const apiKey = provider === 'ollama' || provider === 'llama-cpp'
         ? options?.apiKey
         : options?.apiKey ?? getApiKeyCached()
     const model = options?.model ?? getApiModelCached()
-    const baseUrl = provider === 'ollama'
+    const baseUrl = provider === 'ollama' || provider === 'llama-cpp'
         ? options?.baseUrl ?? (explicitProvider ? DEFAULT_OLLAMA_BASE_URL : getAiBaseUrlCached())
         : undefined
 
-    if (provider !== 'ollama' && !apiKey) {
+    if (provider !== 'ollama' && provider !== 'llama-cpp' && !apiKey) {
         throw new Error(
             'API Key não configurada. Acesse as configurações para informar sua chave.'
         )
@@ -86,6 +88,8 @@ export function createAiClient(options?: CreateAiClientOptions): ProviderClient 
             client = createGeminiClient(apiKey ?? '', model)
         } else if (provider === 'ollama') {
             client = createOllamaClient(model, baseUrl || DEFAULT_OLLAMA_BASE_URL)
+        } else if (provider === 'llama-cpp') {
+            client = createLlamaCppClient(model, baseUrl || DEFAULT_LLAMA_CPP_BASE_URL)
         } else {
             throw new Error('Provider de IA nao suportado para a chave informada.')
         }
