@@ -47,6 +47,7 @@ describe('createLlamaCppClient', () => {
         await client.generateText({
             userPrompt: 'Leia esta nota.',
             images: [{ mimeType: 'image/png', data: 'ZmFrZQ==' }],
+            enableThinking: false,
         })
 
         const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string)
@@ -54,6 +55,7 @@ describe('createLlamaCppClient', () => {
             { type: 'text', text: 'Leia esta nota.' },
             { type: 'image_url', image_url: { url: 'data:image/png;base64,ZmFrZQ==' } },
         ])
+        expect(requestBody.chat_template_kwargs).toEqual({ enable_thinking: false })
     })
 
     it('lists model identifiers from the llama-server', async () => {
