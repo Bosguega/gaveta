@@ -9,6 +9,7 @@ import {
   DEFAULT_AI_BASE_URL,
   detectProvider as coreDetectProvider,
   getAiBaseUrlCached,
+  getAiLocalModelCached,
   getAiModeCached,
   getAiProviderCached,
   getApiKeyCached,
@@ -19,6 +20,7 @@ import {
   invalidateAiConfigCache,
   isPersistenceEnabledCached,
   setAiBaseUrl as coreSetAiBaseUrl,
+  setAiLocalModel as coreSetAiLocalModel,
   setAiMode as coreSetAiMode,
   setAiProvider as coreSetAiProvider,
   setApiKey as coreSetApiKey,
@@ -36,7 +38,8 @@ export type { AIMode, AIProvider }
 const PROVIDER_LABELS: Record<Provider, string> = {
   gemini: 'Google AI Studio',
   openai: 'OpenAI',
-  ollama: 'Ollama',
+  ollama: 'Ollama (legado)',
+  'llama-cpp': 'llama.cpp',
   none: 'Nenhum',
   unknown: 'Desconhecido',
 }
@@ -69,6 +72,15 @@ export function getAiProvider(): AIProvider {
 
 export async function setAiProvider(provider: AIProvider): Promise<void> {
   await coreSetAiProvider(provider)
+  await refreshAiConfigCache()
+}
+
+export function getAiLocalModel(): string {
+  return getAiLocalModelCached()
+}
+
+export async function setAiLocalModel(model: string): Promise<void> {
+  await coreSetAiLocalModel(model)
   await refreshAiConfigCache()
 }
 
