@@ -211,6 +211,7 @@ export default function ApiKeyModal({
   const handleSave = async () => {
     const provider = mode === "local" ? "llama-cpp" : onlineProvider;
     const modelToSave = selectedModel || (provider === "unknown" ? "" : DEFAULT_MODEL_BY_PROVIDER[provider]);
+    let commandSaveFailed = false;
 
     if (mode === "online") {
       const valid = validateOnlineKey();
@@ -237,13 +238,16 @@ export default function ApiKeyModal({
       try {
         window.localStorage.setItem(LLAMA_CPP_COMMAND_STORAGE_KEY, launchCommand.trim());
       } catch (err) {
+        commandSaveFailed = true;
         logger.warn("ApiKeyModal", "Nao foi possivel salvar o comando do llama.cpp neste navegador", err);
-        notify.warning("Configuracoes de IA salvas, mas o comando nao pôde ser salvo neste navegador.");
       }
       await onSave();
     }
 
     notify.settingsSaved();
+    if (commandSaveFailed) {
+      notify.warning("Configuracoes de IA salvas, mas o comando nao pôde ser salvo neste navegador.");
+    }
     onClose();
   };
 
