@@ -467,3 +467,16 @@ pnpm --filter @bosguega/ai-core test
 - Mensagens de erro em **pt-BR**
 - Código autoexplicativo — comentários mínimos, nomes descritivos
 - Cada provider em seu próprio diretório, sem acoplamento entre eles
+## Entrada multimodal (texto + imagem)
+
+O método `createAiClient().generateText()` aceita imagens opcionais em `images`:
+
+```ts
+const ai = createAiClient()
+const result = await ai.generateText({
+  userPrompt: 'Descreva a imagem.',
+  images: [{ mimeType: 'image/jpeg', data: base64WithoutDataUriPrefix }],
+})
+```
+
+O contrato recebe MIME type e base64 puro. Gemini usa `inline_data`; OpenAI e llama.cpp usam `image_url` com data URI. O servidor/modelo local precisa oferecer visão. A interface comum não adiciona visão a modelos exclusivamente textuais. Ollama ainda não implementa entrada de imagem neste adaptador e retorna erro explícito.
