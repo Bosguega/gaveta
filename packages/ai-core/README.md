@@ -146,7 +146,8 @@ const localAi = createAiClient({
   baseUrl: 'http://127.0.0.1:8080',
 })
 
-const models = await listLlamaCppModels('http://127.0.0.1:8080')\nconst { text } = await localAi.generateText({ userPrompt: 'Olá!' })
+const models = await listLlamaCppModels('http://127.0.0.1:8080')
+const { text } = await localAi.generateText({ userPrompt: 'Olá!' })
 const connection = await localAi.testConnection()
 ```
 
