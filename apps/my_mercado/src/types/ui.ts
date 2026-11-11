@@ -160,12 +160,14 @@ export interface ApiKeyModalProps {
   aiConfig?: {
     mode: 'online' | 'local';
     setMode: (mode: 'online' | 'local') => void | Promise<void>;
-    providerInternal: 'gemini' | 'openai' | 'ollama';
-    setProvider: (provider: 'gemini' | 'openai' | 'ollama') => void | Promise<void>;
+    providerInternal: 'gemini' | 'openai' | 'ollama' | 'llama-cpp';
+    setProvider: (provider: 'gemini' | 'openai' | 'ollama' | 'llama-cpp') => void | Promise<void>;
     apiKey: string | null;
     setApiKey: (key: string | null | undefined) => void | Promise<void>;
     model: string;
     setModel: (model: string) => void | Promise<void>;
+    localModel: string;
+    setLocalModel: (model: string) => void | Promise<void>;
     baseUrl: string;
     setBaseUrl: (baseUrl: string) => void | Promise<void>;
   };

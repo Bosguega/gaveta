@@ -9,6 +9,9 @@ import {
     getAiProvider,
     getAiProviderCached,
     getApiModel,
+    setApiModel,
+    getAiLocalModel,
+    setAiLocalModel,
     hasAiConfig,
     hasAiConfigCached,
     initializeAiConfig,
@@ -72,7 +75,7 @@ describe('ai config', () => {
 
         expect(await getAiMode()).toBe('online')
         expect(await getAiProvider()).toBe('gemini')
-        expect(await getAiBaseUrl()).toBe('http://localhost:11434')
+        expect(await getAiBaseUrl()).toBe('http://127.0.0.1:8080')
     })
 
     it('hydrates persistence into the sync cache', async () => {
@@ -91,13 +94,39 @@ describe('ai config', () => {
 
         await setAiMode('local')
         await setAiProvider('ollama')
+        await setAiLocalModel('bonsai')
         await setAiBaseUrl('http://127.0.0.1:11434')
         await initializeAiConfig()
 
         expect(getAiModeCached()).toBe('local')
-        expect(getAiProviderCached()).toBe('ollama')
+        expect(getAiProviderCached()).toBe('llama-cpp')
         expect(hasAiConfigCached()).toBe(true)
+        expect(await getAiLocalModel()).toBe('bonsai')
         expect(await hasAiConfig()).toBe(true)
+    })
+
+    it('keeps online and local models independent and migrates legacy Ollama settings', async () => {
+        const store = createStore()
+        setConfigStore(store)
+        await setApiKey('AIza-preserved')
+        await setApiModel('gemini-model')
+        await store.preferences.set('ai_provider', 'ollama')
+        await store.preferences.set('ai_model', 'bonsai-old')
+        await store.preferences.set('ai_base_url', 'http://127.0.0.1:11434')
+
+        expect(await getApiModel()).toBe('gemini-1.5-flash-lite')
+        expect(await getAiLocalModel()).toBe('bonsai-old')
+        expect(await getAiProvider()).toBe('llama-cpp')
+        expect(await getAiBaseUrl()).toBe('http://127.0.0.1:8080')
+        expect(await getApiKey()).toBe('AIza-preserved')
+    })
+
+    it('keeps online and local model selections separate', async () => {
+        setConfigStore(createStore())
+        await setApiModel('gemini-pro')
+        await setAiLocalModel('bonsai')
+        expect(await getApiModel()).toBe('gemini-pro')
+        expect(await getAiLocalModel()).toBe('bonsai')
     })
 
     it('moves the current key when persistence changes', async () => {

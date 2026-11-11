@@ -22,6 +22,7 @@ import {
     getAiProviderCached,
     getApiKeyCached,
     getApiModelCached,
+    getAiLocalModelCached,
 } from '../storage/cache'
 import { detectProvider } from '../storage/aiConfig'
 import type { ProviderClient, ProviderName } from './types'
@@ -64,12 +65,12 @@ export function createAiClient(options?: CreateAiClientOptions): ProviderClient 
     const apiKey = provider === 'ollama' || provider === 'llama-cpp'
         ? options?.apiKey
         : options?.apiKey ?? getApiKeyCached()
-    const model = options?.model ?? getApiModelCached()
+    const model = options?.model ?? (mode === 'local' ? getAiLocalModelCached() : getApiModelCached())
     const cachedBaseUrl = getAiBaseUrlCached()
     const baseUrl = provider === 'ollama'
-        ? options?.baseUrl ?? cachedBaseUrl
+        ? options?.baseUrl ?? DEFAULT_OLLAMA_BASE_URL
         : provider === 'llama-cpp'
-            ? options?.baseUrl ?? (cachedBaseUrl === DEFAULT_OLLAMA_BASE_URL ? DEFAULT_LLAMA_CPP_BASE_URL : cachedBaseUrl)
+            ? options?.baseUrl ?? cachedBaseUrl
             : undefined
 
     if (provider !== 'ollama' && provider !== 'llama-cpp' && !apiKey) {

@@ -7,6 +7,8 @@ import {
   setApiKey as setApiKeyStorage,
   getApiModel,
   setApiModel as setApiModelStorage,
+  getAiLocalModel,
+  setAiLocalModel as setAiLocalModelStorage,
   detectProvider,
   getProviderLabel,
   setAiBaseUrl as setAiBaseUrlStorage,
@@ -23,6 +25,7 @@ export function useAiConfig() {
   const [providerInternal, setProviderInternal] = useState<AIProvider>(() => getAiProvider());
   const [apiKey, setApiKeyInternal] = useState(() => getApiKey());
   const [model, setModelInternal] = useState(() => getApiModel());
+  const [localModel, setLocalModelInternal] = useState(() => getAiLocalModel());
   const [baseUrl, setBaseUrlInternal] = useState(() => getAiBaseUrl());
   const [persistApiKey, setPersistApiKeyInternal] = useState(() => isPersistenceEnabled());
 
@@ -46,6 +49,11 @@ export function useAiConfig() {
     setModelInternal(newModel);
   }, []);
 
+  const setLocalModel = useCallback(async (newModel: string) => {
+    await setAiLocalModelStorage(newModel);
+    setLocalModelInternal(newModel);
+  }, []);
+
   const setBaseUrl = useCallback(async (newBaseUrl: string) => {
     await setAiBaseUrlStorage(newBaseUrl);
     setBaseUrlInternal(newBaseUrl);
@@ -61,7 +69,7 @@ export function useAiConfig() {
     [apiKey, mode, providerInternal]
   );
   const hasAiConfig = mode === 'local'
-    ? providerInternal === 'ollama' && !!model
+    ? providerInternal === 'llama-cpp' && !!localModel
     : !!apiKey;
 
   return {
@@ -75,6 +83,8 @@ export function useAiConfig() {
     hasAiConfig,
     model,
     setModel,
+    localModel,
+    setLocalModel,
     baseUrl,
     setBaseUrl,
     persistApiKey,

@@ -9,7 +9,7 @@
 import type { AIProvider } from './storage/types'
 
 /** Provedores que operam online (exclui 'ollama'). */
-export type OnlineProvider = Exclude<AIProvider, 'ollama'>
+export type OnlineProvider = Exclude<AIProvider, 'ollama' | 'llama-cpp'>
 
 /**
  * Catálogo de modelos por provedor online.
@@ -37,6 +37,7 @@ export const DEFAULT_MODEL_BY_PROVIDER: Record<AIProvider, string> = {
     gemini: 'gemini-1.5-flash-lite',
     openai: 'gpt-4o-mini',
     ollama: '',
+    'llama-cpp': '',
 }
 
 /**
