@@ -7,11 +7,11 @@
  * correspondente (desconto aplicado sobre o total cheio da linha, como na
  * nota), relacionando cada produto ao item já registrado.
  *
- * Reaproveita o padrão do imageReceiptParser (fileToBase64, chamada ao Gemini
+ * Reaproveita o padrão do imageReceiptParser (fileToBase64, chamada ao provedor de IA configurado
  * e avaliação de confiança "alta|media|baixa").
  */
 
-import { getApiKey, getApiModel } from "../utils/ai/aiConfig";
+import { createAiClient } from "@bosguega/ai-core";
 import { logger } from "../utils/logger";
 import type { ReceiptItem } from "../types/domain";
 
@@ -67,12 +67,6 @@ export async function analyzeDiscountsFromImage(
     file: File,
     items: ReceiptItem[],
 ): Promise<DiscountAnalysisResult> {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-        throw new Error("API key não configurada. Configure nas configurações de IA.");
-    }
-
-    const model = getApiModel() || "gemini-1.5-flash";
     const mimeType = file.type || "image/jpeg";
 
     const base64 = await fileToBase64(file);
@@ -122,44 +116,20 @@ Responda APENAS com o JSON abaixo, sem explicações:
 
 Se não houver nenhum desconto identificável, retorne "suggestions": [].`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-
-    const response = await fetch(url, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify({
-            contents: [
-                {
-                    parts: [
-                        { inline_data: { mime_type: mimeType, data: base64 } },
-                        { text: prompt },
-                    ],
-                },
-            ],
-            generationConfig: {
-                temperature: 0.2,
-                maxOutputTokens: 2048,
-            },
-        }),
+    const ai = createAiClient();
+    const result = await ai.generateText({
+        userPrompt: prompt,
+        images: [{ mimeType, data: base64 }],
+        temperature: 0.2,
+        maxTokens: 2048,
     });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        logger.error("DiscountAnalyzer", "Erro na API Gemini", { status: response.status, error: errorText });
-        throw new Error(`Erro na API Gemini: ${response.status} - ${errorText.slice(0, 200)}`);
-    }
-
-    const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const text = result.text;
 
     if (!text) {
         throw new Error("Resposta vazia da API Gemini.");
     }
 
-    logger.debug("DiscountAnalyzer", "Resposta Gemini recebida", text.slice(0, 300));
+    logger.debug("DiscountAnalyzer", "Resposta de IA recebida", text.slice(0, 300));
 
     // Extrair JSON da resposta (remover ```json ... ``` se presente)
     let jsonStr = text.trim();
