@@ -118,12 +118,6 @@ export async function generateTextReceiptId(
 export const TOTAL_TOLERANCE = 0.02;
 export const DATE_WINDOW_MS = 5 * 60 * 1000; // 5 minutos
 
-/**
- * Tolerância em ms usada quando a data não tem horário (00:00:00) — evita
- * falsos negativos por falta de hora na leitura da IA.
- */
-const NO_TIME_DATE_WINDOW_MS = 24 * 60 * 60 * 1000;
-
 export interface ContentMatchOptions {
   /** Tolerância absoluta no total da nota (padrão: R$ 0,02). */
   totalTolerance?: number;
