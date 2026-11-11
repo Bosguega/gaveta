@@ -80,7 +80,7 @@ jobs:
     name: CD - Deploy to GitHub Pages
     runs-on: ubuntu-latest
     needs: ci
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    # Deploy somente a partir da main. Execuções manuais em branches servem para CI.
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
