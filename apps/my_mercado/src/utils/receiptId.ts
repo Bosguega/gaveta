@@ -142,7 +142,10 @@ function normalizeMatchKey(value: string | null | undefined): string {
 }
 
 function hasTimeComponent(dateStr: string): boolean {
-  return /\d{2}:\d{2}/.test(dateStr || '');
+  const match = (dateStr || '').match(/\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!match) return false;
+  // 00:00:00 é o marcador usado pelo app quando a hora não foi identificada.
+  return match[1] !== '00' || match[2] !== '00' || (match[3] ?? '00') !== '00';
 }
 
 /** Converte uma data BR (DD/MM/AAAA HH:mm:ss) para epoch ms. */
@@ -171,9 +174,8 @@ function receiptTotal(receipt: Receipt): number {
     // paid_price é o valor unitário pago após desconto e não deve substituir
     // esse total ao comparar notas vindas de fontes diferentes.
     if (item.total !== undefined && item.total !== null) return sum + item.total;
-    if (item.paid_price !== undefined && item.paid_price !== null) {
-      return sum + item.paid_price * qty;
-    }
+    // Sem total impresso, usa o preço unitário cheio; paid_price representa
+    // o valor após desconto e não pode reduzir o total usado na comparação.
     return sum + (item.price || 0) * qty;
   }, 0);
 }
@@ -211,11 +213,15 @@ export function matchReceiptsByContent(
   let dateStrong = false;
   if (candidateMs !== null && existingMs !== null) {
     const diff = Math.abs(candidateMs - existingMs);
-    const window =
-      hasTimeComponent(candidate.date) && hasTimeComponent(existing.date)
-        ? dateWindowMs
-        : NO_TIME_DATE_WINDOW_MS;
-    dateStrong = diff <= window;
+    const candidateHasTime = hasTimeComponent(candidate.date);
+    const existingHasTime = hasTimeComponent(existing.date);
+    if (candidateHasTime && existingHasTime) {
+      dateStrong = diff <= dateWindowMs;
+    } else {
+      // Quando uma das fontes não informa a hora, só consideramos a data
+      // do calendário. Uma janela móvel de 24h poderia unir dias diferentes.
+      dateStrong = candidate.date.slice(0, 10) === existing.date.slice(0, 10);
+    }
   }
 
   // Evidências adicionais: quantidade de itens e nomes normalizados.
