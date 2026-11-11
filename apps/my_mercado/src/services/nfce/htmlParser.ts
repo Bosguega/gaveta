@@ -17,11 +17,8 @@ function toBRDateTime(datePart: string, timePart?: string): string {
         const normalizedTime = baseTime.length === 5 ? `${baseTime}:00` : baseTime;
         return `${datePart.trim()} ${normalizedTime}`;
     }
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    const ss = String(now.getSeconds()).padStart(2, "0");
-    return `${datePart.trim()} ${hh}:${mm}:${ss}`;
+    // Sem horário impresso, não usar o momento da importação como horário da compra.
+    return `${datePart.trim()} 00:00:00`;
 }
 
 export function extractEmissionDate(value: string | null | undefined): string | null {
@@ -50,10 +47,7 @@ export function getFallbackDateAtMidnight(): string {
     const dd = String(now.getDate()).padStart(2, "0");
     const mm = String(now.getMonth() + 1).padStart(2, "0");
     const yyyy = String(now.getFullYear());
-    const hh = String(now.getHours()).padStart(2, "0");
-    const min = String(now.getMinutes()).padStart(2, "0");
-    const ss = String(now.getSeconds()).padStart(2, "0");
-    return `${dd}/${mm}/${yyyy} ${hh}:${min}:${ss}`;
+    return `${dd}/${mm}/${yyyy} 00:00:00`;
 }
 
 function extractQtyAndUnit(text: string | null | undefined): { qty: string; unit: string } {
