@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { Toaster } from 'react-hot-toast'
 import { notify } from './utils/notifications'
 import { logger } from './utils/logger'
 import { isSupabaseConfigured } from './services/supabaseClient'
@@ -234,22 +233,6 @@ function App() {
           hasAiConfig={hasAiConfig}
         />
       )}
-
-      <Toaster
-        position="top-center"
-        toastOptions={{
-          duration: 4000,
-          style: {
-            background: 'rgba(15, 23, 42, 0.95)',
-            color: '#fff',
-            borderRadius: '12px',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            backdropFilter: 'blur(8px)',
-          },
-          success: { iconTheme: { primary: '#10b981', secondary: '#fff' } },
-          error: { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
-        }}
-      />
 
       <PWAUpdateNotification />
 
