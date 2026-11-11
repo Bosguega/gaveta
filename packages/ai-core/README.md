@@ -58,7 +58,7 @@ const result = await ai.generateText({
 
 console.log(result.text)    // string
 console.log(result.model)   // string
-console.log(result.provider) // 'gemini' | 'openai' | 'ollama' | 'llama-cpp'
+console.log(result.provider) // 'gemini' | 'openai' | 'ollama' | 'llama-cpp' | 'llama-cpp'
 ```
 
 `createAiClient` detecta automaticamente o provider pela chave configurada, usa o modelo salvo e aplica **retry** por padrão. Também aceita configuração explícita:
@@ -219,9 +219,10 @@ import {
 // Configurar chave e modelo
 await setApiKey('AIza...')
 await setApiModel('gemini-1.5-flash-lite')
-await setAiProvider('ollama')
+await setAiProvider('llama-cpp')
 await setAiMode('local')
-await setAiBaseUrl('http://localhost:11434')
+await setAiLocalModel('Bonsai')
+await setAiBaseUrl('http://127.0.0.1:8080')
 await setPersistenceEnabled(true)
 
 // Injetar store customizado (ex: Tauri)
@@ -239,7 +240,7 @@ const ready = await hasAiConfig()
 | `DEFAULT_AI_MODEL` | `gemini-1.5-flash-lite` |
 | `DEFAULT_AI_PROVIDER` | `gemini` |
 | `DEFAULT_AI_MODE` | `online` |
-| `DEFAULT_AI_BASE_URL` | `http://localhost:11434` (Ollama) |
+| `DEFAULT_AI_BASE_URL` | `http://127.0.0.1:8080` (llama.cpp) |
 
 ### Cache Síncrono (para UI)
 
