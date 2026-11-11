@@ -70,6 +70,30 @@ describe("parseBackupJson", () => {
     });
   });
 
+  it("rejects negative paid prices and receipt discounts", () => {
+    const json = JSON.stringify({
+      receipts: [
+        {
+          id: "r3",
+          establishment: "Mercado Teste",
+          date: "01/04/2026",
+          total_discount: -2,
+          items: [
+            {
+              name: "Arroz",
+              quantity: 1,
+              price: 10,
+              paid_price: -1,
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = parseBackupJson(json);
+    expect(result.ok).toBe(false);
+  });
+
   it("rejects payload with invalid shape", () => {
     const json = JSON.stringify({
       receipts: [
