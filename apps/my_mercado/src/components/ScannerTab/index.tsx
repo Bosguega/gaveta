@@ -374,7 +374,7 @@ function ScannerTab() {
 
       {/* Tela de Loading */}
       {!manualMode && !currentReceipt && isLoading && (
-        <LoadingScreen step={loadingStep} />
+        <LoadingScreen message="Analisando imagem com IA..." step={loadingStep} />
       )}
 
       {/* Modal de Duplicata */}
