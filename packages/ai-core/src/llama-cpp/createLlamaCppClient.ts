@@ -32,6 +32,7 @@ export function createLlamaCppClient(model: string, baseUrl = DEFAULT_BASE_URL):
                 messages,
                 temperature: options.temperature,
                 maxTokens: options.maxTokens,
+                enableThinking: options.enableThinking,
             })
 
             return {
