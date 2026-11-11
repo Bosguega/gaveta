@@ -47,7 +47,9 @@ const RESTORE_BATCH_SIZE = 25;
 function mapDbItemToReceiptItem(item: DbItemRow): ReceiptItem {
   const quantity = item.quantity ?? 1;
   const price = item.price ?? 0;
-  const total = item.total ?? calc.mul(item.paid_price ?? price, quantity);
+  // `total` é o total cheio da linha. Se uma nota antiga não tiver esse
+  // campo, reconstruímos pelo preço cheio, nunca pelo preço já descontado.
+  const total = item.total ?? calc.mul(price, quantity);
 
   return {
     id: item.id,
