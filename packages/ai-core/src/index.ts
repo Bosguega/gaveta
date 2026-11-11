@@ -53,6 +53,7 @@ export type {
     ProviderClient,
     GenerateTextOptions,
     GenerateTextResult,
+    ImageInput,
     TestConnectionResult,
     ProviderName,
     RetryOptions,
