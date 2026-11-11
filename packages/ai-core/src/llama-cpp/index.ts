@@ -1,1 +1,5 @@
-export { createLlamaCppClient } from './createLlamaCppClient'
+export {
+    createLlamaCppClient,
+    listLlamaCppModels,
+    testLlamaCppConnection,
+} from './createLlamaCppClient'
