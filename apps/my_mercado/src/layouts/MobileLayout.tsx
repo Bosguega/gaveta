@@ -10,6 +10,8 @@ import type { AppTab } from '../types/ui'
 import { TabSkeleton } from '../components/Skeleton'
 import { lazyWithRetry } from '../utils/lazyWithRetry'
 import { useScannerStore } from '../stores/useScannerStore'
+import { AiModeIndicator } from '../components/AiModeIndicator'
+import type { AIMode } from '@bosguega/ai-core'
 
 const ScannerTab = lazyWithRetry(() => import('../components/ScannerTab'))
 const ShoppingListTab = lazyWithRetry(() => import('../components/ShoppingListTab'))
@@ -21,9 +23,12 @@ interface MobileLayoutProps {
     tab: AppTab
     onTabChange: (tab: AppTab) => void
     onOpenAiConfig: () => void
+    aiMode: AIMode
+    aiProvider: string
+    hasAiConfig: boolean
 }
 
-export function MobileLayout({ tab, onTabChange, onOpenAiConfig }: MobileLayoutProps) {
+export function MobileLayout({ tab, onTabChange, onOpenAiConfig, aiMode, aiProvider, hasAiConfig }: MobileLayoutProps) {
     const isScannerEntryActive = useScannerStore((state) => state.isScannerEntryActive)
     const showBottomNav = !(tab === 'scan' && isScannerEntryActive)
 
@@ -34,6 +39,7 @@ export function MobileLayout({ tab, onTabChange, onOpenAiConfig }: MobileLayoutP
                     <h1>My Mercado</h1>
                     <p>Economize comparando preços.</p>
                 </div>
+                <AiModeIndicator mode={aiMode} provider={aiProvider} hasAiConfig={hasAiConfig} onClick={onOpenAiConfig} />
             </header>
 
             <main style={{ minHeight: '60vh' }}>
