@@ -167,6 +167,28 @@ describe("matchReceiptsByContent (cruzamento entre fontes)", () => {
     expect(matchReceiptsByContent(withDiscount, existingQr)).toBe("exact");
   });
 
+  it("usa preço cheio como fallback quando o total não existe em notas antigas", () => {
+    const legacyWithDiscount = {
+      ...baseGallery,
+      items: [
+        { name: "Café 500g", quantity: 1, price: 20, paid_price: 15 },
+        { name: "Arroz 5kg", quantity: 1, price: 24.9 },
+      ],
+    };
+    expect(matchReceiptsByContent(legacyWithDiscount, existingQr)).toBe("exact");
+  });
+
+  it("considera 00:00:00 como horário desconhecido e compara pelo dia", () => {
+    const candidateNoTime = { ...baseGallery, date: "10/09/2026 00:00:00" };
+    expect(matchReceiptsByContent(candidateNoTime, existingQr)).toBe("exact");
+  });
+
+  it("não considera datas de dias diferentes como correspondência exata sem horário", () => {
+    const candidateNoTime = { ...baseGallery, date: "10/09/2026 00:00:00" };
+    const nextDay = { ...existingQr, date: "11/09/2026 00:00:00" };
+    expect(matchReceiptsByContent(candidateNoTime, nextDay)).toBe("probable");
+  });
+
   it("marca provável quando data está fora da janela mas há evidências", () => {
     const other = {
       ...existingQr,
