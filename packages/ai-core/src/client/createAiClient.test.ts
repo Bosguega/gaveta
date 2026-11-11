@@ -85,6 +85,21 @@ describe('createAiClient', () => {
         }))
     })
 
+    it('creates a llama.cpp client without requiring an API key', async () => {
+        await initializeDefaults()
+        const client = createAiClient({
+            provider: 'llama-cpp',
+            model: 'bonsai',
+            baseUrl: 'http://127.0.0.1:8080',
+            retry: false,
+        })
+
+        expect(client).toEqual(expect.objectContaining({
+            generateText: expect.any(Function),
+            testConnection: expect.any(Function),
+        }))
+    })
+
     it('rejects unknown providers', async () => {
         await initializeDefaults()
         expect(() => createAiClient({ apiKey: 'abc', model: 'model', retry: false }))
