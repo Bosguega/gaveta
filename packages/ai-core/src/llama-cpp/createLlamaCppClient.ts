@@ -1,4 +1,5 @@
 import { createLlamaClient, DEFAULT_BASE_URL } from '@bosguega/llama-cpp'
+import type { ChatMessage } from '@bosguega/llama-cpp'
 import type { ProviderClient, GenerateTextOptions, GenerateTextResult } from '../client/types'
 
 /**
@@ -10,7 +11,7 @@ export function createLlamaCppClient(model: string, baseUrl = DEFAULT_BASE_URL):
 
     return {
         generateText: async (options: GenerateTextOptions): Promise<GenerateTextResult> => {
-            const messages = [
+            const messages: ChatMessage[] = [
                 ...(options.systemPrompt ? [{ role: 'system' as const, content: options.systemPrompt }] : []),
                 { role: 'user' as const, content: options.userPrompt },
             ]
