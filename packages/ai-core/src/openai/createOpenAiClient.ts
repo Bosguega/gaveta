@@ -15,6 +15,7 @@ export function createOpenAiClient(apiKey: string, model: string): ProviderClien
             const result = await generateText(opts.userPrompt, apiKey, model, {
                 temperature: opts.temperature,
                 maxTokens: opts.maxTokens,
+                images: opts.images,
             })
             return { text: result.text, model, provider: 'openai' }
         },
