@@ -126,7 +126,7 @@ Se não houver nenhum desconto identificável, retorne "suggestions": [].`;
     const text = result.text;
 
     if (!text) {
-        throw new Error("Resposta vazia da API Gemini.");
+        throw new Error("Resposta vazia do provedor de IA.");
     }
 
     logger.debug("DiscountAnalyzer", "Resposta de IA recebida", text.slice(0, 300));
