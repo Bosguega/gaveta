@@ -107,6 +107,7 @@ Regras adicionais:
         images: [{ mimeType, data: base64 }],
         temperature: 0.2,
         maxTokens: 4096,
+        enableThinking: false,
     });
     const text = result.text;
 
