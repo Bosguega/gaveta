@@ -58,6 +58,22 @@ describe('createLlamaCppClient', () => {
         expect(requestBody.chat_template_kwargs).toEqual({ enable_thinking: false })
     })
 
+    it('forwards enableThinking when explicitly enabled', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            choices: [{ message: { content: 'Resposta' }, finish_reason: 'stop' }],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+        globalThis.fetch = fetchMock
+
+        const client = createLlamaCppClient('bonsai')
+        await client.generateText({
+            userPrompt: 'Explique.',
+            enableThinking: true,
+        })
+
+        const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+        expect(requestBody.chat_template_kwargs).toEqual({ enable_thinking: true })
+    })
+
     it('lists model identifiers from the llama-server', async () => {
         globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
             data: [{ id: 'bonsai' }, { id: 'bge-m3' }],
