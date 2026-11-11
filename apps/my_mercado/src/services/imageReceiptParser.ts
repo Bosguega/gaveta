@@ -2,7 +2,7 @@
  * Serviço de extração de dados de notas fiscais a partir de imagens
  * usando o provedor de IA configurado.
  *
- * Converte a imagem para base64, envia para o Gemini com um prompt
+ * Converte a imagem para base64, envia ao provedor configurado com um prompt
  * especializado e retorna os dados estruturados com nível de confiança.
  */
 
@@ -111,7 +111,7 @@ Regras adicionais:
     const text = result.text;
 
     if (!text) {
-        throw new Error("Resposta vazia da API Gemini.");
+        throw new Error("Resposta vazia do provedor de IA.");
     }
 
     logger.debug("ImageParser", "Resposta de IA recebida", text.slice(0, 300));
