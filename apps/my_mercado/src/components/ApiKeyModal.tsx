@@ -199,7 +199,7 @@ export default function ApiKeyModal({
   };
 
   const handleSave = async () => {
-    const provider = mode === "local" ? "ollama" : onlineProvider;
+    const provider = mode === "local" ? "llama-cpp" : onlineProvider;
     const modelToSave = selectedModel || (provider === "unknown" ? "" : DEFAULT_MODEL_BY_PROVIDER[provider]);
 
     if (mode === "online") {
@@ -232,7 +232,7 @@ export default function ApiKeyModal({
   };
 
   const handleTest = async () => {
-    const provider = mode === "local" ? "ollama" : onlineProvider;
+    const provider = mode === "local" ? "llama-cpp" : onlineProvider;
     if (provider === "unknown") {
       notify.error("Configure uma API key valida antes de testar.");
       return;
