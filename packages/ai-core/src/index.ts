@@ -40,6 +40,9 @@ export type {
     TestConnectionResult as OllamaTestConnectionResult,
 } from './ollama'
 
+// llama.cpp local provider adapter.
+export { createLlamaCppClient } from './llama-cpp'
+
 // Client (ProviderClient, createAiClient, wrappers)
 export {
     createAiClient,
