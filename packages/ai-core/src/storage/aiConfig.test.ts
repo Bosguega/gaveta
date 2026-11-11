@@ -9,6 +9,7 @@ import {
     getAiProvider,
     getAiProviderCached,
     getApiModel,
+    setApiModel,
     getAiLocalModel,
     setAiLocalModel,
     hasAiConfig,
