@@ -17,12 +17,12 @@ import {
   isModelProviderMismatch,
   listModels as listGeminiModels,
   mergeModelOptions,
-  ollamaListModels,
+  listLlamaCppModels,
   type AIProvider,
   type AIMode,
 } from "@bosguega/ai-core";
 import { notify } from "../utils/notifications";
-import { getAiBaseUrl, getAiMode, getApiKey, getApiModel } from "../utils/ai/aiConfig";
+import { getAiBaseUrl, getAiMode, getApiKey, getApiModel, getAiLocalModel } from "../utils/ai/aiConfig";
 import { testAiConnection, type AiConnectionStatus } from "../utils/ai";
 import { validateApiKey } from "../utils/validation";
 import { logger } from "../utils/logger";
@@ -64,7 +64,7 @@ export default function ApiKeyModal({
     setMode(aiConfig?.mode ?? getAiMode());
     setKey(aiConfig?.apiKey ?? currentKey ?? getApiKey() ?? "");
     setBaseUrl(aiConfig?.baseUrl ?? getAiBaseUrl());
-    setSelectedModel(aiConfig?.model ?? getApiModel() ?? "");
+    setSelectedModel(aiConfig?.mode === "local" ? (aiConfig?.localModel ?? getAiLocalModel()) : (aiConfig?.model ?? getApiModel() ?? ""));
     setFetchedModels([]);
     setConnectionStatus("idle");
     setLocalPersist(persistKey);
@@ -75,13 +75,13 @@ export default function ApiKeyModal({
     return detected === "gemini" || detected === "openai" ? detected : "unknown";
   }, [key]);
 
-  const effectiveProvider: AIProvider | "unknown" = mode === "local" ? "ollama" : onlineProvider;
+  const effectiveProvider: AIProvider | "unknown" = mode === "local" ? "llama-cpp" : onlineProvider;
   const providerLabel = effectiveProvider === "gemini"
     ? "Google AI Studio"
     : effectiveProvider === "openai"
       ? "OpenAI"
-      : effectiveProvider === "ollama"
-        ? "Ollama"
+      : effectiveProvider === "llama-cpp"
+        ? "llama.cpp"
         : "Desconhecido";
 
   const providerDefaultModel = effectiveProvider === "unknown"
@@ -107,7 +107,7 @@ export default function ApiKeyModal({
     }
 
     if (!selectedModel) {
-      setSelectedModel(providerDefaultModel);
+      setSelectedModel(aiConfig?.model ?? getApiModel() ?? providerDefaultModel);
       return;
     }
 
@@ -121,7 +121,7 @@ export default function ApiKeyModal({
     setFetchedModels([]);
     setConnectionStatus("idle");
     if (nextMode === "local") {
-      setSelectedModel("");
+      setSelectedModel(aiConfig?.localModel ?? getAiLocalModel());
       setBaseUrl(baseUrl || DEFAULT_AI_BASE_URL);
     } else {
       setSelectedModel(providerDefaultModel);
@@ -134,8 +134,7 @@ export default function ApiKeyModal({
 
     try {
       if (mode === "local") {
-        const models = await ollamaListModels(baseUrl || DEFAULT_AI_BASE_URL);
-        const names = models.map((model) => model.id);
+        const names = await listLlamaCppModels(baseUrl || DEFAULT_AI_BASE_URL);
         setFetchedModels(names);
         setSelectedModel((current) => current || names[0] || "");
         setConnectionStatus("connected");
@@ -222,10 +221,9 @@ export default function ApiKeyModal({
       }
 
       await aiConfig?.setMode("local");
-      await aiConfig?.setProvider("ollama");
+      await aiConfig?.setProvider("llama-cpp");
       await aiConfig?.setBaseUrl(baseUrl || DEFAULT_AI_BASE_URL);
-      await aiConfig?.setModel(modelToSave);
-      await aiConfig?.setApiKey(null);
+      await aiConfig?.setLocalModel(modelToSave);
       await onSave();
     }
 
