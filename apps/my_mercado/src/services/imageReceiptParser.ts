@@ -1,12 +1,12 @@
 /**
  * Serviço de extração de dados de notas fiscais a partir de imagens
- * usando Gemini Vision API.
+ * usando o provedor de IA configurado.
  *
  * Converte a imagem para base64, envia para o Gemini com um prompt
  * especializado e retorna os dados estruturados com nível de confiança.
  */
 
-import { getApiKey, getApiModel } from "../utils/ai/aiConfig";
+import { createAiClient } from "@bosguega/ai-core";
 import { logger } from "../utils/logger";
 import { generateGalleryReceiptId } from "../utils/receiptId";
 import type { Receipt } from "../types/domain";
@@ -35,15 +35,9 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 /**
- * Extrai dados de uma nota fiscal a partir de uma imagem usando Gemini Vision
+ * Extrai dados de uma nota fiscal a partir de uma imagem usando o provedor configurado
  */
 export async function parseReceiptFromImage(file: File): Promise<ImageParseResult> {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-        throw new Error("API key não configurada. Configure nas configurações de IA.");
-    }
-
-    const model = getApiModel() || "gemini-1.5-flash";
     const mimeType = file.type || "image/jpeg";
 
     logger.debug("ImageParser", `Processando imagem: ${file.name} (${mimeType}, ${(file.size / 1024).toFixed(1)}KB)`);
@@ -107,51 +101,20 @@ Regras adicionais:
 - Se não houver data visível, use a data atual
 - Retorne SEMPRE um array de itens, mesmo que vazio`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-
-    const response = await fetch(url, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify({
-            contents: [
-                {
-                    parts: [
-                        {
-                            inline_data: {
-                                mime_type: mimeType,
-                                data: base64,
-                            },
-                        },
-                        {
-                            text: prompt,
-                        },
-                    ],
-                },
-            ],
-            generationConfig: {
-                temperature: 0.2,
-                maxOutputTokens: 4096,
-            },
-        }),
+    const ai = createAiClient();
+    const result = await ai.generateText({
+        userPrompt: prompt,
+        images: [{ mimeType, data: base64 }],
+        temperature: 0.2,
+        maxTokens: 4096,
     });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        logger.error("ImageParser", "Erro na API Gemini", { status: response.status, error: errorText });
-        throw new Error(`Erro na API Gemini: ${response.status} - ${errorText.slice(0, 200)}`);
-    }
-
-    const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const text = result.text;
 
     if (!text) {
         throw new Error("Resposta vazia da API Gemini.");
     }
 
-    logger.debug("ImageParser", "Resposta Gemini recebida", text.slice(0, 300));
+    logger.debug("ImageParser", "Resposta de IA recebida", text.slice(0, 300));
 
     // Extrair JSON da resposta (remover ```json ... ``` se presente)
     let jsonStr = text.trim();
