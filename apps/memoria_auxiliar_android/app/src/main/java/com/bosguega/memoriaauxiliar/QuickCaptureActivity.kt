@@ -11,13 +11,14 @@ import com.bosguega.memoriaauxiliar.data.PendingMemoryStore
 /**
  * Captura rápida aberta pelo widget: digitar -> salvar -> fechar.
  *
- * Entrada alternativa para a mesma PendingMemoryStore do app — sem tags
- * (v1), sem sincronização e sem conhecimento do PC. Na falha de gravação
+ * Entrada alternativa para a mesma PendingMemoryStore do app, com tags
+ * opcionais. Sem sincronização e sem conhecimento do PC. Na falha de gravação
  * o texto é mantido e o diálogo não fecha, para nada se perder.
  */
 class QuickCaptureActivity : Activity() {
 
     private lateinit var contentInput: EditText
+    private lateinit var tagsInput: EditText
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,6 +27,7 @@ class QuickCaptureActivity : Activity() {
         PendingMemoryStore.init(this)
 
         contentInput = findViewById(R.id.quickContentInput)
+        tagsInput = findViewById(R.id.quickTagsInput)
         findViewById<Button>(R.id.quickSaveButton).setOnClickListener { saveAndClose() }
     }
 
@@ -36,7 +38,8 @@ class QuickCaptureActivity : Activity() {
             return
         }
 
-        val saved = PendingMemoryStore.add(PendingMemory.create(content = content))
+        val tags = tagsInput.text.toString().trim()
+        val saved = PendingMemoryStore.add(PendingMemory.create(content = content, tags = tags))
         if (saved) {
             Toast.makeText(this, "✓ Memória salva.", Toast.LENGTH_SHORT).show()
             finish()

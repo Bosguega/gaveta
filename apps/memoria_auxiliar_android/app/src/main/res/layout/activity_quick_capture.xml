@@ -23,11 +23,20 @@
         android:inputType="textMultiLine|textCapSentences"
         android:minLines="3" />
 
+    <EditText
+        android:id="@+id/quickTagsInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="Tags (ex.: trabalho ideia)"
+        android:importantForAutofill="no"
+        android:inputType="text" />
+
     <Button
         android:id="@+id/quickSaveButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:text="Salvar" />
+        android:text="Salvar memória" />
 
 </LinearLayout>
