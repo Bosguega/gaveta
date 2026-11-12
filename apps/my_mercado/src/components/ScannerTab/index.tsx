@@ -145,27 +145,16 @@ function ScannerTab() {
       event.target.value = "";
       if (!file) return;
 
-      const toastId = notify.loading('Extraindo dados da imagem com IA...');
+      const scannerStore = useScannerStore.getState();
+      scannerStore.setLoadingStep(null);
+      scannerStore.setLoading(true);
 
       try {
         const { parseReceiptFromImage } = await import('../../services/imageReceiptParser');
         const result = await parseReceiptFromImage(file);
 
-        // Feedback de confiança
-        const confidenceMessages: Record<string, string> = {
-          alta: 'Alta confiança na leitura.',
-          media: 'Confiança média — revise os dados antes de salvar.',
-          baixa: 'Confiança baixa — a imagem pode estar ilegível, revise cuidadosamente.',
-        };
-
-        const confMessage = confidenceMessages[result.confidence] || '';
-        if (result.confidence === 'alta') {
-          notify.success(`Nota identificada! ${confMessage}`);
-        } else if (result.confidence === 'media') {
-          notify.warning(`Nota identificada com ressalvas. ${confMessage}`);
-        } else {
-          notify.warning(`Leitura com baixa confiabilidade. ${confMessage}`);
-        }
+        // A IA terminou; agora a aplicação organiza os produtos reconhecidos.
+        useScannerStore.getState().setLoadingStep("verifying_dict");
 
         // Passar os itens pela pipeline de normalização (consulta/alimenta o dicionário de produtos)
         const { processItemsPipeline } = await import('../../services/productService');
@@ -191,12 +180,28 @@ function ScannerTab() {
 
         // Atualiza o receipt processado no estado
         setCurrentReceipt(processedReceipt);
+
+        // Confirma a leitura somente depois que a normalização também terminou.
+        const confidenceMessages: Record<string, string> = {
+          alta: 'Alta confiança na leitura.',
+          media: 'Confiança média — revise os dados antes de salvar.',
+          baixa: 'Confiança baixa — a imagem pode estar ilegível, revise cuidadosamente.',
+        };
+        const confMessage = confidenceMessages[result.confidence] || '';
+        if (result.confidence === 'alta') {
+          notify.success(`Nota identificada! ${confMessage}`);
+        } else if (result.confidence === 'media') {
+          notify.warning(`Nota identificada com ressalvas. ${confMessage}`);
+        } else {
+          notify.warning(`Leitura com baixa confiabilidade. ${confMessage}`);
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Erro desconhecido';
         logger.error('ScannerTab', 'Erro ao processar imagem com IA', err);
         notify.error(`Erro ao processar imagem: ${message}`);
       } finally {
-        notify.dismiss(toastId);
+        useScannerStore.getState().setLoading(false);
+        useScannerStore.getState().setLoadingStep(null);
       }
     },
     [setCurrentReceipt]
@@ -369,7 +374,7 @@ function ScannerTab() {
 
       {/* Tela de Loading */}
       {!manualMode && !currentReceipt && isLoading && (
-        <LoadingScreen step={loadingStep} />
+        <LoadingScreen message="Analisando imagem com IA..." step={loadingStep} />
       )}
 
       {/* Modal de Duplicata */}
