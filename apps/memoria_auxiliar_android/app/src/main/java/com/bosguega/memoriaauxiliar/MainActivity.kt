@@ -27,6 +27,7 @@ class MainActivity : Activity() {
     private lateinit var contentInput: EditText
     private lateinit var tagsInput: EditText
     private lateinit var hostInput: EditText
+    private lateinit var portInput: EditText
     private lateinit var tokenInput: EditText
     private lateinit var syncButton: Button
     private lateinit var pendingTitle: TextView
@@ -41,6 +42,7 @@ class MainActivity : Activity() {
         contentInput = findViewById(R.id.contentInput)
         tagsInput = findViewById(R.id.tagsInput)
         hostInput = findViewById(R.id.hostInput)
+        portInput = findViewById(R.id.portInput)
         tokenInput = findViewById(R.id.tokenInput)
         syncButton = findViewById(R.id.syncButton)
         pendingTitle = findViewById(R.id.pendingTitle)
@@ -48,7 +50,10 @@ class MainActivity : Activity() {
 
         SyncConfig.load(this)?.let {
             hostInput.setText(it.host)
+            portInput.setText(it.port.toString())
             tokenInput.setText(it.token)
+        } ?: run {
+            portInput.setText(SyncConfig.DEFAULT_PORT.toString())
         }
 
         findViewById<Button>(R.id.saveButton).setOnClickListener { saveMemory() }
@@ -102,9 +107,15 @@ class MainActivity : Activity() {
      */
     private fun syncNow() {
         val host = hostInput.text.toString().trim()
+        val port = portInput.text.toString().trim().toIntOrNull()
         val token = tokenInput.text.toString().trim()
+
         if (host.isEmpty() || token.isEmpty()) {
             Toast.makeText(this, "Informe o IP do PC e o token.", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (port == null || port !in 1..65535) {
+            Toast.makeText(this, "Informe uma porta válida (1 a 65535).", Toast.LENGTH_LONG).show()
             return
         }
 
@@ -114,11 +125,11 @@ class MainActivity : Activity() {
             return
         }
 
-        SyncConfig.save(this, host, SyncConfig.DEFAULT_PORT, token)
+        SyncConfig.save(this, host, port, token)
         syncButton.isEnabled = false
 
         Thread {
-            val result = SyncClient.push(host, SyncConfig.DEFAULT_PORT, token, pending)
+            val result = SyncClient.push(host, port, token, pending)
             runOnUiThread {
                 syncButton.isEnabled = true
                 when (result) {
