@@ -8,8 +8,9 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
+use uuid::Uuid;
 
 pub struct DbState(pub Arc<Mutex<Connection>>);
 
@@ -264,13 +265,17 @@ fn ensure_embedding_cache_schema(connection: &Connection) -> Result<(), String> 
     let has_profile_columns = {
         let mut statement = connection
             .prepare("PRAGMA table_info(embedding_cache)")
-            .map_err(|error| format!("Nao foi possivel inspecionar o cache de embeddings: {error}"))?;
+            .map_err(|error| {
+                format!("Nao foi possivel inspecionar o cache de embeddings: {error}")
+            })?;
         let rows = statement
             .query_map([], |row| row.get::<_, String>(1))
-            .map_err(|error| format!("Nao foi possivel inspecionar o cache de embeddings: {error}"))?;
-        let names = rows
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| format!("Nao foi possivel inspecionar o cache de embeddings: {error}"))?;
+            .map_err(|error| {
+                format!("Nao foi possivel inspecionar o cache de embeddings: {error}")
+            })?;
+        let names = rows.collect::<Result<Vec<_>, _>>().map_err(|error| {
+            format!("Nao foi possivel inspecionar o cache de embeddings: {error}")
+        })?;
         names.iter().any(|name| name == "version")
     };
 
@@ -481,20 +486,18 @@ fn handle_sync_batch(
     (accepted, inserted)
 }
 
-/// Token de sincronização: usa o configurado (sync_token) ou gera um na
-/// primeira vez e persiste. Comparação simples de igualdade basta para a
-/// LAN de um único usuário — nada de framework de auth.
+/// Token de sincronização: usa o configurado (sync_token) ou gera um UUID v4
+/// criptograficamente aleatório na primeira execução e persiste. O token é
+/// enviado em HTTP puro: use a sincronização somente em uma rede local confiável.
 fn ensure_sync_token(config: &mut HashMap<String, String>) -> String {
     if let Some(token) = config.get(SYNC_TOKEN_KEY) {
         if !token.trim().is_empty() {
             return token.clone();
         }
     }
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let token = format!("{:x}-{:x}", nanos, std::process::id());
+    // UUID v4 usa aleatoriedade criptográfica do sistema operacional.
+    // O token antigo baseado em horário + PID era previsível.
+    let token = Uuid::new_v4().simple().to_string();
     config.insert(SYNC_TOKEN_KEY.to_string(), token.clone());
     token
 }
@@ -518,52 +521,101 @@ fn sync_response(status: &str, body: &str) -> Vec<u8> {
 fn read_sync_request(
     stream: &mut std::net::TcpStream,
 ) -> Option<(String, HashMap<String, String>, Vec<u8>)> {
+    // Uma conexão incompleta não pode manter a thread de sincronização presa
+    // indefinidamente. O limite de cabeçalhos e de corpo também é aplicado.
+    stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
+
+    const MAX_HEADER_BYTES: usize = 8 * 1024;
     let mut buffer = Vec::new();
     let mut chunk = [0u8; 4096];
-    // Lê até o fim dos headers; o corpo vem em seguida pelo Content-Length.
+
     loop {
+        if buffer.len() > MAX_HEADER_BYTES {
+            return None;
+        }
         match stream.read(&mut chunk) {
             Ok(0) => break,
             Ok(n) => {
                 buffer.extend_from_slice(&chunk[..n]);
-                if buffer.len() > SYNC_MAX_BODY_BYTES + 8192 {
-                    return None;
-                }
-                if buffer.windows(4).any(|w| w == b"\r\n\r\n") {
+                if let Some(end) = buffer.windows(4).position(|w| w == b"\r\n\r\n") {
+                    if end > MAX_HEADER_BYTES {
+                        return None;
+                    }
                     break;
                 }
             }
             Err(_) => return None,
         }
     }
+
     let header_end = buffer.windows(4).position(|w| w == b"\r\n\r\n")?;
-    let header_text = String::from_utf8_lossy(&buffer[..header_end]).to_string();
+    if header_end > MAX_HEADER_BYTES {
+        return None;
+    }
+
+    let header_text = std::str::from_utf8(&buffer[..header_end]).ok()?;
     let mut lines = header_text.lines();
-    let request_line = lines.next().unwrap_or_default().to_string();
+    let request_line = lines.next()?.to_string();
+    let mut request_parts = request_line.split_whitespace();
+    let method = request_parts.next()?;
+    let path = request_parts.next()?;
+    let version = request_parts.next()?;
+    if request_parts.next().is_some()
+        || !matches!(version, "HTTP/1.0" | "HTTP/1.1")
+        || !path.starts_with('/')
+        || method.is_empty()
+    {
+        return None;
+    }
+
     let mut headers = HashMap::new();
     for line in lines {
-        if let Some((name, value)) = line.split_once(':') {
-            headers.insert(name.trim().to_lowercase(), value.trim().to_string());
+        let (name, value) = line.split_once(':')?;
+        let name = name.trim().to_ascii_lowercase();
+        if name.is_empty()
+            || !name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            || headers.contains_key(&name)
+        {
+            return None;
         }
+        headers.insert(name, value.trim().to_string());
     }
-    let content_length: usize = headers
-        .get("content-length")
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(0);
+
+    // O servidor implementa somente Content-Length; rejeita transferências
+    // chunked e comprimentos inválidos em vez de interpretar parcialmente.
+    if headers.contains_key("transfer-encoding") {
+        return None;
+    }
+    let content_length = match headers.get("content-length") {
+        Some(value) => value.parse::<usize>().ok()?,
+        None => 0,
+    };
     if content_length > SYNC_MAX_BODY_BYTES {
         return None;
     }
+
     let mut body = buffer[header_end + 4..].to_vec();
+    if body.len() > content_length {
+        return None;
+    }
     while body.len() < content_length {
         match stream.read(&mut chunk) {
             Ok(0) => break,
-            Ok(n) => body.extend_from_slice(&chunk[..n]),
+            Ok(n) => {
+                body.extend_from_slice(&chunk[..n]);
+                if body.len() > content_length {
+                    return None;
+                }
+            }
             Err(_) => return None,
         }
     }
     if body.len() != content_length {
         return None;
     }
+
     Some((request_line, headers, body))
 }
 
@@ -581,6 +633,7 @@ fn handle_sync_connection(
     token: &str,
     notify_new_notes: &SyncNotifier,
 ) {
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
     let response = match read_sync_request(&mut stream) {
         Some((request_line, headers, body)) => {
             let mut parts = request_line.split_whitespace();
@@ -634,7 +687,7 @@ fn handle_sync_connection(
     let _ = stream.write_all(&response);
 }
 
-/// Servidor HTTP de sincronização: std::net puro, sem dependência nova.
+/// Servidor HTTP de sincronização: std::net puro, sem framework HTTP novo.
 ///
 /// Por que sem biblioteca (reqwest já existe, mas é cliente; nada no
 /// Cargo.toml serve HTTP): o contrato é um POST + um GET com Bearer. Um
@@ -648,12 +701,7 @@ fn handle_sync_connection(
 /// AppHandle é Send + Sync por desenho do Tauri (padrão já usado no monorepo:
 /// comfyui-scanner e midi_mp3_converter emitem de threads de trabalho).
 /// Limitação consciente: sync funciona com o app desktop aberto.
-fn spawn_sync_server(
-    db: Arc<Mutex<Connection>>,
-    port: u16,
-    token: String,
-    app: AppHandle,
-) {
+fn spawn_sync_server(db: Arc<Mutex<Connection>>, port: u16, token: String, app: AppHandle) {
     thread::spawn(move || {
         let listener = match bind_sync_listener(port) {
             Ok(listener) => listener,
@@ -915,7 +963,10 @@ fn import_notes_json(state: tauri::State<DbState>, json_data: String) -> Result<
 }
 
 #[tauri::command]
-fn get_cached_embedding(state: tauri::State<DbState>, hash: String) -> Result<Option<String>, String> {
+fn get_cached_embedding(
+    state: tauri::State<DbState>,
+    hash: String,
+) -> Result<Option<String>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let mut statement = conn
         .prepare("SELECT embedding FROM embedding_cache WHERE hash = ?1")
@@ -1312,8 +1363,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            let conn = open_and_migrate_database(app.handle())
-                .expect("Falha ao abrir e migrar SQLite");
+            let conn =
+                open_and_migrate_database(app.handle()).expect("Falha ao abrir e migrar SQLite");
             let db = Arc::new(Mutex::new(conn));
             app.manage(DbState(db.clone()));
             app.manage(ServerState::default());
@@ -1688,7 +1739,8 @@ mod tests {
 
         let mut config = HashMap::new();
         let first = ensure_sync_token(&mut config);
-        assert!(!first.trim().is_empty());
+        assert_eq!(first.len(), 32);
+        assert!(first.bytes().all(|byte| byte.is_ascii_hexdigit()));
         let second = ensure_sync_token(&mut config);
         assert_eq!(first, second);
     }
@@ -1726,9 +1778,7 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         let thread_db = db.clone();
         let thread_token = token.clone();
-        thread::spawn(move || {
-            serve_sync_connections(listener, &thread_db, &thread_token, &notify)
-        });
+        thread::spawn(move || serve_sync_connections(listener, &thread_db, &thread_token, &notify));
         (addr, db, token)
     }
 
@@ -1757,6 +1807,36 @@ mod tests {
         let mut response = Vec::new();
         stream.read_to_end(&mut response).unwrap();
         String::from_utf8(response).unwrap()
+    }
+
+    #[test]
+    fn sync_e2e_rejects_malformed_http_headers() {
+        let (addr, _, token) = sync_e2e_server();
+        let mut stream = std::net::TcpStream::connect(addr).unwrap();
+        let request = format!(
+            "POST /memories HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {token}\r\nContent-Length: invalid\r\n\r\n{{}}"
+        );
+        stream.write_all(request.as_bytes()).unwrap();
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).unwrap();
+        assert!(String::from_utf8(response)
+            .unwrap()
+            .starts_with("HTTP/1.1 400"));
+    }
+
+    #[test]
+    fn sync_e2e_rejects_chunked_transfer_encoding() {
+        let (addr, _, token) = sync_e2e_server();
+        let mut stream = std::net::TcpStream::connect(addr).unwrap();
+        let request = format!(
+            "POST /memories HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {token}\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n"
+        );
+        stream.write_all(request.as_bytes()).unwrap();
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).unwrap();
+        assert!(String::from_utf8(response)
+            .unwrap()
+            .starts_with("HTTP/1.1 400"));
     }
 
     #[test]

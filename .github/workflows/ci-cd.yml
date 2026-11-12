@@ -76,10 +76,73 @@ jobs:
         with:
           path: apps/my_mercado/dist
 
+  rust:
+    name: CI - Rust (Memoria Auxiliar)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            librsvg2-dev \
+            libayatana-appindicator3-dev
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Prepare Tauri frontendDist for Rust tests
+        run: |
+          mkdir -p apps/memoria_auxiliar/dist
+          printf '<!doctype html><html><body>Rust test placeholder</body></html>' > apps/memoria_auxiliar/dist/index.html
+
+      - name: Prepare Tauri assets for Rust tests
+        run: |
+          mkdir -p apps/memoria_auxiliar/src-tauri/icons
+          python3 - <<'PY'
+          import struct
+          import zlib
+
+          def chunk(kind, data):
+              return (
+                  struct.pack(">I", len(data))
+                  + kind
+                  + data
+                  + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+              )
+
+          png = (
+              b"\x89PNG\r\n\x1a\n"
+              + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0))
+              + chunk(b"IDAT", zlib.compress(b"\x00\x00\x00\x00\x00"))
+              + chunk(b"IEND", b"")
+          )
+          with open("apps/memoria_auxiliar/src-tauri/icons/icon.png", "wb") as icon:
+              icon.write(png)
+          PY
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path apps/memoria_auxiliar/src-tauri/Cargo.toml -- --check
+
+      - name: Test Rust backend
+        run: cargo test --manifest-path apps/memoria_auxiliar/src-tauri/Cargo.toml --locked --lib
+
   cd:
     name: CD - Deploy to GitHub Pages
     runs-on: ubuntu-latest
-    needs: ci
+    needs: [ci, rust]
     # Deploy somente a partir da main. Execuções manuais em branches servem para CI.
     if: github.ref == 'refs/heads/main'
     environment:
