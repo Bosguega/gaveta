@@ -18,6 +18,7 @@ import com.bosguega.memoriaauxiliar.data.PendingMemoryStore
 class QuickCaptureActivity : Activity() {
 
     private lateinit var contentInput: EditText
+    private lateinit var tagsInput: EditText
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,6 +27,7 @@ class QuickCaptureActivity : Activity() {
         PendingMemoryStore.init(this)
 
         contentInput = findViewById(R.id.quickContentInput)
+        tagsInput = findViewById(R.id.quickTagsInput)
         findViewById<Button>(R.id.quickSaveButton).setOnClickListener { saveAndClose() }
     }
 
@@ -36,7 +38,8 @@ class QuickCaptureActivity : Activity() {
             return
         }
 
-        val saved = PendingMemoryStore.add(PendingMemory.create(content = content))
+        val tags = tagsInput.text.toString().trim()
+        val saved = PendingMemoryStore.add(PendingMemory.create(content = content, tags = tags))
         if (saved) {
             Toast.makeText(this, "✓ Memória salva.", Toast.LENGTH_SHORT).show()
             finish()
