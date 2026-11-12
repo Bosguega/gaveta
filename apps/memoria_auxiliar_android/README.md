@@ -9,8 +9,8 @@
 ## Estado atual (etapas 1–3 + widget)
 
 - **Captura**: tela única (conteúdo + tags + salvar) e **widget** `🧠 + Memória`
-  no launcher, que abre uma captura rápida em diálogo; ambos escrevem na
-  mesma `PendingMemoryStore`.
+  no launcher, que abre uma captura rápida em diálogo; ambos permitem
+  conteúdo + tags e escrevem na mesma `PendingMemoryStore`.
 - **Persistência local**: `SharedPreferences + JSON` (`org.json`, sem
   dependências). Sobrevive a fechar/reabrir; gravação com `commit()`
   síncrono.
@@ -72,7 +72,7 @@ via `10.0.2.2`). mDNS/NSD automático é decisão futura (v2).
   `widget_memory.xml`; toque abre `QuickCaptureActivity` em tema de diálogo
   via `PendingIntent` — `RemoteViews` não permite `EditText` digitável no
   próprio widget, por isso o diálogo é a forma mais próxima e simples.
-- A captura do widget gera o mesmo UUID + `createdAt`, **sem tags** (v1),
+- A captura do widget gera o mesmo UUID + `createdAt`, aceita tags opcionais
   e mostra apenas `✓ Memória salva.` — nunca "sincronizada".
 - O widget não conhece PC, IP, token ou sincronização: é entrada
   alternativa para a mesma caixa de pendentes.
