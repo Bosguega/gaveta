@@ -13,6 +13,7 @@
 import { updateNote } from './databaseService';
 import { getEmbedding } from './embeddingService';
 import { hasValidEmbedding } from './similarityService';
+import { EMBEDDING_DIMENSIONS } from './embeddingProfile';
 import type { Note } from '../types';
 
 export interface ReindexProgress {
@@ -80,8 +81,14 @@ export async function reindexNotes(
     try {
       const embedding = await deps.getEmbedding(note.content);
 
-      if (!Array.isArray(embedding) || embedding.length === 0) {
-        throw new Error('O serviço de embeddings retornou um vetor vazio.');
+      if (
+        !Array.isArray(embedding) ||
+        embedding.length !== EMBEDDING_DIMENSIONS ||
+        !embedding.every((value) => typeof value === 'number' && Number.isFinite(value))
+      ) {
+        throw new Error(
+          `O serviço de embeddings retornou um vetor inválido; esperado: ${EMBEDDING_DIMENSIONS} dimensões numéricas finitas.`,
+        );
       }
 
       // Persistência só ocorre após obter o vetor: erro de rede nunca
