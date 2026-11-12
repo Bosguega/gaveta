@@ -12,6 +12,7 @@ import type { SearchFilters } from './searchFilters';
 import type { Note } from '../types';
 
 const NOW = new Date(2025, 5, 15, 12, 0, 0); // 15/06/2025
+const VALID_EMBEDDING = JSON.stringify(Array(1024).fill(0.1));
 
 function makeNote(overrides: Partial<Note> = {}): Note {
   return {
@@ -124,12 +125,16 @@ describe('noteMatchesFilters', () => {
   });
 
   it('applies the embedding filter', () => {
-    const embedded = makeNote({ embedding: '[0.1,0.2,0.3]' });
+    const embedded = makeNote({ embedding: VALID_EMBEDDING });
     const without = makeNote({ embedding: '[]' });
     expect(noteMatchesFilters(embedded, filters({ embedding: 'with' }), NOW)).toBe(true);
     expect(noteMatchesFilters(without, filters({ embedding: 'with' }), NOW)).toBe(false);
     expect(noteMatchesFilters(without, filters({ embedding: 'without' }), NOW)).toBe(true);
     expect(noteMatchesFilters(embedded, filters({ embedding: 'without' }), NOW)).toBe(false);
+
+    const oldDimension = makeNote({ embedding: '[0.1,0.2,0.3]' });
+    expect(noteMatchesFilters(oldDimension, filters({ embedding: 'with' }), NOW)).toBe(false);
+    expect(noteMatchesFilters(oldDimension, filters({ embedding: 'without' }), NOW)).toBe(true);
   });
 
   it('combines filters with AND semantics', () => {
@@ -137,7 +142,7 @@ describe('noteMatchesFilters', () => {
       tags: 'trabalho',
       pinned: true,
       reminder_at: '2025-06-20T10:00:00.000Z',
-      embedding: '[0.1,0.2]',
+      embedding: VALID_EMBEDDING,
       created_at: '2025-06-10T09:00:00.000Z',
     });
     const combined = filters({

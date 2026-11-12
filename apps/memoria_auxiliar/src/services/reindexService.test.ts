@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Note } from '../types';
 import { reindexNotes, selectNotesToReindex } from './reindexService';
+import { EMBEDDING_DIMENSIONS } from './embeddingProfile';
+
+const validEmbedding = Array(EMBEDDING_DIMENSIONS).fill(0.5) as number[];
+const validEmbeddingJson = JSON.stringify(validEmbedding);
 
 function note(id: number, embedding: string): Note {
   return {
@@ -15,14 +19,14 @@ function note(id: number, embedding: string): Note {
 }
 
 const okDeps = () => ({
-  getEmbedding: vi.fn(async () => [0.5, 0.5]),
+  getEmbedding: vi.fn(async () => validEmbedding),
   updateNote: vi.fn(async () => {}),
 });
 
 describe('selectNotesToReindex', () => {
   it('selects only notes without a valid embedding', () => {
     const selected = selectNotesToReindex([
-      note(1, '[0.1,0.2]'),
+      note(1, validEmbeddingJson),
       note(2, '[]'),
       note(3, 'nao-json'),
     ]);
@@ -39,14 +43,14 @@ describe('reindexNotes', () => {
     const result = await reindexNotes([target], deps);
 
     expect(result).toMatchObject({ total: 1, reindexed: 1, failed: 0, skipped: 0 });
-    expect(deps.updateNote).toHaveBeenCalledWith(1, 'conteudo 1', [0.5, 0.5], 'tag1', false, null);
-    expect(target.parsedEmbedding).toEqual([0.5, 0.5]);
+    expect(deps.updateNote).toHaveBeenCalledWith(1, 'conteudo 1', validEmbedding, 'tag1', false, null);
+    expect(target.parsedEmbedding).toEqual(validEmbedding);
   });
 
   it('does not touch notes that already have a valid embedding', async () => {
     const deps = okDeps();
 
-    const result = await reindexNotes([note(1, '[0.1,0.2]')], deps);
+    const result = await reindexNotes([note(1, validEmbeddingJson)], deps);
 
     expect(result).toMatchObject({ total: 0, reindexed: 0, skipped: 1 });
     expect(deps.getEmbedding).not.toHaveBeenCalled();
@@ -70,7 +74,7 @@ describe('reindexNotes', () => {
   it('continues the batch after a failure and reports progress', async () => {
     const getEmbedding = vi.fn()
       .mockRejectedValueOnce(new Error('falhou'))
-      .mockResolvedValueOnce([0.5, 0.5]);
+      .mockResolvedValueOnce(validEmbedding);
     const updateNote = vi.fn(async () => {});
     const progress: number[] = [];
 
@@ -85,8 +89,8 @@ describe('reindexNotes', () => {
     expect(progress[progress.length - 1]).toBe(2);
   });
 
-  it('does not persist an empty vector returned by the server', async () => {
-    const deps = { getEmbedding: vi.fn(async () => []), updateNote: vi.fn(async () => {}) };
+  it('does not persist a vector with the wrong dimension returned by the server', async () => {
+    const deps = { getEmbedding: vi.fn(async () => [0.1, 0.2]), updateNote: vi.fn(async () => {}) };
 
     const result = await reindexNotes([note(1, '[]')], deps);
 

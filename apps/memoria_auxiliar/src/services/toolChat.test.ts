@@ -339,6 +339,8 @@ it('trunca o resultado da busca ao entrar no historico, preservando tool_call_id
 
     const [system, user] = chat.mock.calls[0][0].messages;
     expect(system.content).toContain('ferramentas web disponiveis');
+    expect(system.content).toContain('USED_IDS: [id1, id2]');
+    expect(system.content).toContain('USED_IDS: []');
     expect(user.content).toContain('[MEMORY_ID: 7]');
     expect(user.content).toContain('nota sobre pglite');
     expect(user.content).toContain(WEB_QUESTION);
