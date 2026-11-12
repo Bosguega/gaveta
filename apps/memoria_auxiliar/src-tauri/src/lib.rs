@@ -482,9 +482,9 @@ fn handle_sync_batch(
     (accepted, inserted)
 }
 
-/// Token de sincronização: usa o configurado (sync_token) ou gera um na
-/// primeira vez e persiste. Comparação simples de igualdade basta para a
-/// LAN de um único usuário — nada de framework de auth.
+/// Token de sincronização: usa o configurado (sync_token) ou gera um UUID v4
+/// criptograficamente aleatório na primeira execução e persiste. O token é
+/// enviado em HTTP puro: use a sincronização somente em uma rede local confiável.
 fn ensure_sync_token(config: &mut HashMap<String, String>) -> String {
     if let Some(token) = config.get(SYNC_TOKEN_KEY) {
         if !token.trim().is_empty() {
@@ -683,7 +683,7 @@ fn handle_sync_connection(
     let _ = stream.write_all(&response);
 }
 
-/// Servidor HTTP de sincronização: std::net puro, sem dependência nova.
+/// Servidor HTTP de sincronização: std::net puro, sem framework HTTP novo.
 ///
 /// Por que sem biblioteca (reqwest já existe, mas é cliente; nada no
 /// Cargo.toml serve HTTP): o contrato é um POST + um GET com Bearer. Um
