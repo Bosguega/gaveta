@@ -46,5 +46,9 @@ export function l2Normalize(embedding: number[]): number[] {
 
 /** Indica se o vetor é compatível com o perfil ativo. */
 export function matchesProfile(embedding: number[], profile: EmbeddingProfile): boolean {
-  return Array.isArray(embedding) && embedding.length === profile.dimensions;
+  return (
+    Array.isArray(embedding) &&
+    embedding.length === profile.dimensions &&
+    embedding.every((value) => typeof value === 'number' && Number.isFinite(value))
+  );
 }
