@@ -9,8 +9,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use uuid::Uuid;
 use tauri::{AppHandle, Emitter, Manager};
+use uuid::Uuid;
 
 pub struct DbState(pub Arc<Mutex<Connection>>);
 
@@ -265,13 +265,17 @@ fn ensure_embedding_cache_schema(connection: &Connection) -> Result<(), String> 
     let has_profile_columns = {
         let mut statement = connection
             .prepare("PRAGMA table_info(embedding_cache)")
-            .map_err(|error| format!("Nao foi possivel inspecionar o cache de embeddings: {error}"))?;
+            .map_err(|error| {
+                format!("Nao foi possivel inspecionar o cache de embeddings: {error}")
+            })?;
         let rows = statement
             .query_map([], |row| row.get::<_, String>(1))
-            .map_err(|error| format!("Nao foi possivel inspecionar o cache de embeddings: {error}"))?;
-        let names = rows
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| format!("Nao foi possivel inspecionar o cache de embeddings: {error}"))?;
+            .map_err(|error| {
+                format!("Nao foi possivel inspecionar o cache de embeddings: {error}")
+            })?;
+        let names = rows.collect::<Result<Vec<_>, _>>().map_err(|error| {
+            format!("Nao foi possivel inspecionar o cache de embeddings: {error}")
+        })?;
         names.iter().any(|name| name == "version")
     };
 
@@ -519,9 +523,7 @@ fn read_sync_request(
 ) -> Option<(String, HashMap<String, String>, Vec<u8>)> {
     // Uma conexão incompleta não pode manter a thread de sincronização presa
     // indefinidamente. O limite de cabeçalhos e de corpo também é aplicado.
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .ok()?;
+    stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
 
     const MAX_HEADER_BYTES: usize = 8 * 1024;
     let mut buffer = Vec::new();
@@ -571,7 +573,9 @@ fn read_sync_request(
         let (name, value) = line.split_once(':')?;
         let name = name.trim().to_ascii_lowercase();
         if name.is_empty()
-            || !name.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            || !name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
             || headers.contains_key(&name)
         {
             return None;
@@ -697,12 +701,7 @@ fn handle_sync_connection(
 /// AppHandle é Send + Sync por desenho do Tauri (padrão já usado no monorepo:
 /// comfyui-scanner e midi_mp3_converter emitem de threads de trabalho).
 /// Limitação consciente: sync funciona com o app desktop aberto.
-fn spawn_sync_server(
-    db: Arc<Mutex<Connection>>,
-    port: u16,
-    token: String,
-    app: AppHandle,
-) {
+fn spawn_sync_server(db: Arc<Mutex<Connection>>, port: u16, token: String, app: AppHandle) {
     thread::spawn(move || {
         let listener = match bind_sync_listener(port) {
             Ok(listener) => listener,
@@ -964,7 +963,10 @@ fn import_notes_json(state: tauri::State<DbState>, json_data: String) -> Result<
 }
 
 #[tauri::command]
-fn get_cached_embedding(state: tauri::State<DbState>, hash: String) -> Result<Option<String>, String> {
+fn get_cached_embedding(
+    state: tauri::State<DbState>,
+    hash: String,
+) -> Result<Option<String>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let mut statement = conn
         .prepare("SELECT embedding FROM embedding_cache WHERE hash = ?1")
@@ -1361,8 +1363,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            let conn = open_and_migrate_database(app.handle())
-                .expect("Falha ao abrir e migrar SQLite");
+            let conn =
+                open_and_migrate_database(app.handle()).expect("Falha ao abrir e migrar SQLite");
             let db = Arc::new(Mutex::new(conn));
             app.manage(DbState(db.clone()));
             app.manage(ServerState::default());
@@ -1776,9 +1778,7 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         let thread_db = db.clone();
         let thread_token = token.clone();
-        thread::spawn(move || {
-            serve_sync_connections(listener, &thread_db, &thread_token, &notify)
-        });
+        thread::spawn(move || serve_sync_connections(listener, &thread_db, &thread_token, &notify));
         (addr, db, token)
     }
 
@@ -1819,7 +1819,9 @@ mod tests {
         stream.write_all(request.as_bytes()).unwrap();
         let mut response = Vec::new();
         stream.read_to_end(&mut response).unwrap();
-        assert!(String::from_utf8(response).unwrap().starts_with("HTTP/1.1 400"));
+        assert!(String::from_utf8(response)
+            .unwrap()
+            .starts_with("HTTP/1.1 400"));
     }
 
     #[test]
