@@ -11,8 +11,8 @@ import com.bosguega.memoriaauxiliar.data.PendingMemoryStore
 /**
  * Captura rápida aberta pelo widget: digitar -> salvar -> fechar.
  *
- * Entrada alternativa para a mesma PendingMemoryStore do app — sem tags
- * (v1), sem sincronização e sem conhecimento do PC. Na falha de gravação
+ * Entrada alternativa para a mesma PendingMemoryStore do app, com tags
+ * opcionais. Sem sincronização e sem conhecimento do PC. Na falha de gravação
  * o texto é mantido e o diálogo não fecha, para nada se perder.
  */
 class QuickCaptureActivity : Activity() {
