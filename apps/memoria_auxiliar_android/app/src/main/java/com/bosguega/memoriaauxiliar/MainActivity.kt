@@ -59,6 +59,10 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.saveButton).setOnClickListener { saveMemory() }
         syncButton.setOnClickListener { syncNow() }
 
+    }
+
+    override fun onResume() {
+        super.onResume()
         refreshList()
     }
 
