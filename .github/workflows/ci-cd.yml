@@ -76,10 +76,43 @@ jobs:
         with:
           path: apps/my_mercado/dist
 
+  rust:
+    name: CI - Rust (Memoria Auxiliar)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \\
+            libwebkit2gtk-4.1-dev \\
+            build-essential \\
+            curl \\
+            wget \\
+            file \\
+            libxdo-dev \\
+            libssl-dev \\
+            librsvg2-dev \\
+            libayatana-appindicator3-dev
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path apps/memoria_auxiliar/src-tauri/Cargo.toml -- --check
+
+      - name: Test Rust backend
+        run: cargo test --manifest-path apps/memoria_auxiliar/src-tauri/Cargo.toml --locked --lib
+
   cd:
     name: CD - Deploy to GitHub Pages
     runs-on: ubuntu-latest
-    needs: ci
+    needs: [ci, rust]
     # Deploy somente a partir da main. Execuções manuais em branches servem para CI.
     if: github.ref == 'refs/heads/main'
     environment:
