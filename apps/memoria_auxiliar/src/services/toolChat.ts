@@ -58,7 +58,7 @@ const WEB_SYSTEM_PROMPT =
   '- Use apenas as memorias realmente relevantes.\n' +
   '- Ao final da resposta, inclua `USED_IDS: [id1, id2]` com somente os IDs das memorias realmente utilizadas.\n' +
   '- Se nenhuma memoria foi utilizada ou nao houver contexto de notas, escreva `USED_IDS: []`.\n' +
-  '- Nunca inclua IDs de memorias apenas recebidas, mas nao utilizadas.\\n' +
+  '- Nunca inclua IDs de memorias apenas recebidas, mas nao utilizadas.\n' +
   '\n' +
   'SOBRE PESQUISAR NA WEB:\n' +
   '- Faca poucas pesquisas e escolha consultas bem direcionadas ao que a pergunta pede.\n' +
