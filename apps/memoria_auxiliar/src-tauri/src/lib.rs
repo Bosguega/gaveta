@@ -535,7 +535,7 @@ fn read_sync_request(
             Ok(0) => break,
             Ok(n) => {
                 buffer.extend_from_slice(&chunk[..n]);
-                if let Some(end) = buffer.windows(4).position(|w| w == b"\\r\\n\\r\\n") {
+                if let Some(end) = buffer.windows(4).position(|w| w == b"\r\n\r\n") {
                     if end > MAX_HEADER_BYTES {
                         return None;
                     }
@@ -546,7 +546,7 @@ fn read_sync_request(
         }
     }
 
-    let header_end = buffer.windows(4).position(|w| w == b"\\r\\n\\r\\n")?;
+    let header_end = buffer.windows(4).position(|w| w == b"\r\n\r\n")?;
     if header_end > MAX_HEADER_BYTES {
         return None;
     }
@@ -1814,7 +1814,7 @@ mod tests {
         let (addr, _, token) = sync_e2e_server();
         let mut stream = std::net::TcpStream::connect(addr).unwrap();
         let request = format!(
-            "POST /memories HTTP/1.1\\r\\nHost: 127.0.0.1\\r\\nAuthorization: Bearer {token}\\r\\nContent-Length: invalid\\r\\n\\r\\n{{}}"
+            "POST /memories HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {token}\r\nContent-Length: invalid\r\n\r\n{{}}"
         );
         stream.write_all(request.as_bytes()).unwrap();
         let mut response = Vec::new();
@@ -1827,7 +1827,7 @@ mod tests {
         let (addr, _, token) = sync_e2e_server();
         let mut stream = std::net::TcpStream::connect(addr).unwrap();
         let request = format!(
-            "POST /memories HTTP/1.1\\r\\nHost: 127.0.0.1\\r\\nAuthorization: Bearer {token}\\r\\nTransfer-Encoding: chunked\\r\\n\\r\\n0\\r\\n\\r\\n"
+            "POST /memories HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {token}\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n"
         );
         stream.write_all(request.as_bytes()).unwrap();
         let mut response = Vec::new();
