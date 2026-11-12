@@ -1,4 +1,5 @@
 import { logger } from '../utils/logger';
+import { EMBEDDING_DIMENSIONS } from './embeddingProfile';
 import type { Note, SearchResult } from '../types';
 
 /**
@@ -42,20 +43,26 @@ function parseNoteEmbedding(note: Note): number[] | null {
     }
   }
 
-  if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
+  if (
+    !Array.isArray(embedding) ||
+    embedding.length === 0 ||
+    !embedding.every((value) => typeof value === 'number' && Number.isFinite(value))
+  ) {
     return null;
   }
 
-  return embedding;
+  return embedding as number[];
 }
 
 /**
- * Indica se a nota possui um embedding válido (vetor não vazio).
+ * Indica se a nota possui um embedding compatível com o perfil ativo.
  *
- * Usado para distinguir notas pesquisáveis de notas que precisam de reindexação.
+ * O perfil atual usa EMBEDDING_DIMENSIONS. Vetores antigos de outra dimensão,
+ * vazios ou com valores não finitos precisam ser reindexados.
  */
 export function hasValidEmbedding(note: Note): boolean {
-  return parseNoteEmbedding(note) !== null;
+  const embedding = parseNoteEmbedding(note);
+  return embedding !== null && embedding.length === EMBEDDING_DIMENSIONS;
 }
 
 /**
