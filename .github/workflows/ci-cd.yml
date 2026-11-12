@@ -111,7 +111,27 @@ jobs:
       - name: Prepare Tauri assets for Rust tests
         run: |
           mkdir -p apps/memoria_auxiliar/src-tauri/icons
-          printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC' | base64 --decode > apps/memoria_auxiliar/src-tauri/icons/icon.png
+          python3 - <<'PY'
+          import struct
+          import zlib
+
+          def chunk(kind, data):
+              return (
+                  struct.pack(">I", len(data))
+                  + kind
+                  + data
+                  + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+              )
+
+          png = (
+              b"\\x89PNG\\r\\n\\x1a\\n"
+              + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0))
+              + chunk(b"IDAT", zlib.compress(b"\\x00\\x00\\x00\\x00\\x00"))
+              + chunk(b"IEND", b"")
+          )
+          with open("apps/memoria_auxiliar/src-tauri/icons/icon.png", "wb") as icon:
+              icon.write(png)
+          PY
 
       - name: Check Rust formatting
         run: cargo fmt --manifest-path apps/memoria_auxiliar/src-tauri/Cargo.toml -- --check
