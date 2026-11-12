@@ -20,11 +20,10 @@
             </intent-filter>
         </activity>
 
-        <!-- Captura rápida do widget: tema de diálogo, invisível ao launcher,
-             não exportada (só o nosso widget a abre via PendingIntent). -->
+        <!-- Captura rápida do widget: só o próprio app a abre via PendingIntent. -->
         <activity
             android:name=".QuickCaptureActivity"
-            android:exported="true"
+            android:exported="false"
             android:theme="@android:style/Theme.Material.Light.Dialog" />
 
         <receiver
