@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, configDefaults } from 'vitest/config';
 import vue from '@vitejs/plugin-vue';
 
 export default defineConfig({
@@ -9,4 +9,7 @@ export default defineConfig({
     strictPort: true,
   },
   envPrefix: ['VITE_'],
+  test: {
+    exclude: [...configDefaults.exclude, '**/.kilo/**'],
+  },
 });
