@@ -48,6 +48,15 @@
         android:inputType="textUri" />
 
     <EditText
+        android:id="@+id/portInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="Porta (padrão: 32173)"
+        android:importantForAutofill="no"
+        android:inputType="number" />
+
+    <EditText
         android:id="@+id/tokenInput"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
