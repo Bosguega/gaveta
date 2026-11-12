@@ -103,6 +103,11 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Prepare Tauri frontendDist for Rust tests
+        run: |
+          mkdir -p apps/memoria_auxiliar/dist
+          printf '<!doctype html><html><body>Rust test placeholder</body></html>' > apps/memoria_auxiliar/dist/index.html
+
       - name: Check Rust formatting
         run: cargo fmt --manifest-path apps/memoria_auxiliar/src-tauri/Cargo.toml -- --check
 
