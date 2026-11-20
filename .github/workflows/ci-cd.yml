@@ -54,6 +54,9 @@ jobs:
       - name: Build app (memoria-auxiliar)
         run: pnpm --filter memoria-auxiliar build
 
+      - name: Build app (pdf-collection-viewer)
+        run: pnpm --filter pdf-collection-viewer build
+
       - name: Type Check (app)
         run: pnpm --filter my_mercado typecheck
 
@@ -77,7 +80,7 @@ jobs:
           path: apps/my_mercado/dist
 
   rust:
-    name: CI - Rust (Memoria Auxiliar)
+    name: CI - Rust (Tauri Apps)
     runs-on: ubuntu-latest
 
     steps:
@@ -107,6 +110,8 @@ jobs:
         run: |
           mkdir -p apps/memoria_auxiliar/dist
           printf '<!doctype html><html><body>Rust test placeholder</body></html>' > apps/memoria_auxiliar/dist/index.html
+          mkdir -p apps/pdf-collection-viewer/dist
+          printf '<!doctype html><html><body>Rust test placeholder</body></html>' > apps/pdf-collection-viewer/dist/index.html
 
       - name: Prepare Tauri assets for Rust tests
         run: |
@@ -136,8 +141,11 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --manifest-path apps/memoria_auxiliar/src-tauri/Cargo.toml -- --check
 
-      - name: Test Rust backend
+      - name: Test Rust backend (Memoria Auxiliar)
         run: cargo test --manifest-path apps/memoria_auxiliar/src-tauri/Cargo.toml --locked --lib
+
+      - name: Test Rust backend (PDF Collection Viewer)
+        run: cargo test --manifest-path apps/pdf-collection-viewer/src-tauri/Cargo.toml --locked
 
   cd:
     name: CD - Deploy to GitHub Pages
