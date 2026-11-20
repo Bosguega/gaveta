@@ -16,7 +16,9 @@
             "icons/icon.icns",
             "icons/icon.ico"
         ],
-        "resources": ["resources/pdfium.dll"]
+        "resources": [
+            "resources/pdfium.dll"
+        ]
     },
     "app": {
         "windows": [
@@ -41,7 +43,8 @@
                     "$DOCUMENT/**",
                     "$PICTURE/**"
                 ]
-            }
+            },
+            "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob:; font-src 'self' data:; connect-src ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1420; object-src 'none'; base-uri 'self'"
         }
     }
 }

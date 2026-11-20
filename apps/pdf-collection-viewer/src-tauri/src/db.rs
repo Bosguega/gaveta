@@ -1445,7 +1445,7 @@ pub fn search_content(
 
     let mut sql = String::from(
         "SELECT f.id, f.collection_id, c.name, f.path, f.filename, pc.page_number, pc.extraction_method,
-                snippet(page_content_fts, 0, '<mark>', '</mark>', '…', 12)
+                snippet(page_content_fts, 0, '\u{E000}', '\u{E001}', '…', 12)
          FROM page_content_fts
          JOIN page_content pc ON pc.id = page_content_fts.rowid
          JOIN files f ON f.id = pc.file_id
@@ -1702,6 +1702,8 @@ mod tests {
         assert_eq!(results[0].page_number, 1);
         assert_eq!(results[0].extraction_method, "native");
         assert!(results[0].snippet.contains("croche"));
+        assert!(results[0].snippet.contains('\u{E000}'));
+        assert!(results[0].snippet.contains('\u{E001}'));
 
         // Multi-term search matches the page containing both words.
         let results = search_content(&conn, "instrucoes pontos", 10, None).unwrap();

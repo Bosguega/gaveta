@@ -54,6 +54,9 @@ jobs:
       - name: Build app (memoria-auxiliar)
         run: pnpm --filter memoria-auxiliar build
 
+      - name: Test app (pdf-collection-viewer)
+        run: pnpm --filter pdf-collection-viewer test
+
       - name: Build app (pdf-collection-viewer)
         run: pnpm --filter pdf-collection-viewer build
 
