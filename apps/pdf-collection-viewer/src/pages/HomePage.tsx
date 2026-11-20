@@ -24,6 +24,7 @@ import type {
 } from '@/types';
 import { FAVORITES_COLLECTION_ID } from '@/types';
 import { formatBytes, getFileTypeLabel } from '@/utils/format';
+import { splitSearchSnippet } from '@/utils/searchSnippet';
 
 
 export function HomePage() {
@@ -484,10 +485,13 @@ export function HomePage() {
                                                 📁 {result.collection_name}
                                             </button>
                                         </div>
-                                        <p
-                                            className="text-xs text-slate-600 leading-relaxed line-clamp-2 [&_mark]:bg-violet-200 [&_mark]:rounded-sm [&_mark]:px-0.5"
-                                            dangerouslySetInnerHTML={{ __html: result.snippet }}
-                                        />
+                                        <p className="text-xs text-slate-600 leading-relaxed line-clamp-2 [&_mark]:bg-violet-200 [&_mark]:rounded-sm [&_mark]:px-0.5">
+                                            {splitSearchSnippet(result.snippet).map((part, index) =>
+                                                part.highlighted
+                                                    ? <mark key={index}>{part.text}</mark>
+                                                    : <span key={index}>{part.text}</span>
+                                            )}
+                                        </p>
                                     </div>
                                 ))}
                             </div>
