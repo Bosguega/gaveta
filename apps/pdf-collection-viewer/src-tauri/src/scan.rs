@@ -40,10 +40,10 @@ impl Reconciliation {
 
 /// Compares discovered files with the index.
 ///
-/// `protected_paths` holds roots that could not be read during this run (missing
-/// folders and directories that raised an access error). Items living under them
-/// are never reported as missing, so a transient failure cannot wipe healthy
-/// records or their favorites.
+/// `protected_paths` holds paths that could not be read during this run
+/// (missing folders, directories, or individual files). Indexed items at or
+/// under those paths are never reported as missing, so a transient failure
+/// cannot wipe healthy records or their favorites.
 ///
 /// When a collection configures nested roots the same file can be discovered
 /// more than once; the first occurrence decides and the repeats are reported as
@@ -180,6 +180,23 @@ mod tests {
         let index = vec![indexed(1, "/offline-other/gone.pdf", 1, "1")];
         let result = reconcile(&[], &index, &["/offline".to_string()]);
         assert_eq!(result.missing_ids, vec![1]);
+    }
+
+    #[test]
+    fn protects_an_individual_file_with_metadata_read_error() {
+        let index = vec![
+            indexed(1, "/a/unreadable.pdf", 1, "1"),
+            indexed(2, "/a/unreadable.pdf.backup", 1, "1"),
+            indexed(3, "/a/other.pdf", 1, "1"),
+        ];
+
+        let result = reconcile(
+            &[],
+            &index,
+            &["/a/unreadable.pdf".to_string()],
+        );
+
+        assert_eq!(result.missing_ids, vec![2, 3]);
     }
 
     #[test]
