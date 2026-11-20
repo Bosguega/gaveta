@@ -27,13 +27,13 @@ pub struct ScannedItem {
 /// itself is agnostic to content type.
 ///
 /// Returns the list of items found, whether the root path was unavailable
-/// (missing/mis-typed folder), and the list of directories that raised an
-/// access error mid-walk (e.g. permission denied).
+/// (missing/mis-typed folder), and the paths that could not be read during
+/// the walk (directories or individual files).
 ///
-/// Errors encountered while descending a subtree are collected rather than
-/// silently dropped. Callers must preserve items living under an errored
-/// directory so that a transient access failure does not wipe otherwise
-/// healthy records (including their `is_favorite` flag).
+/// Read errors are collected rather than silently dropped. Callers must
+/// preserve indexed items at or under errored paths so that a transient
+/// access failure does not wipe healthy records (including their
+/// `is_favorite` flag).
 pub fn scan_items(
     path: &str,
     include_subfolders: bool,
@@ -46,7 +46,7 @@ pub fn scan_items(
     }
 
     let mut items = Vec::new();
-    let mut errored_dirs: Vec<String> = Vec::new();
+    let mut errored_paths: Vec<String> = Vec::new();
 
     let walker = if include_subfolders {
         WalkDir::new(root).min_depth(1)
@@ -62,8 +62,8 @@ pub fn scan_items(
                     .path()
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_else(|| path.to_string());
-                if !errored_dirs.contains(&errored) {
-                    errored_dirs.push(errored);
+                if !errored_paths.contains(&errored) {
+                    errored_paths.push(errored);
                 }
                 continue;
             }
@@ -88,8 +88,17 @@ pub fn scan_items(
             continue;
         }
 
-        let Ok(metadata) = entry.metadata() else {
-            continue;
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(_) => {
+                // Keep the indexed record during reconciliation. A transient
+                // metadata failure must not look like a file deletion.
+                let errored = entry.path().to_string_lossy().to_string();
+                if !errored_paths.contains(&errored) {
+                    errored_paths.push(errored);
+                }
+                continue;
+            }
         };
 
         let modified = metadata
@@ -115,7 +124,7 @@ pub fn scan_items(
         });
     }
 
-    (items, false, errored_dirs)
+    (items, false, errored_paths)
 }
 
 /// Removes orphaned cache files that no longer correspond to any item in the database.
