@@ -1702,6 +1702,8 @@ mod tests {
         assert_eq!(results[0].page_number, 1);
         assert_eq!(results[0].extraction_method, "native");
         assert!(results[0].snippet.contains("croche"));
+        assert!(results[0].snippet.contains('\u{E000}'));
+        assert!(results[0].snippet.contains('\u{E001}'));
 
         // Multi-term search matches the page containing both words.
         let results = search_content(&conn, "instrucoes pontos", 10, None).unwrap();
