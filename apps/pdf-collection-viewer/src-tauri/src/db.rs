@@ -1445,7 +1445,7 @@ pub fn search_content(
 
     let mut sql = String::from(
         "SELECT f.id, f.collection_id, c.name, f.path, f.filename, pc.page_number, pc.extraction_method,
-                snippet(page_content_fts, 0, '<mark>', '</mark>', '…', 12)
+                snippet(page_content_fts, 0, '\u{E000}', '\u{E001}', '…', 12)
          FROM page_content_fts
          JOIN page_content pc ON pc.id = page_content_fts.rowid
          JOIN files f ON f.id = pc.file_id
