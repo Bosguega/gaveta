@@ -14,6 +14,7 @@ export { useReceiptsQuery, useInfiniteReceiptsQuery, useReceiptItemsQuery } from
 export { useSaveReceipt } from './useReceiptsQuery';
 export { useAllReceiptsQuery } from './useAllReceiptsQuery';
 export { useDeleteReceipt } from './useReceiptsQuery';
+export { useUpdateReceiptDate } from './useUpdateReceiptDate';
 export { useRestoreReceipts } from './useReceiptsQuery';
 export { receiptKeys } from './useReceiptsQuery';
 export { allReceiptsKeys } from './useAllReceiptsQuery';
