@@ -147,6 +147,7 @@ function ScannerTab() {
       if (!file) return;
 
       const scannerStore = useScannerStore.getState();
+      scannerStore.setPendingDictionaryEntries([]);
       scannerStore.setLoadingStep(null);
       scannerStore.setLoading(true);
 
