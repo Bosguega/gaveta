@@ -1,13 +1,14 @@
 import React, { useMemo, useCallback, useState } from "react";
-import { Trash2, ChevronDown, ChevronUp, Edit3, Pencil, Tag, ExternalLink } from "lucide-react";
+import { Trash2, ChevronDown, ChevronUp, Edit3, Pencil, Tag, ExternalLink, CalendarDays } from "lucide-react";
 import { parseBRL, formatBRL } from "../utils/currency";
 import { formatQuantity } from "../utils/format";
 import { calculateReceiptTotal } from "../utils/analytics";
-import { formatToBR } from "../utils/date";
+import { formatToBR, formatToInputDate } from "../utils/date";
 import type { Receipt, ReceiptItem } from "../types/domain";
 import { useEstablishmentPrefillStore } from "../stores/useEstablishmentPrefillStore";
 import { useUiStore } from "../stores/useUiStore";
 import { useUpdateItemPaidPrice } from "../hooks/queries/useUpdateItemPaidPrice";
+import { useUpdateReceiptDate } from "../hooks/queries/useUpdateReceiptDate";
 import { PriceEditModal } from "./PriceEditModal";
 import { DiscountFromPhotoModal } from "./DiscountFromPhotoModal";
 
@@ -97,6 +98,8 @@ export const ReceiptCard = React.memo(function ReceiptCard({
 }: ReceiptCardProps) {
     const setPrefillNomeNota = useEstablishmentPrefillStore((s) => s.setNomeNota);
     const setTab = useUiStore((s) => s.setTab);
+    const updateReceiptDate = useUpdateReceiptDate();
+    const [isEditingDate, setIsEditingDate] = useState(false);
 
     // Exibe establishment_display (sempre preenchido pela RPC)
     const displayEstablishment = useMemo(() => {
@@ -114,6 +117,21 @@ export const ReceiptCard = React.memo(function ReceiptCard({
         return calculateReceiptTotal(receipt, parseBRL);
     }, [receipt]);
     const displayDate = useMemo(() => formatToBR(receipt.date) || receipt.date, [receipt.date]);
+
+    const handleOpenDateEdit = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation();
+        setIsEditingDate(true);
+    }, []);
+
+    const handleDateChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        e.stopPropagation();
+        const date = e.target.value;
+        if (!date) return;
+        updateReceiptDate.mutate(
+            { receiptId: receipt.id, date },
+            { onSuccess: () => setIsEditingDate(false) },
+        );
+    }, [receipt.id, updateReceiptDate]);
 
     // Desconto da nota ainda não distribuído nos itens via paid_price
     const pendingDiscount = useMemo(() => {
@@ -182,9 +200,30 @@ export const ReceiptCard = React.memo(function ReceiptCard({
                             </button>
                         </h3>
                         <div className="flex flex-wrap gap-x-4 gap-y-1 items-center">
-                            <span className="text-slate-400 text-xs">
-                                {displayDate}
-                            </span>
+                            {isEditingDate ? (
+                                <input
+                                    type="date"
+                                    aria-label="Corrigir data da nota"
+                                    defaultValue={formatToInputDate(receipt.date)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={handleDateChange}
+                                    disabled={updateReceiptDate.isPending}
+                                    className="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200"
+                                />
+                            ) : (
+                                <span className="inline-flex items-center gap-1.5 text-slate-400 text-xs">
+                                    {displayDate}
+                                    <button
+                                        type="button"
+                                        onClick={handleOpenDateEdit}
+                                        className="inline-flex items-center justify-center text-slate-500 hover:text-slate-200"
+                                        title="Corrigir data da nota"
+                                        aria-label="Corrigir data da nota"
+                                    >
+                                        <CalendarDays size={12} />
+                                    </button>
+                                </span>
+                            )}
                             <span className="bg-blue-500/20 text-[var(--primary)] px-2 py-0.5 rounded-full text-xs">
                                 {receipt.items.length} itens
                             </span>
