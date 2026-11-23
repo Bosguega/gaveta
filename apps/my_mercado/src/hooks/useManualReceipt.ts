@@ -32,9 +32,10 @@ export function useManualReceipt() {
   }, []);
 
   const enterManualMode = useCallback(() => {
+    setPendingDictionaryEntries([]);
     setManualData(getDefaultManualData());
     setManualMode(true);
-  }, [getDefaultManualData, setManualData, setManualMode]);
+  }, [getDefaultManualData, setManualData, setManualMode, setPendingDictionaryEntries]);
 
   const handleAddManualItem = useCallback(() => {
     const qty = parseFloat(String(manualItem.qty || '1').replace(',', '.')) || 1;
@@ -174,6 +175,7 @@ export function useManualReceipt() {
     setLoading,
     setManualData,
     setManualMode,
+    setPendingDictionaryEntries,
     getDefaultManualData,
   ]);
 
