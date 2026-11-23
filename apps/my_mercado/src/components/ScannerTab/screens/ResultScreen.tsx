@@ -261,11 +261,7 @@ export function ResultScreen({
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault();
-                            handleReceiptDateTextCommit();
-                          }
-                          if (e.key === "Escape") {
-                            setReceiptDateInput(formatToBR(currentReceipt.date, false));
-                            setIsEditingReceiptDate(false);
+                            e.currentTarget.blur();
                           }
                         }}
                         autoFocus
