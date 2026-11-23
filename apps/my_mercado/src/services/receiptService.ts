@@ -356,6 +356,26 @@ export async function saveReceiptToDB(
 }
 
 /**
+ * Atualiza somente a data de compra de um recibo existente.
+ * O momento de cadastro (created_at) e os demais dados permanecem intactos.
+ */
+export async function updateReceiptDateInDB(receiptId: string, date: string): Promise<void> {
+  const { client } = await getAuthenticatedSupabaseContext();
+  const isoDate = formatToISO(date);
+  if (!isoDate) throw new Error("Data da nota inválida");
+
+  const { error } = await client.rpc("update_receipt_date", {
+    p_receipt_id: receiptId,
+    p_date: isoDate,
+  });
+
+  if (error) {
+    logger.error("ReceiptService", "Erro ao atualizar data da nota", error as unknown);
+    throw mapSupabaseError(error, "updateReceiptDate");
+  }
+}
+
+/**
  * Deleta um recibo do banco
  */
 export async function deleteReceiptFromDB(id: string): Promise<boolean> {

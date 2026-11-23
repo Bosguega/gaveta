@@ -1,8 +1,8 @@
-import { CheckCircle, ChevronDown, ChevronUp, XCircle, Loader2, Tag, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState, useMemo, useCallback } from "react";
+import { CheckCircle, ChevronDown, ChevronUp, XCircle, Loader2, Tag, Pencil, Plus, Trash2, CalendarDays } from "lucide-react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { formatBRL, parseBRL } from "../../../utils/currency";
 import { formatQuantity, parseQuantity } from "../../../utils/format";
-import { formatToBR } from "../../../utils/date";
+import { brDateToIsoDatePart, formatToBR, isValidBRDate, isoDateToBrPreservingTime, maskBRDateInput } from "../../../utils/date";
 import type { ReceiptItem } from "../../../types/domain";
 import type { ReceiptResultProps } from "../../../types/scanner";
 import { useScannerStore } from "../../../stores/useScannerStore";
@@ -19,6 +19,9 @@ export function ResultScreen({
   const [isExpanded, setIsExpanded] = useState(true);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [fullEditIndex, setFullEditIndex] = useState<number | null>(null);
+  const [isEditingReceiptDate, setIsEditingReceiptDate] = useState(false);
+  const [receiptDateInput, setReceiptDateInput] = useState(formatToBR(currentReceipt.date, false));
+  const receiptDatePickerRef = useRef<HTMLInputElement>(null);
   const setCurrentReceipt = useScannerStore((state) => state.setCurrentReceipt);
   const pendingDictionaryEntries = useScannerStore((state) => state.pendingDictionaryEntries);
 
@@ -51,6 +54,25 @@ export function ResultScreen({
   }, [currentReceipt.establishment, currentReceipt.establishment_display]);
 
   const displayDate = formatToBR(currentReceipt.date) || currentReceipt.date;
+
+  const handleReceiptDateChange = useCallback((isoDate: string) => {
+    if (!isoDate) return;
+    const updatedDate = isoDateToBrPreservingTime(isoDate, currentReceipt.date);
+    if (!updatedDate) return;
+    setCurrentReceipt((prev) => prev ? { ...prev, date: updatedDate } : null);
+    setReceiptDateInput(formatToBR(updatedDate, false));
+    setIsEditingReceiptDate(false);
+  }, [currentReceipt.date, setCurrentReceipt]);
+
+  const handleReceiptDateTextCommit = useCallback(() => {
+    if (!isValidBRDate(receiptDateInput)) {
+      setReceiptDateInput(formatToBR(currentReceipt.date, false));
+      setIsEditingReceiptDate(false);
+      return;
+    }
+    const isoDate = brDateToIsoDatePart(receiptDateInput);
+    handleReceiptDateChange(isoDate);
+  }, [currentReceipt.date, handleReceiptDateChange, receiptDateInput]);
 
   const formatItemTotal = (item: ReceiptItem) => {
     // Se o item foi editado manualmente (preço pago diferente do preço original), calculamos dinamicamente
@@ -225,8 +247,63 @@ export function ResultScreen({
                 {displayEstablishment}
               </h3>
               <div className="flex flex-wrap gap-x-4 gap-y-1 items-center">
-                <span className="text-slate-400 text-xs">
-                  {displayDate}
+                <span className="text-slate-400 text-xs inline-flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  {isEditingReceiptDate ? (
+                    <>
+                      <input
+                        type="text"
+                        aria-label="Data da nota (DD/MM/AAAA)"
+                        inputMode="numeric"
+                        placeholder="DD/MM/AAAA"
+                        value={receiptDateInput}
+                        onChange={(e) => setReceiptDateInput(maskBRDateInput(e.target.value))}
+                        onBlur={handleReceiptDateTextCommit}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        autoFocus
+                        className="w-[92px] bg-slate-800 border border-slate-600 rounded px-1.5 py-1 text-xs text-slate-200"
+                      />
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => receiptDatePickerRef.current?.showPicker?.()}
+                        className="inline-flex items-center justify-center text-amber-400 hover:text-amber-300"
+                        title="Selecionar data no calendário"
+                        aria-label="Selecionar data no calendário"
+                      >
+                        <CalendarDays size={12} />
+                      </button>
+                      <input
+                        ref={receiptDatePickerRef}
+                        type="date"
+                        aria-label="Selecionar data no calendário"
+                        value={brDateToIsoDatePart(currentReceipt.date)}
+                        onChange={(e) => handleReceiptDateChange(e.target.value)}
+                        className="sr-only"
+                        tabIndex={-1}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      {displayDate}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReceiptDateInput(formatToBR(currentReceipt.date, false));
+                          setIsEditingReceiptDate(true);
+                        }}
+                        className="inline-flex items-center justify-center text-amber-400 hover:text-amber-300"
+                        title="Corrigir data da nota"
+                        aria-label="Corrigir data da nota"
+                      >
+                        <CalendarDays size={12} />
+                      </button>
+                    </>
+                  )}
                 </span>
                 <span className="bg-blue-500/20 text-[var(--primary)] px-2 py-0.5 rounded-full text-xs">
                   {currentReceipt.items.length} itens

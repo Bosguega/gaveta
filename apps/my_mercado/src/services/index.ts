@@ -8,6 +8,7 @@ export {
     getReceiptItemsFromDB,
     restoreReceiptsToDB,
     saveReceiptToDB,
+    updateReceiptDateInDB,
     deleteReceiptFromDB,
     clearReceiptsAndItemsFromDB,
 } from "./receiptService";
