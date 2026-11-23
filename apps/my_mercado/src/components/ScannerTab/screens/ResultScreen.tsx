@@ -235,6 +235,7 @@ export function ResultScreen({
                 <span className="text-slate-400 text-xs inline-flex items-center gap-1.5">
                   {displayDate}
                   <label
+                    onClick={(e) => e.stopPropagation()}
                     className="inline-flex items-center justify-center text-slate-500 hover:text-slate-200 cursor-pointer"
                     title="Corrigir data da nota"
                   >
