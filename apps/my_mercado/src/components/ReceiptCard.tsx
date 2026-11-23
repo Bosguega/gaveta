@@ -232,11 +232,7 @@ export const ReceiptCard = React.memo(function ReceiptCard({
                                         onKeyDown={(e) => {
                                             if (e.key === "Enter") {
                                                 e.preventDefault();
-                                                handleDateTextCommit();
-                                            }
-                                            if (e.key === "Escape") {
-                                                setDateInput(formatToBR(receipt.date, false));
-                                                setIsEditingDate(false);
+                                                e.currentTarget.blur();
                                             }
                                         }}
                                         autoFocus
