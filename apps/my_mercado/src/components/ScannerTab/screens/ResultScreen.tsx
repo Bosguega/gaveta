@@ -1,8 +1,8 @@
-import { CheckCircle, ChevronDown, ChevronUp, XCircle, Loader2, Tag, Pencil, Plus, Trash2 } from "lucide-react";
+import { CheckCircle, ChevronDown, ChevronUp, XCircle, Loader2, Tag, Pencil, Plus, Trash2, CalendarDays } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import { formatBRL, parseBRL } from "../../../utils/currency";
 import { formatQuantity, parseQuantity } from "../../../utils/format";
-import { formatToBR } from "../../../utils/date";
+import { brDateToIsoDatePart, formatToBR, isoDateToBrPreservingTime } from "../../../utils/date";
 import type { ReceiptItem } from "../../../types/domain";
 import type { ReceiptResultProps } from "../../../types/scanner";
 import { useScannerStore } from "../../../stores/useScannerStore";
@@ -51,6 +51,13 @@ export function ResultScreen({
   }, [currentReceipt.establishment, currentReceipt.establishment_display]);
 
   const displayDate = formatToBR(currentReceipt.date) || currentReceipt.date;
+
+  const handleReceiptDateChange = useCallback((isoDate: string) => {
+    if (!isoDate) return;
+    const updatedDate = isoDateToBrPreservingTime(isoDate, currentReceipt.date);
+    if (!updatedDate) return;
+    setCurrentReceipt((prev) => prev ? { ...prev, date: updatedDate } : null);
+  }, [currentReceipt.date, setCurrentReceipt]);
 
   const formatItemTotal = (item: ReceiptItem) => {
     // Se o item foi editado manualmente (preço pago diferente do preço original), calculamos dinamicamente
@@ -225,8 +232,21 @@ export function ResultScreen({
                 {displayEstablishment}
               </h3>
               <div className="flex flex-wrap gap-x-4 gap-y-1 items-center">
-                <span className="text-slate-400 text-xs">
+                <span className="text-slate-400 text-xs inline-flex items-center gap-1.5">
                   {displayDate}
+                  <label
+                    className="inline-flex items-center justify-center text-slate-500 hover:text-slate-200 cursor-pointer"
+                    title="Corrigir data da nota"
+                  >
+                    <CalendarDays size={12} />
+                    <input
+                      type="date"
+                      aria-label="Corrigir data da nota"
+                      value={brDateToIsoDatePart(currentReceipt.date)}
+                      onChange={(e) => handleReceiptDateChange(e.target.value)}
+                      className="sr-only"
+                    />
+                  </label>
                 </span>
                 <span className="bg-blue-500/20 text-[var(--primary)] px-2 py-0.5 rounded-full text-xs">
                   {currentReceipt.items.length} itens
