@@ -20,6 +20,17 @@ export function ResultScreen({
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [fullEditIndex, setFullEditIndex] = useState<number | null>(null);
   const setCurrentReceipt = useScannerStore((state) => state.setCurrentReceipt);
+  const pendingDictionaryEntries = useScannerStore((state) => state.pendingDictionaryEntries);
+
+  const pendingDictionaryKeys = useMemo(
+    () => new Set(pendingDictionaryEntries.map((entry) => entry.key)),
+    [pendingDictionaryEntries],
+  );
+
+  const hasPendingDictionaryItems = useMemo(
+    () => currentReceipt.items.some((item) => item.normalized_key && pendingDictionaryKeys.has(item.normalized_key)),
+    [currentReceipt.items, pendingDictionaryKeys],
+  );
 
   // Edição completa (nome/qtd/preço) e adicionar/remover estão disponíveis
   // para galeria e para notas coladas por texto.
@@ -237,69 +248,88 @@ export function ResultScreen({
         {/* Lista de itens expandida */}
         {isExpanded && (
           <div className="bg-slate-900/30 p-4 max-h-[300px] overflow-y-auto">
-            {currentReceipt.items.map((item: ReceiptItem, idx: number) => (
-              <div
-                key={idx}
-                className={`flex justify-between py-2.5 ${idx === currentReceipt.items.length - 1 ? "" : "border-b border-white/5"}`}
-              >
-                <div className="flex-1">
-                  <div className="text-sm text-slate-200 font-medium flex items-center gap-2">
-                    {item.normalized_name || item.name}
-                    {item.category && (
-                      <span className="text-[0.65rem] bg-white/10 px-1.5 py-px rounded text-slate-400 font-normal">
-                        {item.category}
-                      </span>
+            {hasPendingDictionaryItems && (
+              <div className="flex items-center gap-1.5 text-[0.65rem] text-slate-500 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-400" aria-hidden="true" />
+                Produto novo — será adicionado ao dicionário ao salvar
+              </div>
+            )}
+            {currentReceipt.items.map((item: ReceiptItem, idx: number) => {
+              const isPendingDictionaryEntry = Boolean(
+                item.normalized_key && pendingDictionaryKeys.has(item.normalized_key),
+              );
+
+              return (
+                <div
+                  key={idx}
+                  className={`flex justify-between py-2.5 ${idx === currentReceipt.items.length - 1 ? "" : "border-b border-white/5"}`}
+                >
+                  <div className="flex-1">
+                    <div className="text-sm text-slate-200 font-medium flex items-center gap-2">
+                      {item.normalized_name || item.name}
+                      {isPendingDictionaryEntry && (
+                        <span
+                          className="inline-block w-1.5 h-1.5 rounded-full bg-sky-400 flex-shrink-0"
+                          title="Produto novo — será adicionado ao dicionário ao salvar"
+                          aria-label="Produto novo — será adicionado ao dicionário ao salvar"
+                        />
+                      )}
+                      {item.category && (
+                        <span className="text-[0.65rem] bg-white/10 px-1.5 py-px rounded text-slate-400 font-normal">
+                          {item.category}
+                        </span>
+                      )}
+                    </div>
+                    <div className={`text-xs text-slate-500 ${item.normalized_name ? "italic" : "not-italic"}`}>
+                      {item.normalized_name
+                        ? `${formatQuantity(item.quantity)} x R$ ${formatBRL(item.paid_price ?? item.price)}`
+                        : `${formatQuantity(item.quantity)} x R$ ${formatBRL(item.paid_price ?? item.price)}`}
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0 ml-2 flex items-center gap-1.5">
+                    {item.paid_price !== undefined && item.paid_price !== null && item.paid_price < item.price ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-slate-500 line-through text-xs">
+                          R$ {formatBRL(item.price * (item.quantity ?? 1))}
+                        </span>
+                        <span className="text-[var(--success)] font-semibold text-sm">
+                          R$ {formatItemTotal(item)}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="text-slate-300 font-semibold text-sm">
+                        R$ {formatItemTotal(item)}
+                      </div>
+                    )}
+                    <button
+                      onClick={(e) => handleStartEdit(e, idx)}
+                      className="bg-slate-700/50 border-none rounded w-5 h-5 flex items-center justify-center text-slate-400 cursor-pointer hover:text-slate-200 hover:bg-slate-700 flex-shrink-0"
+                      title="Editar preço pago (desconto)"
+                    >
+                      <Tag size={10} />
+                    </button>
+                    {allowFullEdit && (
+                      <>
+                        <button
+                          onClick={(e) => handleStartFullEdit(e, idx)}
+                          className="bg-slate-700/50 border-none rounded w-5 h-5 flex items-center justify-center text-slate-400 cursor-pointer hover:text-slate-200 hover:bg-slate-700 flex-shrink-0"
+                          title="Editar item (nome, quantidade, preço)"
+                        >
+                          <Pencil size={10} />
+                        </button>
+                        <button
+                          onClick={(e) => handleRemoveItem(e, idx)}
+                          className="bg-red-500/10 border-none rounded w-5 h-5 flex items-center justify-center text-red-400 cursor-pointer hover:bg-red-500/20 hover:text-red-300 flex-shrink-0"
+                          title="Remover item"
+                        >
+                          <Trash2 size={10} />
+                        </button>
+                      </>
                     )}
                   </div>
-                  <div className={`text-xs text-slate-500 ${item.normalized_name ? "italic" : "not-italic"}`}>
-                    {item.normalized_name
-                      ? `${formatQuantity(item.quantity)} x R$ ${formatBRL(item.paid_price ?? item.price)}`
-                      : `${formatQuantity(item.quantity)} x R$ ${formatBRL(item.paid_price ?? item.price)}`}
-                  </div>
                 </div>
-                <div className="flex-shrink-0 ml-2 flex items-center gap-1.5">
-                  {item.paid_price !== undefined && item.paid_price !== null && item.paid_price < item.price ? (
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-slate-500 line-through text-xs">
-                        R$ {formatBRL(item.price * (item.quantity ?? 1))}
-                      </span>
-                      <span className="text-[var(--success)] font-semibold text-sm">
-                        R$ {formatItemTotal(item)}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="text-slate-300 font-semibold text-sm">
-                      R$ {formatItemTotal(item)}
-                    </div>
-                  )}
-                  <button
-                    onClick={(e) => handleStartEdit(e, idx)}
-                    className="bg-slate-700/50 border-none rounded w-5 h-5 flex items-center justify-center text-slate-400 cursor-pointer hover:text-slate-200 hover:bg-slate-700 flex-shrink-0"
-                    title="Editar preço pago (desconto)"
-                  >
-                    <Tag size={10} />
-                  </button>
-                  {allowFullEdit && (
-                    <>
-                      <button
-                        onClick={(e) => handleStartFullEdit(e, idx)}
-                        className="bg-slate-700/50 border-none rounded w-5 h-5 flex items-center justify-center text-slate-400 cursor-pointer hover:text-slate-200 hover:bg-slate-700 flex-shrink-0"
-                        title="Editar item (nome, quantidade, preço)"
-                      >
-                        <Pencil size={10} />
-                      </button>
-                      <button
-                        onClick={(e) => handleRemoveItem(e, idx)}
-                        className="bg-red-500/10 border-none rounded w-5 h-5 flex items-center justify-center text-red-400 cursor-pointer hover:bg-red-500/20 hover:text-red-300 flex-shrink-0"
-                        title="Remover item"
-                      >
-                        <Trash2 size={10} />
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

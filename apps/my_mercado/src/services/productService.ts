@@ -1,4 +1,4 @@
-import { getDictionary, updateDictionary } from ".";
+import { getDictionary } from ".";
 import { callAI } from "../utils/ai";
 import { normalizeKey } from "../utils/normalize";
 import { stripVariableInfo, cleanAIName } from "../utils/stringUtils";
@@ -46,11 +46,16 @@ function rawToProcessed(item: RawReceiptItem): ReceiptItem {
 
 type ItemWithKey = RawReceiptItem & { normalized_key: string; id?: string };
 
+export interface ProcessItemsPipelineResult {
+  items: ReceiptItem[];
+  dictionaryEntries: AiNormalizationResult[];
+}
+
 export async function processItemsPipeline(
   rawItems: RawReceiptItem[] = [],
   onProgress?: (step: "verifying_dict" | "calling_ai" | "saving_vips") => void
-): Promise<ReceiptItem[]> {
-  if (!rawItems.length) return [];
+): Promise<ProcessItemsPipelineResult> {
+  if (!rawItems.length) return { items: [], dictionaryEntries: [] };
 
   const itemsWithKey: ItemWithKey[] = rawItems.map((item) => {
     const nameForKey = stripVariableInfo(item.name, item.unit, item.qty);
@@ -127,10 +132,6 @@ export async function processItemsPipeline(
     }
   }
 
-  if (aiResults.length) {
-    await updateDictionary(aiResults);
-  }
-
   const aiMap = aiResults.reduce((acc, r) => {
     acc[r.key] = r;
     return acc;
@@ -157,5 +158,5 @@ export async function processItemsPipeline(
     };
   });
 
-  return finalItems;
+  return { items: finalItems, dictionaryEntries: aiResults };
 }

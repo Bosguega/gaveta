@@ -21,6 +21,7 @@ export function useManualReceipt() {
   const manualItem = useScannerStore((state) => state.manualItem);
   const setManualItem = useScannerStore((state) => state.setManualItem);
   const setCurrentReceipt = useScannerStore((state) => state.setCurrentReceipt);
+  const setPendingDictionaryEntries = useScannerStore((state) => state.setPendingDictionaryEntries);
 
   const getDefaultManualData = useCallback((): typeof manualData => {
     return {
@@ -31,9 +32,10 @@ export function useManualReceipt() {
   }, []);
 
   const enterManualMode = useCallback(() => {
+    setPendingDictionaryEntries([]);
     setManualData(getDefaultManualData());
     setManualMode(true);
-  }, [getDefaultManualData, setManualData, setManualMode]);
+  }, [getDefaultManualData, setManualData, setManualMode, setPendingDictionaryEntries]);
 
   const handleAddManualItem = useCallback(() => {
     const qty = parseFloat(String(manualItem.qty || '1').replace(',', '.')) || 1;
@@ -130,7 +132,8 @@ export function useManualReceipt() {
         ),
       }));
 
-      const processedItems = await processItemsPipeline(rawItemsForPipeline);
+      const pipelineResult = await processItemsPipeline(rawItemsForPipeline);
+      const processedItems = pipelineResult.items;
 
       const manualId = generateManualReceiptId(establishment, date);
 
@@ -154,6 +157,7 @@ export function useManualReceipt() {
       };
 
       // Sai do modo manual e exibe no ResultScreen (mesmo fluxo das notas escaneadas)
+      setPendingDictionaryEntries(pipelineResult.dictionaryEntries);
       setCurrentReceipt(finalReceipt);
       setManualMode(false);
       setManualData(getDefaultManualData());
@@ -171,14 +175,16 @@ export function useManualReceipt() {
     setLoading,
     setManualData,
     setManualMode,
+    setPendingDictionaryEntries,
     getDefaultManualData,
   ]);
 
   const handleCancelManualReceipt = useCallback(() => {
     setManualMode(false);
     setManualData(getDefaultManualData());
+    setPendingDictionaryEntries([]);
     notify.warning('Entrada manual cancelada');
-  }, [setManualMode, setManualData, getDefaultManualData]);
+  }, [setManualMode, setManualData, setPendingDictionaryEntries, getDefaultManualData]);
 
   return {
     loading,

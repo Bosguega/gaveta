@@ -36,12 +36,12 @@ describe("processItemsPipeline", () => {
       { name: "CAFE 500G", qty: "2", unit: "UN", unitPrice: "20,00", total: "40,00", paidPrice: "17,50" },
     ];
 
-    const result = await processItemsPipeline(raw);
+    const { items } = await processItemsPipeline(raw);
 
-    expect(result).toHaveLength(1);
-    expect(result[0].price).toBe(20);
-    expect(result[0].paid_price).toBe(17.5);
-    expect(result[0].total).toBe(40);
+    expect(items).toHaveLength(1);
+    expect(items[0].price).toBe(20);
+    expect(items[0].paid_price).toBe(17.5);
+    expect(items[0].total).toBe(40);
   });
 
   it("não define paid_price quando paidPrice está ausente (demais fluxos)", async () => {
@@ -49,12 +49,12 @@ describe("processItemsPipeline", () => {
       { name: "ARROZ 5KG", qty: "1", unit: "UN", unitPrice: "24,90", total: "24,90" },
     ];
 
-    const result = await processItemsPipeline(raw);
+    const { items } = await processItemsPipeline(raw);
 
-    expect(result[0].price).toBe(24.9);
-    expect(result[0].total).toBe(24.9);
+    expect(items[0].price).toBe(24.9);
+    expect(items[0].total).toBe(24.9);
     // Campo ausente, não undefined explícito com valor.
-    expect(result[0]).not.toHaveProperty("paid_price");
+    expect(items[0]).not.toHaveProperty("paid_price");
   });
 
   it("ignora paidPrice vazio (trata como ausente)", async () => {
@@ -62,9 +62,9 @@ describe("processItemsPipeline", () => {
       { name: "FEIJAO 1KG", qty: "1", unit: "UN", unitPrice: "8,00", total: "8,00", paidPrice: "   " },
     ];
 
-    const result = await processItemsPipeline(raw);
+    const { items } = await processItemsPipeline(raw);
 
-    expect(result[0]).not.toHaveProperty("paid_price");
+    expect(items[0]).not.toHaveProperty("paid_price");
   });
 
   it("preserva paid_price com peso fracionário (kg)", async () => {
@@ -72,10 +72,43 @@ describe("processItemsPipeline", () => {
       { name: "QUEIJO KG", qty: "0,434", unit: "KG", unitPrice: "32,90", total: "14,28", paidPrice: "29,93" },
     ];
 
-    const result = await processItemsPipeline(raw);
+    const { items } = await processItemsPipeline(raw);
 
-    expect(result[0].quantity).toBeCloseTo(0.434, 3);
-    expect(result[0].price).toBeCloseTo(32.9, 2);
-    expect(result[0].paid_price).toBeCloseTo(29.93, 2);
+    expect(items[0].quantity).toBeCloseTo(0.434, 3);
+    expect(items[0].price).toBeCloseTo(32.9, 2);
+    expect(items[0].paid_price).toBeCloseTo(29.93, 2);
   });
+  it("não cria pendência nem chama IA para produto já existente no dicionário", async () => {
+    getDictionaryMock.mockImplementation(async (keys: string[]) => {
+      const key = keys[0] ?? "";
+      return { [key]: { normalized_name: "Arroz", category: "Mercearia" } };
+    });
+
+    const raw: RawReceiptItem[] = [
+      { name: "ARROZ 5KG", qty: "1", unit: "UN", unitPrice: "24,90", total: "24,90" },
+    ];
+
+    const { items, dictionaryEntries } = await processItemsPipeline(raw);
+
+    expect(items[0].normalized_name).toBe("Arroz");
+    expect(dictionaryEntries).toEqual([]);
+    expect(callAIMock).not.toHaveBeenCalled();
+  });
+
+  it("retorna entradas pendentes sem gravar no dicionário durante o processamento", async () => {
+    const raw: RawReceiptItem[] = [
+      { name: "PRODUTO DESCONHECIDO", qty: "1", unit: "UN", unitPrice: "5,00", total: "5,00" },
+    ];
+
+    const { items, dictionaryEntries } = await processItemsPipeline(raw);
+
+    expect(items).toHaveLength(1);
+    expect(dictionaryEntries).toHaveLength(1);
+    expect(dictionaryEntries[0]).toMatchObject({
+      normalized_name: "PRODUTO DESCONHECIDO",
+      category: "Outros",
+    });
+    expect(updateDictionaryMock).not.toHaveBeenCalled();
+  });
+
 });
