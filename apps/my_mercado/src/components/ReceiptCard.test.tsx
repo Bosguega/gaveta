@@ -3,7 +3,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ReceiptCard } from "./ReceiptCard";
 import type { Receipt } from "../types/domain";
 
-const mutateReceiptDate = vi.fn();
+const { mutateReceiptDate } = vi.hoisted(() => ({ mutateReceiptDate: vi.fn() }));
 
 vi.mock("../hooks/queries/useUpdateItemPaidPrice", () => ({
   useUpdateItemPaidPrice: () => ({ mutate: vi.fn(), isPending: false }),
