@@ -43,6 +43,7 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
   const { isAvailable, requestText } = useNfceExtension();
   const setLoading = useScannerStore((state) => state.setLoading);
   const setCurrentReceipt = useScannerStore((state) => state.setCurrentReceipt);
+  const setPendingDictionaryEntries = useScannerStore((state) => state.setPendingDictionaryEntries);
   const setDuplicateReceipt = useScannerStore((state) => state.setDuplicateReceipt);
   const setDuplicateMatchLevel = useScannerStore((state) => state.setDuplicateMatchLevel);
   const setError = useScannerStore((state) => state.setError);
@@ -94,6 +95,7 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
       }
 
       setLoading(true);
+      setPendingDictionaryEntries([]);
       setLoadingStep('parsing');
       setError(null);
 
@@ -120,9 +122,11 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
             : {}),
         }));
 
-        const processedItems = await processItemsPipeline(rawItemsForPipeline, (step: LoadingStep) => {
+        const pipelineResult = await processItemsPipeline(rawItemsForPipeline, (step: LoadingStep) => {
           setLoadingStep(step);
         });
+        const processedItems = pipelineResult.items;
+        setPendingDictionaryEntries(pipelineResult.dictionaryEntries);
 
         const processedReceipt = {
           ...extractedData,
@@ -141,7 +145,7 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
         setLoadingStep(null);
       }
     },
-    [setLoading, setCurrentReceipt, setError]
+    [setLoading, setCurrentReceipt, setError, setPendingDictionaryEntries]
   );
 
   const processQRCode = useCallback(
@@ -156,6 +160,7 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
       }
 
       setLoading(true);
+      setPendingDictionaryEntries([]);
       setLoadingStep('fetching');
 
       try {
@@ -234,9 +239,11 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
           total: (item.total ?? item.price * item.quantity).toString().replace('.', ',')
         }));
 
-        const processedItems = await processItemsPipeline(rawItemsForPipeline, (step: LoadingStep) => {
+        const pipelineResult = await processItemsPipeline(rawItemsForPipeline, (step: LoadingStep) => {
           setLoadingStep(step);
         });
+        const processedItems = pipelineResult.items;
+        setPendingDictionaryEntries(pipelineResult.dictionaryEntries);
 
         // Atualizar receipt com itens processados
         const processedReceipt = {
@@ -262,7 +269,7 @@ export function useQRCodeProcessor(saveReceipt: SaveReceiptFn) {
         setLoadingStep(null);
       }
     },
-    [setLoading, setCurrentReceipt, setError, isAvailable, requestText, processRawText],
+    [setLoading, setCurrentReceipt, setError, setPendingDictionaryEntries, isAvailable, requestText, processRawText],
   );
 
   return {
