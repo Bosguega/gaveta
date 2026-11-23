@@ -48,7 +48,7 @@ describe("ReceiptCard — indicador de desconto pendente", () => {
     fireEvent.change(input, { target: { value: "2026-09-12" } });
 
     expect(mutateReceiptDate).toHaveBeenCalledWith(
-      { receiptId: "r1", date: "2026-09-12" },
+      { receiptId: "r1", date: "12/09/2026 14:30:00" },
       expect.objectContaining({ onSuccess: expect.any(Function) }),
     );
     expect(onToggle).not.toHaveBeenCalled();
