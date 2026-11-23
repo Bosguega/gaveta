@@ -43,9 +43,10 @@ describe("ReceiptCard — indicador de desconto pendente", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Corrigir data da nota" }));
-    const input = screen.getByLabelText("Corrigir data da nota") as HTMLInputElement;
-    expect(input.type).toBe("date");
-    fireEvent.change(input, { target: { value: "2026-09-12" } });
+    const input = screen.getByLabelText("Data da nota (DD/MM/AAAA)") as HTMLInputElement;
+    expect(input.type).toBe("text");
+    fireEvent.change(input, { target: { value: "12092026" } });
+    fireEvent.blur(input);
 
     expect(mutateReceiptDate).toHaveBeenCalledWith(
       { receiptId: "r1", date: "12/09/2026 14:30:00" },
