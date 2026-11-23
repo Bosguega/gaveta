@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Receipt } from "../types/domain";
+import type { AiNormalizationResult } from "../types/ai";
 import type { ManualReceiptData, ManualReceiptItemInput, LoadingStep } from "../types/scanner";
 
 // ==============================
@@ -16,6 +17,7 @@ interface ScanSlice {
   duplicateMatchLevel: "exact" | "probable" | null;
   isSaving: boolean;
   isScannerEntryActive: boolean;
+  pendingDictionaryEntries: AiNormalizationResult[];
 }
 
 interface ScanActions {
@@ -30,6 +32,7 @@ interface ScanActions {
   setDuplicateMatchLevel: (value: "exact" | "probable" | null) => void;
   setIsSaving: (value: boolean) => void;
   setIsScannerEntryActive: (value: boolean) => void;
+  setPendingDictionaryEntries: (value: AiNormalizationResult[]) => void;
 }
 
 interface CameraSlice {
@@ -98,6 +101,7 @@ const initialScanState: ScanSlice = {
   duplicateMatchLevel: null,
   isSaving: false,
   isScannerEntryActive: false,
+  pendingDictionaryEntries: [],
 };
 
 const initialCameraState: CameraSlice = {
@@ -141,6 +145,7 @@ export const useScannerStore = create<ScannerState>()((set) => ({
   setDuplicateMatchLevel: (value) => set({ duplicateMatchLevel: value }),
   setIsSaving: (value) => set({ isSaving: value }),
   setIsScannerEntryActive: (value) => set({ isScannerEntryActive: value }),
+  setPendingDictionaryEntries: (value) => set({ pendingDictionaryEntries: value }),
 
   // Camera Slice
   ...initialCameraState,
