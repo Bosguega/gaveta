@@ -243,7 +243,7 @@ export const ReceiptCard = React.memo(function ReceiptCard({
                                         type="button"
                                         onMouseDown={(e) => e.preventDefault()}
                                         onClick={() => datePickerRef.current?.showPicker?.()}
-                                        className="inline-flex items-center justify-center text-amber-400 hover:text-amber-300"
+                                        className="bg-transparent border-none p-0 inline-flex items-center justify-center text-amber-400 hover:text-amber-300 cursor-pointer"
                                         title="Selecionar data no calendário"
                                         aria-label="Selecionar data no calendário"
                                     >
@@ -265,7 +265,7 @@ export const ReceiptCard = React.memo(function ReceiptCard({
                                     <button
                                         type="button"
                                         onClick={handleOpenDateEdit}
-                                        className="inline-flex items-center justify-center text-amber-400 hover:text-amber-300"
+                                        className="bg-transparent border-none p-0 inline-flex items-center justify-center text-amber-400 hover:text-amber-300 cursor-pointer"
                                         title="Corrigir data da nota"
                                         aria-label="Corrigir data da nota"
                                     >
