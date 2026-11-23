@@ -9,6 +9,7 @@ import { useReceiptsSessionStore } from "../../stores/useReceiptsSessionStore";
 import { useUiStore } from "../../stores/useUiStore";
 import { useScannerStore } from "../../stores/useScannerStore";
 import { useSaveReceipt } from "../../hooks/queries/useReceiptsQuery";
+import { updateDictionary } from "../../services";
 import { useEstablishmentDictionaryQuery, useUpsertEstablishmentDictionaryEntry } from "../../hooks/queries/useEstablishmentDictionaryQuery";
 import { IdleScreen } from "./screens/IdleScreen";
 import { LoadingScreen } from "./screens/LoadingScreen";
@@ -171,7 +172,9 @@ function ScannerTab() {
             : {}),
         }));
 
-        const processedItems = await processItemsPipeline(rawItemsForPipeline);
+        const pipelineResult = await processItemsPipeline(rawItemsForPipeline);
+        const processedItems = pipelineResult.items;
+        useScannerStore.getState().setPendingDictionaryEntries(pipelineResult.dictionaryEntries);
 
         const processedReceipt = {
           ...result.receipt,
@@ -223,12 +226,33 @@ function ScannerTab() {
 
   // Handler de reset (descartar)
   const handleReset = useCallback(() => {
+    useScannerStore.getState().setPendingDictionaryEntries([]);
     setCurrentReceipt(null);
     stopCamera();
   }, [setCurrentReceipt, stopCamera]);
 
   // Handler de salvar nota (chamado pelo ResultScreen)
   const toastShownRef = useRef<string | null>(null);
+
+  const persistPendingDictionaryEntries = useCallback(async (receipt: Receipt) => {
+    const store = useScannerStore.getState();
+    const pending = store.pendingDictionaryEntries;
+    const receiptKeys = new Set(
+      receipt.items
+        .map((item) => item.normalized_key)
+        .filter((key): key is string => Boolean(key)),
+    );
+    const entries = pending.filter((entry) => receiptKeys.has(entry.key));
+
+    try {
+      if (entries.length > 0) await updateDictionary(entries);
+    } catch (err) {
+      logger.error("ScannerTab", "Nota salva, mas não foi possível atualizar o dicionário de produtos", err);
+      notify.warning("A nota foi salva, mas alguns produtos não foram adicionados ao dicionário.");
+    } finally {
+      store.setPendingDictionaryEntries([]);
+    }
+  }, []);
 
   const handleSaveCurrentReceipt = useCallback(async () => {
     if (!currentReceipt) return;
@@ -239,6 +263,7 @@ function ScannerTab() {
       const result = await saveCurrentReceipt(currentReceipt);
 
       if ("success" in result && result.success) {
+        await persistPendingDictionaryEntries(result.receipt);
         // Auto-inserir estabelecimento no dicionário se ainda não existir
         const key = normalizeKey(currentReceipt.establishment);
         if (!establishmentKeys.current.has(key) && toastShownRef.current !== currentReceipt.id) {
@@ -265,7 +290,7 @@ function ScannerTab() {
     } finally {
       useScannerStore.getState().setIsSaving(false);
     }
-  }, [currentReceipt, saveCurrentReceipt, setCurrentReceipt, stopCamera, upsertEstablishment]);
+  }, [currentReceipt, saveCurrentReceipt, setCurrentReceipt, stopCamera, upsertEstablishment, persistPendingDictionaryEntries]);
 
   // Handler de duplicata
   const handleSetDuplicateReceipt = useCallback(
@@ -281,6 +306,7 @@ function ScannerTab() {
     // Re-salvar com forceReplace
     const result = await saveReceipt(duplicateReceipt, true);
     if ("success" in result && result.success) {
+      await persistPendingDictionaryEntries(result.receipt);
       setCurrentReceipt(result.receipt);
       setDuplicateReceipt(null);
       notify.success('Nota atualizada com sucesso!');
@@ -290,7 +316,7 @@ function ScannerTab() {
         stopCamera();
       }, 1000);
     }
-  }, [duplicateReceipt, saveReceipt, setCurrentReceipt, setDuplicateReceipt, stopCamera]);
+  }, [duplicateReceipt, saveReceipt, setCurrentReceipt, setDuplicateReceipt, stopCamera, persistPendingDictionaryEntries]);
 
   // Calcular total do receipt
   const calculateTotal = useCallback(
