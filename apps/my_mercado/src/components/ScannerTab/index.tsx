@@ -158,7 +158,7 @@ function ScannerTab() {
         // A IA terminou; agora a aplicação organiza os produtos reconhecidos.
         useScannerStore.getState().setLoadingStep("verifying_dict");
 
-        // Passar os itens pela pipeline de normalização (consulta/alimenta o dicionário de produtos)
+        // Passar os itens pela pipeline de normalização (consulta o dicionário e prepara novas entradas pendentes)
         const { processItemsPipeline } = await import('../../services/productService');
 
         const rawItemsForPipeline = result.receipt.items.map(item => ({
