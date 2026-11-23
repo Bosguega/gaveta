@@ -3,7 +3,7 @@ import { Trash2, ChevronDown, ChevronUp, Edit3, Pencil, Tag, ExternalLink, Calen
 import { parseBRL, formatBRL } from "../utils/currency";
 import { formatQuantity } from "../utils/format";
 import { calculateReceiptTotal } from "../utils/analytics";
-import { formatToBR, formatToInputDate } from "../utils/date";
+import { formatToBR, formatToInputDate, isoDateToBrPreservingTime } from "../utils/date";
 import type { Receipt, ReceiptItem } from "../types/domain";
 import { useEstablishmentPrefillStore } from "../stores/useEstablishmentPrefillStore";
 import { useUiStore } from "../stores/useUiStore";
@@ -125,7 +125,7 @@ export const ReceiptCard = React.memo(function ReceiptCard({
 
     const handleDateChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         e.stopPropagation();
-        const date = e.target.value;
+        const date = isoDateToBrPreservingTime(e.target.value, receipt.date);
         if (!date) return;
         updateReceiptDate.mutate(
             { receiptId: receipt.id, date },
