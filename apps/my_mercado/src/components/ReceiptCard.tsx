@@ -129,7 +129,10 @@ export const ReceiptCard = React.memo(function ReceiptCard({
         if (!date) return;
         updateReceiptDate.mutate(
             { receiptId: receipt.id, date },
-            { onSuccess: () => setIsEditingDate(false) },
+            {
+                onSuccess: () => setIsEditingDate(false),
+                onError: () => setIsEditingDate(false),
+            },
         );
     }, [receipt.id, updateReceiptDate]);
 
