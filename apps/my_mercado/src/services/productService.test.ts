@@ -78,6 +78,22 @@ describe("processItemsPipeline", () => {
     expect(items[0].price).toBeCloseTo(32.9, 2);
     expect(items[0].paid_price).toBeCloseTo(29.93, 2);
   });
+  it("não cria pendência nem chama IA para produto já existente no dicionário", async () => {
+    getDictionaryMock.mockImplementation(async (keys: string[]) => ({
+      [keys[0]]: { normalized_name: "Arroz", category: "Mercearia" },
+    }));
+
+    const raw: RawReceiptItem[] = [
+      { name: "ARROZ 5KG", qty: "1", unit: "UN", unitPrice: "24,90", total: "24,90" },
+    ];
+
+    const { items, dictionaryEntries } = await processItemsPipeline(raw);
+
+    expect(items[0].normalized_name).toBe("Arroz");
+    expect(dictionaryEntries).toEqual([]);
+    expect(callAIMock).not.toHaveBeenCalled();
+  });
+
   it("retorna entradas pendentes sem gravar no dicionário durante o processamento", async () => {
     const raw: RawReceiptItem[] = [
       { name: "PRODUTO DESCONHECIDO", qty: "1", unit: "UN", unitPrice: "5,00", total: "5,00" },
