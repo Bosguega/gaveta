@@ -3,8 +3,14 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ReceiptCard } from "./ReceiptCard";
 import type { Receipt } from "../types/domain";
 
+const mutateReceiptDate = vi.fn();
+
 vi.mock("../hooks/queries/useUpdateItemPaidPrice", () => ({
   useUpdateItemPaidPrice: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
+vi.mock("../hooks/queries/useUpdateReceiptDate", () => ({
+  useUpdateReceiptDate: () => ({ mutate: mutateReceiptDate, isPending: false }),
 }));
 
 const receiptWithPendingDiscount: Receipt = {
@@ -22,6 +28,30 @@ const receiptWithPendingDiscount: Receipt = {
 describe("ReceiptCard — indicador de desconto pendente", () => {
   beforeEach(() => {
     localStorage.clear();
+    mutateReceiptDate.mockReset();
+  });
+
+  it("permite corrigir a data sem alternar a expansão do card", () => {
+    const onToggle = vi.fn();
+    render(
+      <ReceiptCard
+        receipt={receiptWithPendingDiscount}
+        isExpanded={false}
+        onToggle={onToggle}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Corrigir data da nota" }));
+    const input = screen.getByLabelText("Corrigir data da nota") as HTMLInputElement;
+    expect(input.type).toBe("date");
+    fireEvent.change(input, { target: { value: "2026-09-12" } });
+
+    expect(mutateReceiptDate).toHaveBeenCalledWith(
+      { receiptId: "r1", date: "2026-09-12" },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+    expect(onToggle).not.toHaveBeenCalled();
   });
 
   it("quando há desconto pendente, o indicador é um botão que abre o modal de conferência", async () => {
