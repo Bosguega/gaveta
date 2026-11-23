@@ -1,9 +1,9 @@
-import React, { useMemo, useCallback, useState } from "react";
+import React, { useMemo, useCallback, useState, useRef } from "react";
 import { Trash2, ChevronDown, ChevronUp, Edit3, Pencil, Tag, ExternalLink, CalendarDays } from "lucide-react";
 import { parseBRL, formatBRL } from "../utils/currency";
 import { formatQuantity } from "../utils/format";
 import { calculateReceiptTotal } from "../utils/analytics";
-import { formatToBR, formatToInputDate, isoDateToBrPreservingTime } from "../utils/date";
+import { brDateToIsoDatePart, formatToBR, isValidBRDate, isoDateToBrPreservingTime, maskBRDateInput } from "../utils/date";
 import type { Receipt, ReceiptItem } from "../types/domain";
 import { useEstablishmentPrefillStore } from "../stores/useEstablishmentPrefillStore";
 import { useUiStore } from "../stores/useUiStore";
@@ -100,6 +100,8 @@ export const ReceiptCard = React.memo(function ReceiptCard({
     const setTab = useUiStore((s) => s.setTab);
     const updateReceiptDate = useUpdateReceiptDate();
     const [isEditingDate, setIsEditingDate] = useState(false);
+    const [dateInput, setDateInput] = useState(formatToBR(receipt.date, false));
+    const datePickerRef = useRef<HTMLInputElement>(null);
 
     // Exibe establishment_display (sempre preenchido pela RPC)
     const displayEstablishment = useMemo(() => {
@@ -120,13 +122,11 @@ export const ReceiptCard = React.memo(function ReceiptCard({
 
     const handleOpenDateEdit = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
+        setDateInput(formatToBR(receipt.date, false));
         setIsEditingDate(true);
-    }, []);
+    }, [receipt.date]);
 
-    const handleDateChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        e.stopPropagation();
-        const date = isoDateToBrPreservingTime(e.target.value, receipt.date);
-        if (!date) return;
+    const saveDate = useCallback((date: string) => {
         updateReceiptDate.mutate(
             { receiptId: receipt.id, date },
             {
@@ -135,6 +135,22 @@ export const ReceiptCard = React.memo(function ReceiptCard({
             },
         );
     }, [receipt.id, updateReceiptDate]);
+
+    const handleDateTextCommit = useCallback(() => {
+        if (!isValidBRDate(dateInput)) {
+            setDateInput(formatToBR(receipt.date, false));
+            setIsEditingDate(false);
+            return;
+        }
+        const date = isoDateToBrPreservingTime(brDateToIsoDatePart(dateInput), receipt.date);
+        if (date) saveDate(date);
+    }, [dateInput, receipt.date, saveDate]);
+
+    const handleDatePickerChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        e.stopPropagation();
+        const date = isoDateToBrPreservingTime(e.target.value, receipt.date);
+        if (date) saveDate(date);
+    }, [receipt.date, saveDate]);
 
     // Desconto da nota ainda não distribuído nos itens via paid_price
     const pendingDiscount = useMemo(() => {
@@ -204,22 +220,56 @@ export const ReceiptCard = React.memo(function ReceiptCard({
                         </h3>
                         <div className="flex flex-wrap gap-x-4 gap-y-1 items-center">
                             {isEditingDate ? (
-                                <input
-                                    type="date"
-                                    aria-label="Corrigir data da nota"
-                                    defaultValue={formatToInputDate(receipt.date)}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onChange={handleDateChange}
-                                    disabled={updateReceiptDate.isPending}
-                                    className="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200"
-                                />
+                                <span className="inline-flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                    <input
+                                        type="text"
+                                        aria-label="Data da nota (DD/MM/AAAA)"
+                                        inputMode="numeric"
+                                        placeholder="DD/MM/AAAA"
+                                        value={dateInput}
+                                        onChange={(e) => setDateInput(maskBRDateInput(e.target.value))}
+                                        onBlur={handleDateTextCommit}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                handleDateTextCommit();
+                                            }
+                                            if (e.key === "Escape") {
+                                                setDateInput(formatToBR(receipt.date, false));
+                                                setIsEditingDate(false);
+                                            }
+                                        }}
+                                        autoFocus
+                                        disabled={updateReceiptDate.isPending}
+                                        className="w-[92px] bg-slate-800 border border-slate-600 rounded px-1.5 py-1 text-xs text-slate-200"
+                                    />
+                                    <button
+                                        type="button"
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        onClick={() => datePickerRef.current?.showPicker?.()}
+                                        className="inline-flex items-center justify-center text-amber-400 hover:text-amber-300"
+                                        title="Selecionar data no calendário"
+                                        aria-label="Selecionar data no calendário"
+                                    >
+                                        <CalendarDays size={12} />
+                                    </button>
+                                    <input
+                                        ref={datePickerRef}
+                                        type="date"
+                                        aria-label="Selecionar data no calendário"
+                                        value={brDateToIsoDatePart(receipt.date)}
+                                        onChange={handleDatePickerChange}
+                                        className="sr-only"
+                                        tabIndex={-1}
+                                    />
+                                </span>
                             ) : (
                                 <span className="inline-flex items-center gap-1.5 text-slate-400 text-xs">
                                     {displayDate}
                                     <button
                                         type="button"
                                         onClick={handleOpenDateEdit}
-                                        className="inline-flex items-center justify-center text-slate-500 hover:text-slate-200"
+                                        className="inline-flex items-center justify-center text-amber-400 hover:text-amber-300"
                                         title="Corrigir data da nota"
                                         aria-label="Corrigir data da nota"
                                     >
